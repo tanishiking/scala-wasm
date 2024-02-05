@@ -3,10 +3,8 @@ package wasm4s
 import scala.collection.mutable
 
 import Types._
+import Names._
 
-case class Ident(name: String) {
-
-}
 
 sealed case class WasmExpr(instr: List[WasmInstr])
 
@@ -14,42 +12,42 @@ sealed case class WasmExpr(instr: List[WasmInstr])
   *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
   */
 case class WasmFunction(
-    val ident: Ident,
-    val typ: WasmSymbol[WasmFunctionType],
+    val name: WasmFunctionName,
+    val typ: WasmFunctionTypeName,
     val locals: List[WasmLocal],
     val body: WasmExpr
-) extends WasmNamedDefinitionField
+) extends WasmNamedDefinitionField[WasmFunctionName]
 
 /** The index space for locals is only accessible inside a function and includes the parameters of
   * that function, which precede the local variables.
   */
 case class WasmLocal(
-    val ident: Ident,
+    val name: WasmLocalName,
     val typ: WasmType,
     val isParameter: Boolean // for text
-) extends WasmNamedDefinitionField
+) extends WasmNamedDefinitionField[WasmLocalName]
 
-case class WasmGlobal(
-    val ident: Ident,
-    val typ: WasmType
-) extends WasmNamedDefinitionField
+// case class WasmGlobal(
+//     val name: WasmGlobalName,
+//     val typ: WasmType
+// ) extends WasmNamedDefinitionField[WasmGlobalName]
 
-trait WasmTypeDefinition extends WasmNamedDefinitionField
-trait WasmGCTypeDefinition extends WasmTypeDefinition
+trait WasmTypeDefinition[T <: WasmName] extends WasmNamedDefinitionField[T]
 case class WasmFunctionType(
-    ident: Ident,
+    name: WasmFunctionTypeName,
     params: List[WasmType],
     results: List[WasmType]
-) extends WasmTypeDefinition
+) extends WasmTypeDefinition[WasmFunctionTypeName]
 
+trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmGCTypeName]
 case class WasmStructType(
-    ident: Ident,
+    name: WasmGCTypeName,
     fields: List[WasmStructField],
-    superType: WasmSymbol[WasmTypeDefinition]
+    superType: WasmGCTypeName
 ) extends WasmGCTypeDefinition
 
 case class WasmArrayType(
-    ident: Ident,
+    name: WasmGCTypeName,
     field: WasmStructField
 ) extends WasmGCTypeDefinition
 
@@ -64,7 +62,7 @@ case class WasmStructField(
   */
 class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
-    private val _recGroupTypes: mutable.ListBuffer[WasmTypeDefinition] = new mutable.ListBuffer(),
+    private val _recGroupTypes: mutable.ListBuffer[WasmTypeDefinition[WasmName]] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
     // val importedFunctions: List[WasmFunction.Imported] = Nil,
     // val importedMemories: List[WasmMemory] = Nil,
@@ -84,7 +82,7 @@ class WasmModule(
 ) {
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
-  def addRecGroupType(typ: WasmTypeDefinition): Unit = _recGroupTypes.addOne(typ)
+  def addRecGroupType(typ: WasmTypeDefinition[WasmName]): Unit = _recGroupTypes.addOne(typ)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = _recGroupTypes.toList

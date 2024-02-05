@@ -1,6 +1,7 @@
 package converters
 
 import wasm4s._
+import wasm4s.Names._
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -32,7 +33,7 @@ class WasmTextWriter {
     // (type type-name (func (param ty) (param ty) (result ty)))
     b.newLineList(
       "type", {
-        b.appendIdent(functionType.ident)
+        b.appendName(functionType.name)
         b.sameLineList(
           "func", {
             functionType.params.foreach { ty =>
@@ -50,7 +51,7 @@ class WasmTextWriter {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
-          b.appendIdent(l.ident)
+          b.appendName(l.name)
           b.appendElement(l.typ.name)
         }
       )
@@ -58,8 +59,8 @@ class WasmTextWriter {
 
     b.newLineList(
       "func", {
-        b.appendIdent(f.ident)
-        b.sameLineListOne("type", f.typ.ident)
+        b.appendName(f.name)
+        b.sameLineListOne("type", f.typ.name)
 
         b.newLine()
         f.locals.filter(_.isParameter).foreach(p => { writeParam(p) })
@@ -80,8 +81,8 @@ class WasmTextWriter {
         case WasmImmediate.I32(v) => v.toString
         case WasmImmediate.F64(v) => v.toString
         case WasmImmediate.F32(v) => v.toString
-        case WasmImmediate.LocalIdx(sym) =>
-          sym.ident.name
+        case WasmImmediate.LocalIdx(name) =>
+          name.name
         case _ => ???
       }
       b.appendElement(str)
@@ -135,11 +136,11 @@ object WasmTextWriter {
     def sameLineListOne(name: String, value: String) =
       sameLineList(name, { appendElement(value) })
 
-    def sameLineListOne(name: String, ident: Ident) =
-      sameLineList(name, { appendIdent(ident) })
+    def sameLineListOne(name: String, wasmName: WasmName) =
+      sameLineList(name, { appendName(wasmName) })
 
-    def appendIdent(ident: Ident): Unit =
-      appendElement(sanitizeWatIdentifier(ident.name))
+    def appendName(name: WasmName): Unit =
+      appendElement(sanitizeWatIdentifier(name.name))
 
     def appendElement(value: String): Unit = {
       builder.append(" ")

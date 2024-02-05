@@ -2,33 +2,35 @@ package wasm4s
 
 import scala.collection.mutable
 
+import Names._
+
 /** https://webassembly.github.io/spec/core/syntax/modules.html#indices */
-trait WasmDefinitionField {
-  val idx: Long = 0L
-}
-trait WasmNamedDefinitionField extends WasmDefinitionField {
-  val ident: Ident
-}
-
-case class WasmSymbol[T <: WasmNamedDefinitionField](ident: Ident) {
-  override def toString(): String = ident.name
+// trait WasmDefinitionField {
+//   val idx: Long = 0L
+// }
+trait WasmNamedDefinitionField[+N <: WasmName] {
+  // type NameType = N
+  val name: N
 }
 
-class WasmSymbolTable[T <: WasmNamedDefinitionField] {
-  private val unbound = mutable.Map[Ident, WasmSymbol[T]]()
-  private val defined = mutable.Map[WasmSymbol[T], T]()
+// case class WasmSymbol[T <: WasmNamedDefinitionField](ident: Ident) {
+//   override def toString(): String = ident.name
+// }
 
-  def reference(ident: Ident): WasmSymbol[T] =
-    unbound.getOrElseUpdate(ident, new WasmSymbol[T](ident))
+class WasmSymbolTable[T <: WasmNamedDefinitionField[WasmName]] {
+  // private val unbound = mutable.Map[Ident, WasmSymbol[T]]()
+  // private val defined = mutable.Map[WasmSymbol[T], T]()
+  private val defined = mutable.Map[WasmName, T]()
 
-  def define(field: T): WasmSymbol[T] = {
-    val sym = unbound.getOrElseUpdate(field.ident, new WasmSymbol[T](field.ident))
-    defined.get(sym) match {
-      case Some(f) => throw new Exception(s"Symbol ${field.ident} is already defined")
-      case None    => defined.update(sym, field)
+  // def reference(ident: Ident): WasmSymbol[T] =
+  //   unbound.getOrElseUpdate(ident, new WasmSymbol[T](ident))
+
+  def define(field: T): Unit =
+    defined.get(field.name) match {
+      case Some(f) => throw new Exception(s"Symbol ${field.name} is already defined")
+      case None    => defined.update(field.name, field)
     }
-    sym
-  }
-  def resolve(sym: WasmSymbol[T]): T =
-    defined.getOrElse(sym, throw new Exception(s"Symbol ${sym.ident} is not defined"))
+
+  def resolve(name: WasmName): T =
+    defined.getOrElse(name, throw new Exception(s"Symbol ${name} is not defined"))
 }

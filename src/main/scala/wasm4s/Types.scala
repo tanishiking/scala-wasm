@@ -1,5 +1,7 @@
 package wasm4s
 
+import Names._
+
 object Types {
   abstract sealed class WasmType(
       val name: String,
@@ -36,8 +38,8 @@ object Types {
 
   sealed trait WasmHeapType
   object WasmHeapType {
-    case class Type(val typ: WasmSymbol[WasmGCTypeDefinition]) extends WasmHeapType {
-      override def toString(): String = typ.ident.name
+    case class Type(val typ: WasmGCTypeName) extends WasmHeapType {
+      override def toString(): String = typ.name
     }
     sealed class Simple(val name: String, val code: Byte) extends WasmHeapType {
       override def toString(): String = name

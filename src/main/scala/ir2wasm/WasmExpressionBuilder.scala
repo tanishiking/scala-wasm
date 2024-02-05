@@ -1,13 +1,13 @@
 package ir2wasm
 
 import org.scalajs.ir.{Trees => IRTrees}
+import wasm4s.Names
 import wasm4s.WasmExpr
 import wasm4s.WasmInstr
 import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
 import org.scalajs.ir.{Types => IRTypes}
 import wasm4s.WasmFunctionContext
-import wasm4s.Ident
 import wasm4s.WasmFunction
 
 class WasmExpressionBuilder(fctx: WasmFunctionContext) {
@@ -204,8 +204,8 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
   }
 
   def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
-    val localSym = fctx.locals.reference(Ident(r.ident.name.nameString))
-    LOCAL_GET(LocalIdx(localSym))
+    val name = Names.WasmLocalName.fromIR(r.ident.name)
+    LOCAL_GET(LocalIdx(name))
   }
 
 }

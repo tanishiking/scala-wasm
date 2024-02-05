@@ -2,6 +2,7 @@ package wasm4s
 // https://webassembly.github.io/spec/core/syntax/instructions.html
 
 import Types._
+import Names._
 
 abstract sealed class WasmInstr(
     val mnemonic: String,
@@ -206,8 +207,8 @@ object WasmInstr {
   case class LOCAL_GET(i: LocalIdx) extends WasmInstr("local.get", 0x20, List(i))
   case class LOCAL_SET(i: LocalIdx) extends WasmInstr("local.set", 0x21, List(i))
   case class LOCAL_TEE(i: LocalIdx) extends WasmInstr("local.tee", 0x22, List(i))
-  case class GLOBAL_GET(i: GlobalIdx) extends WasmInstr("global.get", 0x23, List(i))
-  case class GLOBAL_SET(i: GlobalIdx) extends WasmInstr("global.set", 0x24, List(i))
+  // case class GLOBAL_GET(i: GlobalIdx) extends WasmInstr("global.get", 0x23, List(i))
+  // case class GLOBAL_SET(i: GlobalIdx) extends WasmInstr("global.set", 0x24, List(i))
 
   // Table instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#table-instructions
@@ -234,15 +235,15 @@ object WasmImmediate {
     * https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
     */
   abstract sealed trait BlockType extends WasmImmediate
-  case class FunctionType(ty: WasmSymbol[WasmFunctionType]) extends BlockType
+  case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
   case class ValueType(ty: Option[WasmType]) extends BlockType
 
-  case class FuncIdx(val value: WasmSymbol[WasmFunction]) extends WasmImmediate
+  case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate
   case class LabelIdx(val value: Int) extends WasmImmediate
   case class LabelIdxVector(val value: List[Int]) extends WasmImmediate
-  case class TypeIdx(val value: WasmSymbol[WasmTypeDefinition]) extends WasmImmediate
+  case class TypeIdx(val value: WasmGCTypeName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: Int) extends WasmImmediate
-  case class LocalIdx(val value: WasmSymbol[WasmLocal]) extends WasmImmediate
-  case class GlobalIdx(val value: WasmSymbol[WasmGlobal]) extends WasmImmediate
+  case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
+  // case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
 }
