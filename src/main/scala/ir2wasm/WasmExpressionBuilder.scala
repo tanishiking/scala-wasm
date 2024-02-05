@@ -6,14 +6,19 @@ import wasm4s.WasmInstr
 import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
 import org.scalajs.ir.{Types => IRTypes}
+import wasm4s.WasmFunctionContext
+import wasm4s.Ident
+import wasm4s.WasmFunction
 
-object WasmExpressionBuilder {
-  def transformMethod(method: IRTrees.MethodDef): List[WasmInstr] = {
+class WasmExpressionBuilder(fctx: WasmFunctionContext) {
+  def transformMethod(
+      method: IRTrees.MethodDef
+  ): List[WasmInstr] = {
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
     val instrs = transformTree(body)
     method.resultType match {
-        case IRTypes.NoType => instrs
-        case _ => instrs :+ RETURN
+      case IRTypes.NoType => instrs
+      case _              => instrs :+ RETURN
     }
   }
   def transformTree(tree: IRTrees.Tree): List[WasmInstr] = {
@@ -21,6 +26,7 @@ object WasmExpressionBuilder {
       case l: IRTrees.Literal  => List(transformLiteral(l))
       case u: IRTrees.UnaryOp  => transformUnaryOp(u)
       case b: IRTrees.BinaryOp => transformBinaryOp(b)
+      case r: IRTrees.VarRef   => List(transformVarRef(r))
       case _                   => ???
 
       // case undef: IRTrees.Undefined => ???
@@ -48,7 +54,6 @@ object WasmExpressionBuilder {
       // case IRTrees.LoadJSConstructor(pos) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.NewArray(pos) =>
-      // case IRTrees.VarRef(tpe) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.Throw(pos) =>
       // case IRTrees.JSNew(pos) =>
@@ -116,7 +121,7 @@ object WasmExpressionBuilder {
   def transformBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
     import IRTrees.BinaryOp
     val lhsInstrs = transformTree(binary.lhs)
-    val rhsInstrs = transformTree(binary.lhs)
+    val rhsInstrs = transformTree(binary.rhs)
     val operation = binary.op match {
       case BinaryOp.===      => ???
       case BinaryOp.!==      => ???
@@ -196,6 +201,11 @@ object WasmExpressionBuilder {
       case BinaryOp.String_charAt => ??? // TODO
     }
     lhsInstrs ++ rhsInstrs :+ operation
+  }
+
+  def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
+    val localSym = fctx.locals.reference(Ident(r.ident.name.nameString))
+    LOCAL_GET(LocalIdx(localSym))
   }
 
 }

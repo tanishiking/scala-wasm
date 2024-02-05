@@ -3,10 +3,10 @@ package converters
 import wasm4s._
 
 class WasmTextWriter {
-  private val indent = "  "
+  import WasmTextWriter._
 
   def write(module: WasmModule)(implicit context: WasmContext): String = {
-    implicit val b = new StringBuilder()
+    implicit val b = new WatBuilder()
     // println(context.gcTypes.defined)
     // println(context.functions.defined)
     // println(context.functionTypes.defined)
@@ -16,66 +16,77 @@ class WasmTextWriter {
 
   private def writeModule(
       module: WasmModule
-  )(implicit b: StringBuilder, context: WasmContext): Unit = {
-    b.append("(module")
-    module.functionTypes.foreach { ty =>
-      b.append("\n").append(indent)
-      writeFunctionType(ty)
-    }
+  )(implicit b: WatBuilder, context: WasmContext): Unit = {
+    b.newLineList(
+      "module", {
+        module.functionTypes.foreach(writeFunctionType)
+        module.definedFunctions.foreach(writeFunction)
+      }
+    )
     // context.gcTypes
-    module.definedFunctions.foreach { fun =>
-      b.append("\n").append(indent)
-      writeFunction(fun)
-    }
-    b.append(")")
   }
 
   private def writeFunctionType(
       functionType: WasmFunctionType
-  )(implicit b: StringBuilder, ctx: WasmContext): Unit = {
-    b.append(s"(type ${functionType.ident.name} ")
-    b.append("(func ")
-
-    functionType.params.foreach { ty =>
-      b.append(s"(param ${ty.name}) ")
-    }
-    if (functionType.results.nonEmpty) {
-      functionType.results.foreach { ty =>
-        b.append(s"(result ${ty.name})")
+  )(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+    // (type type-name (func (param ty) (param ty) (result ty)))
+    b.newLineList(
+      "type", {
+        b.appendIdent(functionType.ident)
+        b.sameLineList(
+          "func", {
+            functionType.params.foreach { ty =>
+              b.sameLineListOne("param", ty.name)
+            }
+          }
+        )
+        if (functionType.results.nonEmpty)
+          functionType.results.foreach { ty => b.sameLineListOne("result", ty.name) }
       }
-    }
-    b.append(")") // "(func"
-    b.append(")") // "(type $name ..."
+    )
   }
 
-  private def writeFunction(f: WasmFunction)(implicit b: StringBuilder, ctx: WasmContext): Unit = {
-    def writeParam(l: WasmLocal)(implicit b: StringBuilder): Unit = {
-      b.append(s"(param ${l.ident.name} ${l.typ.name})")
+  private def writeFunction(f: WasmFunction)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+    def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
+      b.sameLineList(
+        "param", {
+          b.appendIdent(l.ident)
+          b.appendElement(l.typ.name)
+        }
+      )
     }
-    b.append(s"(func ${f.ident.name} (type ${f.typ.ident.name}) ")
-    f.locals.filter(_.isParameter).foreach(p => { writeParam(p); b.append(" ") })
 
-    val fty = ctx.functionTypes.resolve(f.typ)
-    fty.results.foreach(r => { b.append(s"(result ${r.name})") })
+    b.newLineList(
+      "func", {
+        b.appendIdent(f.ident)
+        b.sameLineListOne("type", f.typ.ident)
 
-    b.append("\n")
-    // body
-    f.body.instr.foreach(i => { writeInstr(i); b.append("\n") })
-    b.append(")") // (func ...
+        b.newLine()
+        f.locals.filter(_.isParameter).foreach(p => { writeParam(p) })
+        val fty = ctx.functionTypes.resolve(f.typ)
+        fty.results.foreach(r => { b.sameLineListOne("result", r.name) })
+
+        b.newLine()
+        f.body.instr.foreach(writeInstr)
+      }
+    )
   }
 
-  def writeInstr(instr: WasmInstr)(implicit b: StringBuilder, ctx: WasmContext): Unit = {
-    b.append(s"${instr.mnemonic} ")
+  def writeInstr(instr: WasmInstr)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+    b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i =>
       val str = i match {
         case WasmImmediate.I64(v) => v.toString
         case WasmImmediate.I32(v) => v.toString
         case WasmImmediate.F64(v) => v.toString
         case WasmImmediate.F32(v) => v.toString
-        case _                    => ???
+        case WasmImmediate.LocalIdx(sym) =>
+          sym.ident.name
+        case _ => ???
       }
-      b.append(s"$str ")
+      b.appendElement(str)
     }
+    b.newLine()
   }
 
 }
@@ -91,5 +102,52 @@ object WasmTextWriter {
     c.isDigit || c.isLetter ||
       "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
       "$.@_".contains(c)
+
+  class WatBuilder {
+    private val builder = new StringBuilder
+    private var level = 0
+    private val indent = "  "
+
+    private def indented(body: => Unit): Unit = {
+      level += 1
+      body
+      level -= 1
+    }
+
+    def newLine(): Unit = {
+      builder.append("\n")
+      builder.append(indent * level)
+    }
+
+    def newLineList(name: String, body: => Unit): Unit = {
+      newLine()
+      builder.append(s"($name")
+      indented(body)
+      builder.append(")")
+    }
+
+    def sameLineList(name: String, body: => Unit): Unit = {
+      builder.append(s" ($name")
+      body
+      builder.append(")")
+    }
+
+    def sameLineListOne(name: String, value: String) =
+      sameLineList(name, { appendElement(value) })
+
+    def sameLineListOne(name: String, ident: Ident) =
+      sameLineList(name, { appendIdent(ident) })
+
+    def appendIdent(ident: Ident): Unit =
+      appendElement(sanitizeWatIdentifier(ident.name))
+
+    def appendElement(value: String): Unit = {
+      builder.append(" ")
+      builder.append(value)
+    }
+
+    override def toString: String =
+      builder.toString()
+  }
 
 }

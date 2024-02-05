@@ -13,7 +13,6 @@ class WasmBuilder {
     Ident(s"${method.name.name.nameString}___method")
 
   def addFunction(method: IRTrees.MethodDef)(implicit ctx: WasmContext) = {
-    method.args.foreach(a => println(a.ptpe))
     val paramTys = method.args.map(arg => TypeTransformer.transform(arg.ptpe))
     val resultTy = TypeTransformer.transformResultType(method.resultType)
     val funcType = WasmFunctionType(buildFunctionTypeName(method), paramTys, resultTy)
@@ -21,12 +20,12 @@ class WasmBuilder {
     module.addFunctionType(funcType) // TODO: normalize
 
     implicit val fctx = new WasmFunctionContext()
+    val expressionBuilder = new WasmExpressionBuilder(fctx)
 
     val localSyms = method.args.map(addParam)
     val locals = localSyms.map {sym => fctx.locals.resolve(sym)}
     
-
-    val body = WasmExpressionBuilder.transformMethod(method)
+    val body = expressionBuilder.transformMethod(method)
     val func = WasmFunction(
         buildFunctionName(method),
         tySym,
