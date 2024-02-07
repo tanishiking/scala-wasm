@@ -1,4 +1,4 @@
-package utils
+package wasm.utils
 
 import scala.concurrent._
 

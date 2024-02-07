@@ -1,4 +1,4 @@
-package wasm4s
+package wasm.wasm4s
 
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{Types => IRTypes}

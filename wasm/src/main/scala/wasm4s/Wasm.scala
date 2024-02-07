@@ -1,4 +1,4 @@
-package wasm4s
+package wasm.wasm4s
 
 import scala.collection.mutable
 

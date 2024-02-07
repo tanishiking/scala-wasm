@@ -1,6 +1,6 @@
 
-lazy val root = project
-  .in(file("."))
+lazy val wasm = project
+  .in(file("wasm"))
   .settings(
     name := "wasm4s",
     version := "0.1.0-SNAPSHOT",

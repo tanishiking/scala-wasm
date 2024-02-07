@@ -1,3 +1,4 @@
+package wasm
 package ir2wasm
 
 import org.scalajs.ir.{Trees => IRTrees}

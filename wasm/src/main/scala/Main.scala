@@ -1,3 +1,4 @@
+package wasm
 import ir2wasm.TypeTransformer
 import ir2wasm.WasmBuilder
 import wasm4s._

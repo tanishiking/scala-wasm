@@ -1,3 +1,4 @@
+package wasm
 package converters
 
 import wasm4s._

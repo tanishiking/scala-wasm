@@ -1,4 +1,4 @@
-package wasm4s
+package wasm.wasm4s
 // https://webassembly.github.io/spec/core/syntax/instructions.html
 
 import Types._
