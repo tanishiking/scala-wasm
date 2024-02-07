@@ -8,6 +8,14 @@ object Names {
   final class WasmLocalName private (override val name: String) extends WasmName(name)
   object WasmLocalName {
     def fromIR(name: IRNames.LocalName) = new WasmLocalName(name.nameString)
+    def fromStr(str: String) = new WasmLocalName(str)
+  }
+
+  final class WasmGlobalName private (override val name: String) extends WasmName(name)
+  object WasmGlobalName {
+    def forModuleClassInstance(name: IRNames.ClassName) = new WasmGlobalName(
+      s"${name.nameString}_instance"
+    )
   }
 
   // final class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -22,6 +30,11 @@ object Names {
   final class WasmFunctionTypeName private (override val name: String) extends WasmName(name)
   object WasmFunctionTypeName {
     def fromIR(name: IRNames.MethodName) = new WasmFunctionTypeName(name.nameString)
+  }
+
+  final class WasmFieldName private (override val name: String) extends WasmName(name)
+  object WasmFieldName {
+    def fromIR(name: IRNames.FieldName) = new WasmFieldName(name.nameString)
   }
 
   final class WasmGCTypeName private (override val name: String) extends WasmName(name)

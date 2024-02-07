@@ -4,7 +4,7 @@ import Names._
 
 object Types {
   abstract sealed class WasmType(
-      val name: String,
+      private val name: String,
       val code: Byte
   ) {
     override def toString(): String = name
@@ -30,10 +30,10 @@ object Types {
   case object WasmRefNullrefType extends WasmType("nullref", -0x0F) // Shorthand for (ref null none)
   case object WasmRefNullExternrefType extends WasmType("nullexternref", -0x0E) // Shorthand for (ref null noextern)
   case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", -0x14) {
-    override def toString(): String = s"ref null ${heapType.toString()}"
+    override def toString(): String = s"(ref null ${heapType.toString()})"
   }
   case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", -0x15) {
-    override def toString(): String = s"ref ${heapType.toString()}"
+    override def toString(): String = s"(ref ${heapType.toString()})"
   }
 
   sealed trait WasmHeapType

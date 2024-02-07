@@ -2,6 +2,7 @@ package converters
 
 import wasm4s._
 import wasm4s.Names._
+import ir2wasm.WasmBuilder
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -21,10 +22,56 @@ class WasmTextWriter {
     b.newLineList(
       "module", {
         module.functionTypes.foreach(writeFunctionType)
+        b.newLineList(
+          "rec", {
+            module.recGroupTypes.foreach(writeGCTypeDefinition)
+          }
+        )
         module.definedFunctions.foreach(writeFunction)
+        module.globals.foreach(writeGlobal)
       }
     )
     // context.gcTypes
+  }
+
+  private def writeGCTypeDefinition(
+      t: WasmGCTypeDefinition
+  )(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+    def writeField(field: WasmStructField): Unit = {
+      b.sameLineList(
+        "field", {
+          b.appendName(field.name)
+          if (field.isMutable)
+            b.sameLineList(
+              "mut", {
+                b.appendElement(field.typ.toString)
+              }
+            )
+          else b.appendElement(field.typ.toString)
+        }
+      )
+    }
+
+    b.newLineList(
+      "type", {
+        b.appendName(t.name)
+        t match {
+          case WasmArrayType(name, field) =>
+          // (type $kotlin.Any___type_13 (struct (field (ref $kotlin.Any.vtable___type_12)) (field (ref null struct)) (field (mut i32)) (field (mut i32))))
+          case WasmStructType(name, fields, superType) =>
+            b.sameLineList(
+              "sub", {
+                superType.foreach(b.appendName)
+                b.sameLineList(
+                  "struct", {
+                    fields.foreach(writeField)
+                  }
+                )
+              }
+            )
+        }
+      }
+    )
   }
 
   private def writeFunctionType(
@@ -37,12 +84,12 @@ class WasmTextWriter {
         b.sameLineList(
           "func", {
             functionType.params.foreach { ty =>
-              b.sameLineListOne("param", ty.name)
+              b.sameLineListOne("param", ty.toString)
             }
           }
         )
         if (functionType.results.nonEmpty)
-          functionType.results.foreach { ty => b.sameLineListOne("result", ty.name) }
+          functionType.results.foreach { ty => b.sameLineListOne("result", ty.toString) }
       }
     )
   }
@@ -52,7 +99,7 @@ class WasmTextWriter {
       b.sameLineList(
         "param", {
           b.appendName(l.name)
-          b.appendElement(l.typ.name)
+          b.appendElement(l.typ.toString)
         }
       )
     }
@@ -65,7 +112,7 @@ class WasmTextWriter {
         b.newLine()
         f.locals.filter(_.isParameter).foreach(p => { writeParam(p) })
         val fty = ctx.functionTypes.resolve(f.typ)
-        fty.results.foreach(r => { b.sameLineListOne("result", r.name) })
+        fty.results.foreach(r => { b.sameLineListOne("result", r.toString) })
 
         b.newLine()
         f.body.instr.foreach(writeInstr)
@@ -73,7 +120,19 @@ class WasmTextWriter {
     )
   }
 
-  def writeInstr(instr: WasmInstr)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+  private def writeGlobal(g: WasmGlobal)(implicit
+      b: WatBuilder,
+      ctx: WasmContext
+  ) =
+    b.newLineList(
+      "global", {
+        b.appendName(g.name)
+        b.appendElement(g.typ.toString)
+        // TODO: init
+      }
+    )
+
+  private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
     b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i =>
       val str = i match {

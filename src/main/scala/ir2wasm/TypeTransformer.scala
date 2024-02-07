@@ -19,15 +19,16 @@ object TypeTransformer {
       case IRTypes.AnyType => Types.WasmAnyRef
 
       case tpe @ IRTypes.ArrayType(IRTypes.ArrayTypeRef(elemType, size)) =>
-        val wasmElemTy =
-          elemType match {
-            case IRTypes.ClassRef(className) =>
-              // val gcTypeSym = context.gcTypes.reference(Ident(className.nameString))
-              Types.WasmRefType(Types.WasmHeapType.Type(Names.WasmGCTypeName.fromIR(className)))
-            case IRTypes.PrimRef(tpe) =>
-              transform(tpe)
-          }
-        val field = WasmStructField("TODO", wasmElemTy, isMutable = false)
+        // TODO
+        // val wasmElemTy =
+        //   elemType match {
+        //     case IRTypes.ClassRef(className) =>
+        //       // val gcTypeSym = context.gcTypes.reference(Ident(className.nameString))
+        //       Types.WasmRefType(Types.WasmHeapType.Type(Names.WasmGCTypeName.fromIR(className)))
+        //     case IRTypes.PrimRef(tpe) =>
+        //       transform(tpe)
+        //   }
+        // val field = WasmStructField("TODO", wasmElemTy, isMutable = false)
         // val arrayTySym =
         //   context.gcTypes.define(WasmArrayType(Names.WasmGCTypeName.fromIR(tpe), field))
         // Types.WasmRefType(Types.WasmHeapType.Type(arrayTySym))

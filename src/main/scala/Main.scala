@@ -21,7 +21,7 @@ object Main {
         List(paramA, paramB),
         IntType,
         Some(
-            BinaryOp(BinaryOp.Int_+, paramA.ref, paramB.ref)
+          BinaryOp(BinaryOp.Int_+, paramA.ref, paramB.ref)
         )
       )(EOH, NOV)
     }
@@ -39,9 +39,7 @@ object Main {
     val builder = new WasmBuilder()
     implicit val context: WasmContext = WasmContext()
     basicTestClassDefs.foreach { clazz =>
-      clazz.methods.foreach { method =>
-        builder.addFunction(method)
-      }
+      builder.transformClassDef(clazz)
     }
     val writer = new converters.WasmTextWriter()
     println(writer.write(builder.module))

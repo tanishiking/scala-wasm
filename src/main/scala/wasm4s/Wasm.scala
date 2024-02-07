@@ -5,7 +5,6 @@ import scala.collection.mutable
 import Types._
 import Names._
 
-
 sealed case class WasmExpr(instr: List[WasmInstr])
 
 /** @see
@@ -27,10 +26,10 @@ case class WasmLocal(
     val isParameter: Boolean // for text
 ) extends WasmNamedDefinitionField[WasmLocalName]
 
-// case class WasmGlobal(
-//     val name: WasmGlobalName,
-//     val typ: WasmType
-// ) extends WasmNamedDefinitionField[WasmGlobalName]
+case class WasmGlobal(
+    val name: WasmGlobalName,
+    val typ: WasmType
+) extends WasmNamedDefinitionField[WasmGlobalName]
 
 trait WasmTypeDefinition[T <: WasmName] extends WasmNamedDefinitionField[T]
 case class WasmFunctionType(
@@ -39,11 +38,11 @@ case class WasmFunctionType(
     results: List[WasmType]
 ) extends WasmTypeDefinition[WasmFunctionTypeName]
 
-trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmGCTypeName]
+sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmGCTypeName]
 case class WasmStructType(
     name: WasmGCTypeName,
     fields: List[WasmStructField],
-    superType: WasmGCTypeName
+    superType: Option[WasmGCTypeName]
 ) extends WasmGCTypeDefinition
 
 case class WasmArrayType(
@@ -52,7 +51,7 @@ case class WasmArrayType(
 ) extends WasmGCTypeDefinition
 
 case class WasmStructField(
-    name: String,
+    name: WasmFieldName,
     typ: WasmType,
     isMutable: Boolean
 )
@@ -62,17 +61,17 @@ case class WasmStructField(
   */
 class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
-    private val _recGroupTypes: mutable.ListBuffer[WasmTypeDefinition[WasmName]] = new mutable.ListBuffer(),
+    private val _recGroupTypes: mutable.ListBuffer[WasmGCTypeDefinition] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
     // val importedFunctions: List[WasmFunction.Imported] = Nil,
     // val importedMemories: List[WasmMemory] = Nil,
     // val importedTables: List[WasmTable] = Nil,
     // val importedGlobals: List[WasmGlobal] = Nil,
     // val importedTags: List[WasmTag] = Nil,
-    private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer()
+    private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer(),
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
-    // val globals: List[WasmGlobal] = Nil,
+    private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer()
     // val exports: List[WasmExport[_]] = Nil,
     // val elements: List[WasmElement] = Nil,
     // val tags: List[WasmTag] = Nil,
@@ -82,9 +81,11 @@ class WasmModule(
 ) {
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
-  def addRecGroupType(typ: WasmTypeDefinition[WasmName]): Unit = _recGroupTypes.addOne(typ)
+  def addRecGroupType(typ: WasmGCTypeDefinition): Unit = _recGroupTypes.addOne(typ)
+  def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = _recGroupTypes.toList
   def definedFunctions = _definedFunctions.toList
+  def globals = _globals.toList
 }
