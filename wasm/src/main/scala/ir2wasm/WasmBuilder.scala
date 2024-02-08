@@ -13,7 +13,7 @@ class WasmBuilder {
   def transformClassDef(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
     clazz.kind match {
       case ClassKind.ModuleClass => transformModuleClass(clazz)
-      case _                     => ???
+      case _                     =>
     }
   }
 
@@ -56,7 +56,7 @@ class WasmBuilder {
       ctx.functionTypes.define(funcType)
       module.addFunctionType(funcType) // TODO: normalize
 
-      implicit val fctx = new WasmFunctionContext()
+      implicit val fctx = new WasmFunctionContext(receiver)
       val expressionBuilder = new WasmExpressionBuilder(fctx)
 
       val params = receiver +: method.args.map { arg =>

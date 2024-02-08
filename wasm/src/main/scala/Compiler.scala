@@ -25,6 +25,7 @@ object Compiler {
       .traverse(irFiles)(i => IRFileImpl.fromIRFile(i).tree)
       .map { classDefs =>
         classDefs.foreach { clazz =>
+          println(clazz.show)
           builder.transformClassDef(clazz)
         }
         val writer = new converters.WasmTextWriter()

@@ -4,6 +4,8 @@ package converters
 import wasm4s._
 import wasm4s.Names._
 import ir2wasm.WasmBuilder
+import wasm.wasm4s.Types.WasmHeapType
+import wasm.wasm4s.Types.WasmHeapType
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -143,7 +145,19 @@ class WasmTextWriter {
         case WasmImmediate.F32(v) => v.toString
         case WasmImmediate.LocalIdx(name) =>
           name.name
-        case _ => ???
+        case WasmImmediate.GlobalIdx(name) =>
+          name.name
+        case WasmImmediate.HeapType(ht) =>
+          ht match {
+            case WasmHeapType.Type(typ) => typ.name
+            case s: WasmHeapType.Simple => s.name
+          }
+        case WasmImmediate.FuncIdx(name)        => name.name
+        case WasmImmediate.TypeIdx(name)        => name.name
+        case WasmImmediate.StructFieldIdx(name) => name.name
+        case _ =>
+          println(i)
+          ???
       }
       b.appendElement(str)
     }

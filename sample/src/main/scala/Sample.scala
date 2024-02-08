@@ -1,5 +1,6 @@
 package sample
 
 object Main {
-    def foo = 1
+    val field = 1
+    def foo = field
 }

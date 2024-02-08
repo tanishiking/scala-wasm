@@ -1,5 +1,5 @@
 package wasm.wasm4s
 
-class WasmFunctionContext {
+class WasmFunctionContext(val receiver: WasmLocal) {
   val locals = new WasmSymbolTable[WasmLocal]()
 }

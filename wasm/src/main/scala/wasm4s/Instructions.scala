@@ -207,8 +207,8 @@ object WasmInstr {
   case class LOCAL_GET(i: LocalIdx) extends WasmInstr("local.get", 0x20, List(i))
   case class LOCAL_SET(i: LocalIdx) extends WasmInstr("local.set", 0x21, List(i))
   case class LOCAL_TEE(i: LocalIdx) extends WasmInstr("local.tee", 0x22, List(i))
-  // case class GLOBAL_GET(i: GlobalIdx) extends WasmInstr("global.get", 0x23, List(i))
-  // case class GLOBAL_SET(i: GlobalIdx) extends WasmInstr("global.set", 0x24, List(i))
+  case class GLOBAL_GET(i: GlobalIdx) extends WasmInstr("global.get", 0x23, List(i))
+  case class GLOBAL_SET(i: GlobalIdx) extends WasmInstr("global.set", 0x24, List(i))
 
   // Table instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#table-instructions
@@ -216,6 +216,33 @@ object WasmInstr {
 
   // Memory instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
+
+  // Reference types
+
+  /** evaluates to the null reference constant.
+    *
+    * `ref.null rt : [] -> [rtref]` (iff rt = func or rt = extern)
+    */
+  case class REF_NULL(i: HeapType) extends WasmInstr("ref.null", 0xd0, List(i))
+
+  /** checks for null. ref.is_null : [rtref] -> [i32]
+    */
+  case object REF_IS_NULL extends WasmInstr("ref.is_null", 0xd1)
+
+  /** creates a reference to a given function. `ref.func $x : [] -> [funcref]` (iff $x : func $t)
+    */
+  case class REF_FUNC(i: FuncIdx) extends WasmInstr("ref.func", 0xd2, List(i))
+
+  // gc
+  case class STRUCT_NEW(i: TypeIdx) extends WasmInstr("struct.new", 0xfb_00, List(i))
+  case class STRUCT_NEW_DEFAULT(i: TypeIdx)
+      extends WasmInstr("struct.new_default", 0xfb_01, List(i))
+  case class STRUCT_GET(tyidx: TypeIdx, fidx: StructFieldIdx)
+      extends WasmInstr("struct.get", 0xfb_02, List(tyidx, fidx))
+  // STRUCT_GET_S
+  // STRUCT_GET_U
+  case class STRUCT_SET(tyidx: TypeIdx, fidx: StructFieldIdx)
+      extends WasmInstr("struct.set", 0xfb_05, List(tyidx, fidx))
 }
 
 abstract sealed trait WasmImmediate
@@ -228,15 +255,18 @@ object WasmImmediate {
   // TODO: UInt
   case class MemArg(offset: Long, align: Long) extends WasmImmediate
 
-  /** A structured instruction can consume input and produce output on the operand stack
-    * according to its annotated block type. It is given either as a type index that refers to a
-    * suitable function type, or as an optional value type inline, which is a shorthand for the
-    * function type [] -> [valtype] see
-    * https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
+  /** A structured instruction can consume input and produce output on the operand stack according
+    * to its annotated block type. It is given either as a type index that refers to a suitable
+    * function type, or as an optional value type inline, which is a shorthand for the function type
+    * [] -> [valtype]
+    * @see
+    *   https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
     */
   abstract sealed trait BlockType extends WasmImmediate
-  case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
-  case class ValueType(ty: Option[WasmType]) extends BlockType
+  object BlockType {
+    case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
+    case class ValueType(ty: Option[WasmType]) extends BlockType
+  }
 
   case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate
   case class LabelIdx(val value: Int) extends WasmImmediate
@@ -245,5 +275,7 @@ object WasmImmediate {
   case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: Int) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
-  // case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
+  case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
+  case class HeapType(val value: WasmHeapType) extends WasmImmediate
+  case class StructFieldIdx(val value: WasmFieldName) extends WasmImmediate
 }
