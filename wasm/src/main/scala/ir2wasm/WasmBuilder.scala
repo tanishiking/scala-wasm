@@ -25,7 +25,7 @@ class WasmBuilder {
     val structType = WasmStructType(
       Names.WasmGCTypeName.fromIR(clazz.name.name),
       fields,
-      None
+      None // TODO
     )
     ctx.gcTypes.define(structType)
     module.addRecGroupType(structType)
@@ -39,13 +39,12 @@ class WasmBuilder {
     ctx.globals.define(global)
     module.addGlobal(global)
 
+    val receiver = WasmLocal(
+      Names.WasmLocalName.fromStr("<this>"),
+      global.typ,
+      isParameter = true
+    )
     clazz.methods.foreach { method =>
-      val receiver = WasmLocal(
-        Names.WasmLocalName.fromStr("<this>"),
-        global.typ,
-        isParameter = true
-      )
-
       val paramTys = receiver.typ +: method.args.map(arg => TypeTransformer.transform(arg.ptpe))
       val resultTy = TypeTransformer.transformResultType(method.resultType)
       val funcType = WasmFunctionType(

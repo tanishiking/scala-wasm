@@ -139,22 +139,23 @@ class WasmTextWriter {
     b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i =>
       val str = i match {
-        case WasmImmediate.I64(v) => v.toString
-        case WasmImmediate.I32(v) => v.toString
-        case WasmImmediate.F64(v) => v.toString
-        case WasmImmediate.F32(v) => v.toString
-        case WasmImmediate.LocalIdx(name) =>
-          name.name
-        case WasmImmediate.GlobalIdx(name) =>
-          name.name
+        case WasmImmediate.I64(v)          => v.toString
+        case WasmImmediate.I32(v)          => v.toString
+        case WasmImmediate.F64(v)          => v.toString
+        case WasmImmediate.F32(v)          => v.toString
+        case WasmImmediate.LocalIdx(name)  => name.name
+        case WasmImmediate.GlobalIdx(name) => name.name
         case WasmImmediate.HeapType(ht) =>
           ht match {
             case WasmHeapType.Type(typ) => typ.name
             case s: WasmHeapType.Simple => s.name
           }
-        case WasmImmediate.FuncIdx(name)        => name.name
-        case WasmImmediate.TypeIdx(name)        => name.name
-        case WasmImmediate.StructFieldIdx(name) => name.name
+        case WasmImmediate.FuncIdx(name)                => name.name
+        case WasmImmediate.TypeIdx(name)                => name.name
+        case WasmImmediate.StructFieldIdx(name)         => name.name
+        case WasmImmediate.BlockType.FunctionType(name) => name.name
+        case WasmImmediate.BlockType.ValueType(optTy) =>
+          optTy.fold("") { ty => ty.toString() }
         case _ =>
           println(i)
           ???
