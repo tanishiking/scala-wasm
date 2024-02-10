@@ -1,6 +1,7 @@
 package wasm.wasm4s
 
 import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 
 object Names {
@@ -25,11 +26,15 @@ object Names {
   final class WasmFunctionName private (override val name: String) extends WasmName(name)
   object WasmFunctionName {
     def fromIR(name: IRNames.MethodName): WasmFunctionName = new WasmFunctionName(name.nameString)
+    def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionName = new WasmFunctionName(lit.value)
   }
 
   final class WasmFunctionTypeName private (override val name: String) extends WasmName(name)
   object WasmFunctionTypeName {
     def fromIR(name: IRNames.MethodName) = new WasmFunctionTypeName(name.nameString)
+    def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionTypeName = new WasmFunctionTypeName(
+      lit.value
+    )
   }
 
   final class WasmFieldName private (override val name: String) extends WasmName(name)
@@ -45,5 +50,11 @@ object Names {
       // TODO: better naming?
       new WasmGCTypeName(s"${ref.base.displayName}_${ref.dimensions}___array")
     }
+  }
+
+  final class WasmExportName private (override val name: String) extends WasmName(name)
+  object WasmExportName {
+    def fromStr(str: String) = new WasmExportName(str)
+
   }
 }

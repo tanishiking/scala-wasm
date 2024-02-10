@@ -2,35 +2,14 @@ package wasm
 package ir2wasm
 
 import org.scalajs.ir.{Trees => IRTrees}
-import wasm4s.Names
-import wasm4s.WasmExpr
-import wasm4s.WasmInstr
+import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.{Names => IRNames}
+
+import wasm4s._
 import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
-import org.scalajs.ir.{Types => IRTypes}
-import wasm4s.WasmFunctionContext
-import wasm4s.WasmFunction
-import wasm.wasm4s.WasmImmediate
-import org.scalajs.ir
-import org.scalajs.linker.analyzer.Infos
-import wasm.wasm4s.Types
 
-class WasmExpressionBuilder(fctx: WasmFunctionContext) {
-  def transformMethod(
-      method: IRTrees.MethodDef
-  ): List[WasmInstr] = {
-    val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
-    val prefix = if (method.flags.namespace.isConstructor) objectCreationPrefix(method) else Nil
-    val instrs = body match {
-      case t: IRTrees.Block => t.stats.flatMap(transformTree)
-      case _                => transformTree(body)
-    }
-    method.resultType match {
-      case IRTypes.NoType => prefix ++ instrs
-      case _              => prefix ++ instrs :+ RETURN
-    }
-  }
-
+class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
   /** object creation prefix
     * ```
     * local.get $receiver ;; (ref null $struct)
@@ -41,7 +20,7 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
     * end
     * ```
     */
-  private def objectCreationPrefix(method: IRTrees.MethodDef): List[WasmInstr] = {
+  def objectCreationPrefix(method: IRTrees.MethodDef): List[WasmInstr] = {
     assert(method.flags.namespace.isConstructor)
     val recieverGCTypeName = fctx.receiver.typ match {
       case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
@@ -57,6 +36,7 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
       END
     )
   }
+
   def transformTree(tree: IRTrees.Tree): List[WasmInstr] = {
     tree match {
       case t: IRTrees.Literal    => List(transformLiteral(t))
@@ -73,12 +53,13 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
       case t: IRTrees.ApplyStatically =>
         println(t.receiver)
         if (t.className.nameString == "java.lang.Object") Nil
-        else ???
+        else transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
       case t: IRTrees.Block              => ???
       case t: IRTrees.Select             => transformSelect(t)
       case t: IRTrees.Assign             => transformAssign(t)
+      case t: IRTrees.VarDef             => transformVarDef(t)
       case _ =>
         println(tree)
         ???
@@ -177,8 +158,13 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
     val funcName = Names.WasmFunctionName.fromIR(t.method.name)
     wasmArgs :+ CALL(FuncIdx(funcName))
   }
+  private def transformApplyStatically(t: IRTrees.ApplyStatically): List[WasmInstr] = {
+    val wasmArgs = transformTree(t.receiver) ++ t.args.flatMap(transformTree)
+    val funcName = Names.WasmFunctionName.fromIR(t.method.name)
+    wasmArgs :+ CALL(FuncIdx(funcName))
+  }
 
-  def transformLiteral(l: IRTrees.Literal): WasmInstr = l match {
+  private def transformLiteral(l: IRTrees.Literal): WasmInstr = l match {
     case IRTrees.BooleanLiteral(v) => WasmInstr.I32_CONST(if (v) I32(1) else I32(0))
     case IRTrees.ByteLiteral(v)    => WasmInstr.I32_CONST(I32(v))
     case IRTrees.ShortLiteral(v)   => WasmInstr.I32_CONST(I32(v))
@@ -213,8 +199,8 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
     val ctroName =
       // TODO (design): maybe we should resolve functions with some other ways?
       // or maybe we should index all the names of class and methods before traversing/transforming the given tree.
-      ir.Names.MethodName(
-        ir.Names.SimpleMethodName.Constructor,
+      IRNames.MethodName(
+        IRNames.SimpleMethodName.Constructor,
         Nil,
         IRTypes.VoidRef
       )
@@ -236,11 +222,11 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
     )
   }
 
-  def transformUnaryOp(unary: IRTrees.UnaryOp): List[WasmInstr] = {
+  private def transformUnaryOp(unary: IRTrees.UnaryOp): List[WasmInstr] = {
     ???
   }
 
-  def transformBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
+  private def transformBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
     import IRTrees.BinaryOp
     val lhsInstrs = transformTree(binary.lhs)
     val rhsInstrs = transformTree(binary.rhs)
@@ -325,9 +311,20 @@ class WasmExpressionBuilder(fctx: WasmFunctionContext) {
     lhsInstrs ++ rhsInstrs :+ operation
   }
 
-  def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
+  private def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
     val name = Names.WasmLocalName.fromIR(r.ident.name)
     LOCAL_GET(LocalIdx(name))
+  }
+
+  private def transformVarDef(r: IRTrees.VarDef): List[WasmInstr] = {
+    val local = WasmLocal(
+      Names.WasmLocalName.fromIR(r.name.name),
+      TypeTransformer.transform(r.vtpe)(ctx),
+      isParameter = false
+    )
+    fctx.locals.define(local)
+
+    transformTree(r.rhs) :+ LOCAL_SET(LocalIdx(local.name))
   }
 
 }

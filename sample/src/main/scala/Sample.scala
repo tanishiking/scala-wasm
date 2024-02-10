@@ -1,6 +1,10 @@
 package sample
 
+import scala.scalajs.js.annotation._
+
 object Main {
-    val field = 1
-    def foo = field
+    // private val field = 1
+
+    @JSExportTopLevel("foo")
+    def foo(x: Int) = x + 1
 }

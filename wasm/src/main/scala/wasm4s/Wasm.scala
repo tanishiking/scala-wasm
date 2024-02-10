@@ -7,6 +7,21 @@ import Names._
 
 sealed case class WasmExpr(instr: List[WasmInstr])
 
+sealed abstract class WasmExport[T <: WasmNamedDefinitionField[WasmExportName]](
+  val name: String,
+  val field: T,
+  val kind: Byte,
+  val keyword: String
+)
+
+// object WasmExport {
+//   class Function(name: String, field: WasmFunction)
+//     extends WasmExport[WasmFunction](name, field, 0x0, "func")
+//   class Global(name: String, field: WasmGlobal)
+//     extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+// 
+// }
+
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
   */
@@ -71,8 +86,8 @@ class WasmModule(
     private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer(),
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
-    private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer()
-    // val exports: List[WasmExport[_]] = Nil,
+    private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
+    private val exports: List[WasmExport[_]] = Nil,
     // val elements: List[WasmElement] = Nil,
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,

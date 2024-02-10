@@ -107,6 +107,9 @@ class WasmTextWriter {
       )
     }
 
+    // def writeLocal(l: WasmLocal)(implicit b: WatBuilder): Unit = {
+    // }
+
     b.newLineList(
       "func", {
         b.appendName(f.name)

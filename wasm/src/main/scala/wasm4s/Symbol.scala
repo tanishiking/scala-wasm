@@ -20,6 +20,7 @@ trait WasmNamedDefinitionField[+N <: WasmName] {
 class WasmSymbolTable[T <: WasmNamedDefinitionField[WasmName]] {
   // private val unbound = mutable.Map[Ident, WasmSymbol[T]]()
   // private val defined = mutable.Map[WasmSymbol[T], T]()
+  // TODO: should keep the order
   private val defined = mutable.Map[WasmName, T]()
 
   // def reference(ident: Ident): WasmSymbol[T] =
@@ -33,4 +34,5 @@ class WasmSymbolTable[T <: WasmNamedDefinitionField[WasmName]] {
 
   def resolve(name: WasmName): T =
     defined.getOrElse(name, throw new Exception(s"Symbol ${name} is not defined"))
+  def all: List[T] = defined.values.toList
 }
