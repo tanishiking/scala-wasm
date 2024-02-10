@@ -8,8 +8,7 @@ import Names._
 // trait WasmDefinitionField {
 //   val idx: Long = 0L
 // }
-trait WasmNamedDefinitionField[+N <: WasmName] {
-  // type NameType = N
+trait WasmNamedDefinitionField[N <: WasmName] {
   val name: N
 }
 
@@ -17,11 +16,11 @@ trait WasmNamedDefinitionField[+N <: WasmName] {
 //   override def toString(): String = ident.name
 // }
 
-class WasmSymbolTable[T <: WasmNamedDefinitionField[WasmName]] {
+class WasmSymbolTable[N <: WasmName, T <: WasmNamedDefinitionField[N]] {
   // private val unbound = mutable.Map[Ident, WasmSymbol[T]]()
   // private val defined = mutable.Map[WasmSymbol[T], T]()
   // TODO: should keep the order
-  private val defined = mutable.Map[WasmName, T]()
+  private val defined = mutable.Map[N, T]()
 
   // def reference(ident: Ident): WasmSymbol[T] =
   //   unbound.getOrElseUpdate(ident, new WasmSymbol[T](ident))
@@ -32,7 +31,7 @@ class WasmSymbolTable[T <: WasmNamedDefinitionField[WasmName]] {
       case None    => defined.update(field.name, field)
     }
 
-  def resolve(name: WasmName): T =
+  def resolve(name: N): T =
     defined.getOrElse(name, throw new Exception(s"Symbol ${name} is not defined"))
   def all: List[T] = defined.values.toList
 }

@@ -7,20 +7,20 @@ import Names._
 
 sealed case class WasmExpr(instr: List[WasmInstr])
 
-sealed abstract class WasmExport[T <: WasmNamedDefinitionField[WasmExportName]](
+sealed abstract class WasmExport[T <: WasmNamedDefinitionField[_]](
   val name: String,
   val field: T,
   val kind: Byte,
   val keyword: String
 )
 
-// object WasmExport {
-//   class Function(name: String, field: WasmFunction)
-//     extends WasmExport[WasmFunction](name, field, 0x0, "func")
-//   class Global(name: String, field: WasmGlobal)
-//     extends WasmExport[WasmGlobal](name, field, 0x3, "global")
-// 
-// }
+object WasmExport {
+  class Function(name: String, field: WasmFunction)
+    extends WasmExport[WasmFunction](name, field, 0x0, "func")
+  class Global(name: String, field: WasmGlobal)
+    extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+
+}
 
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
@@ -87,7 +87,7 @@ class WasmModule(
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
-    private val exports: List[WasmExport[_]] = Nil,
+    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
     // val elements: List[WasmElement] = Nil,
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,
@@ -98,9 +98,11 @@ class WasmModule(
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmGCTypeDefinition): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
+  def addExport(export: WasmExport[_]) = _exports.addOne(export)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = _recGroupTypes.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
+  def exports = _exports.toList
 }

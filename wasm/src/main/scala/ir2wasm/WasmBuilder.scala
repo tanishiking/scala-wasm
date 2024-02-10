@@ -178,6 +178,11 @@ class WasmBuilder {
     ctx.functions.define(func)
     module.addFunction(func)
 
+    val export = new WasmExport.Function(
+        methodName.value,
+        func
+    )
+    module.addExport(export)
   }
 
   private def transformMethod(

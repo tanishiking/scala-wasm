@@ -12,9 +12,6 @@ class WasmTextWriter {
 
   def write(module: WasmModule)(implicit context: WasmContext): String = {
     implicit val b = new WatBuilder()
-    // println(context.gcTypes.defined)
-    // println(context.functions.defined)
-    // println(context.functionTypes.defined)
     writeModule(module)
     b.toString()
   }
@@ -32,6 +29,7 @@ class WasmTextWriter {
         )
         module.definedFunctions.foreach(writeFunction)
         module.globals.foreach(writeGlobal)
+        module.exports.foreach(writeExport)
       }
     )
     // context.gcTypes
@@ -137,6 +135,22 @@ class WasmTextWriter {
         // TODO: init
       }
     )
+
+  private def writeExport(e: WasmExport[_])(implicit
+      b: WatBuilder
+  ) = b.newLineList(
+    "export", {
+      b.appendElement(s"\"${e.name}\"")
+      e match {
+        case fun: WasmExport.Function =>
+          b.sameLineList(
+            "func",
+            { b.appendName(fun.field.name) }
+          )
+        case _: WasmExport.Global => ???
+      }
+    }
+  )
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
     b.appendElement(instr.mnemonic)
