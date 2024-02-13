@@ -7,7 +7,7 @@ object Types {
       private val name: String,
       val code: Byte
   ) {
-    override def toString(): String = name
+    def show: String = name
   }
 
   // case object WasmTypeNone extends WasmType
@@ -30,19 +30,24 @@ object Types {
   case object WasmRefNullrefType extends WasmType("nullref", -0x0F) // Shorthand for (ref null none)
   case object WasmRefNullExternrefType extends WasmType("nullexternref", -0x0E) // Shorthand for (ref null noextern)
   case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", -0x14) {
-    override def toString(): String = s"(ref null ${heapType.toString()})"
+    override def show: String = s"(ref null ${heapType.show})"
   }
   case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", -0x15) {
-    override def toString(): String = s"(ref ${heapType.toString()})"
+    override def show: String = s"(ref ${heapType.show})"
   }
 
-  sealed trait WasmHeapType
+  sealed trait WasmHeapType {
+    def show: String
+  }
   object WasmHeapType {
     case class Type(val typ: WasmGCTypeName) extends WasmHeapType {
-      override def toString(): String = typ.name
+        override def show: String = typ.show
+    }
+    case class Func(val typ: WasmFunctionTypeName) extends WasmHeapType {
+        override def show: String = typ.show
     }
     sealed class Simple(val name: String, val code: Byte) extends WasmHeapType {
-      override def toString(): String = name
+        override def show: String = name
     }
     object Simple {
       object Func extends Simple("func", -0x10)

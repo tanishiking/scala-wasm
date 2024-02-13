@@ -41,21 +41,21 @@ object TypeTransformer {
       case p: IRTypes.PrimTypeWithRef   => transformPrimType(p)
     }
 
-    def transformPrimType(
-        t: IRTypes.PrimTypeWithRef
-    )(implicit context: WasmContext): Types.WasmType =
-      t match {
-        case IRTypes.BooleanType => Types.WasmInt32
-        case IRTypes.ByteType    => Types.WasmInt32
-        case IRTypes.ShortType   => Types.WasmInt32
-        case IRTypes.IntType     => Types.WasmInt32
-        case IRTypes.CharType    => Types.WasmInt32
-        case IRTypes.LongType    => Types.WasmInt64
-        case IRTypes.FloatType   => Types.WasmFloat32
-        case IRTypes.DoubleType  => Types.WasmFloat64
-        // ???
-        case IRTypes.NothingType => Types.WasmRefNullrefType
-        case IRTypes.NullType    => Types.WasmRefNullrefType
-        case IRTypes.NoType      => throw new Exception("NoType")
-      }
+  def transformPrimType(
+      t: IRTypes.PrimTypeWithRef
+  )(implicit context: WasmContext): Types.WasmType =
+    t match {
+      case IRTypes.BooleanType => Types.WasmInt32
+      case IRTypes.ByteType    => Types.WasmInt32
+      case IRTypes.ShortType   => Types.WasmInt32
+      case IRTypes.IntType     => Types.WasmInt32
+      case IRTypes.CharType    => Types.WasmInt32
+      case IRTypes.LongType    => Types.WasmInt64
+      case IRTypes.FloatType   => Types.WasmFloat32
+      case IRTypes.DoubleType  => Types.WasmFloat64
+      // ???
+      case IRTypes.NothingType => Types.WasmRefNullrefType
+      case IRTypes.NullType    => Types.WasmRefNullrefType
+      case IRTypes.NoType      => throw new Exception("NoType")
+    }
 }

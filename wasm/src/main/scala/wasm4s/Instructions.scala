@@ -232,9 +232,15 @@ object WasmInstr {
   /** creates a reference to a given function. `ref.func $x : [] -> [funcref]` (iff $x : func $t)
     */
   case class REF_FUNC(i: FuncIdx) extends WasmInstr("ref.func", 0xd2, List(i))
+  object REF_FUNC {
+    def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
+  }
 
   // gc
   case class STRUCT_NEW(i: TypeIdx) extends WasmInstr("struct.new", 0xfb_00, List(i))
+  object STRUCT_NEW {
+    def apply(i: WasmGCTypeName): STRUCT_NEW = STRUCT_NEW(WasmImmediate.TypeIdx(i))
+  }
   case class STRUCT_NEW_DEFAULT(i: TypeIdx)
       extends WasmInstr("struct.new_default", 0xfb_01, List(i))
   case class STRUCT_GET(tyidx: TypeIdx, fidx: StructFieldIdx)

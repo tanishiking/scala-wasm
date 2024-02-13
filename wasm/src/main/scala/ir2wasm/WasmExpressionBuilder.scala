@@ -10,6 +10,7 @@ import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
 
 class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
+
   /** object creation prefix
     * ```
     * local.get $receiver ;; (ref null $struct)
@@ -130,15 +131,17 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     val setInstruction: List[WasmInstr] =
       t.lhs match {
         case sel: IRTrees.Select =>
-          val className = Names.WasmGCTypeName.fromIR(sel.className)
+          val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
           val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
           transformTree(sel.qualifier) :+
             STRUCT_SET(TypeIdx(className), StructFieldIdx(fieldName))
         case sel: IRTrees.SelectStatic => // OK?
-          val className = Names.WasmGCTypeName.fromIR(sel.className)
+          val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
           val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
           List(
-            GLOBAL_GET(GlobalIdx(Names.WasmGlobalName.forModuleClassInstance(sel.className))),
+            GLOBAL_GET(
+              GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
+            ),
             STRUCT_SET(TypeIdx(className), StructFieldIdx(fieldName))
           )
         case assign: IRTrees.ArraySelect     => ??? // array.set
@@ -181,21 +184,21 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
   }
 
   private def transformSelect(sel: IRTrees.Select): List[WasmInstr] = {
-    val className = Names.WasmGCTypeName.fromIR(sel.className)
+    val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
     val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
     transformTree(sel.qualifier) :+
       STRUCT_GET(TypeIdx(className), StructFieldIdx(fieldName))
   }
 
   private def transformStoreModule(t: IRTrees.StoreModule): List[WasmInstr] = {
-    val name = Names.WasmGlobalName.forModuleClassInstance(t.className)
+    val name = Names.WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
     transformTree(t.value) :+ GLOBAL_SET(GlobalIdx(name))
   }
 
   // push the module to the stack
   private def transformLoadModule(t: IRTrees.LoadModule): List[WasmInstr] = {
-    val tyName = Names.WasmGCTypeName.fromIR(t.tpe.className)
-    val gName = Names.WasmGlobalName.forModuleClassInstance(t.className)
+    val tyName = Names.WasmGCTypeName.WasmStructTypeName.fromIR(t.tpe.className)
+    val gName = Names.WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
     val ctroName =
       // TODO (design): maybe we should resolve functions with some other ways?
       // or maybe we should index all the names of class and methods before traversing/transforming the given tree.

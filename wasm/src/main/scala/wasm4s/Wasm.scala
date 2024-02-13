@@ -43,7 +43,8 @@ case class WasmLocal(
 
 case class WasmGlobal(
     val name: WasmGlobalName,
-    val typ: WasmType
+    val typ: WasmType,
+    val init: Option[WasmExpr]
 ) extends WasmNamedDefinitionField[WasmGlobalName]
 
 trait WasmTypeDefinition[T <: WasmName] extends WasmNamedDefinitionField[T]

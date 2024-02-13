@@ -41,28 +41,28 @@ class WasmTextWriter {
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
         "field", {
-          b.appendName(field.name)
+          b.appendElement(field.name.show)
           if (field.isMutable)
             b.sameLineList(
               "mut", {
-                b.appendElement(field.typ.toString)
+                b.appendElement(field.typ.show)
               }
             )
-          else b.appendElement(field.typ.toString)
+          else b.appendElement(field.typ.show)
         }
       )
     }
 
     b.newLineList(
       "type", {
-        b.appendName(t.name)
+        b.appendElement(t.name.show)
         t match {
           case WasmArrayType(name, field) =>
           // (type $kotlin.Any___type_13 (struct (field (ref $kotlin.Any.vtable___type_12)) (field (ref null struct)) (field (mut i32)) (field (mut i32))))
           case WasmStructType(name, fields, superType) =>
             b.sameLineList(
               "sub", {
-                superType.foreach(b.appendName)
+                superType.foreach(s => b.appendElement(s.show))
                 b.sameLineList(
                   "struct", {
                     fields.foreach(writeField)
@@ -81,16 +81,16 @@ class WasmTextWriter {
     // (type type-name (func (param ty) (param ty) (result ty)))
     b.newLineList(
       "type", {
-        b.appendName(functionType.name)
+        b.appendElement(functionType.name.show)
         b.sameLineList(
           "func", {
             functionType.params.foreach { ty =>
-              b.sameLineListOne("param", ty.toString)
+              b.sameLineListOne("param", ty.show)
             }
           }
         )
         if (functionType.results.nonEmpty)
-          functionType.results.foreach { ty => b.sameLineListOne("result", ty.toString) }
+          functionType.results.foreach { ty => b.sameLineListOne("result", ty.show) }
       }
     )
   }
@@ -99,8 +99,8 @@ class WasmTextWriter {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
-          b.appendName(l.name)
-          b.appendElement(l.typ.toString)
+          b.appendElement(l.name.show)
+          b.appendElement(l.typ.show)
         }
       )
     }
@@ -110,13 +110,13 @@ class WasmTextWriter {
 
     b.newLineList(
       "func", {
-        b.appendName(f.name)
-        b.sameLineListOne("type", f.typ.name)
+        b.appendElement(f.name.show)
+        b.sameLineListOne("type", f.typ.show)
 
         b.newLine()
         f.locals.filter(_.isParameter).foreach(p => { writeParam(p) })
         val fty = ctx.functionTypes.resolve(f.typ)
-        fty.results.foreach(r => { b.sameLineListOne("result", r.toString) })
+        fty.results.foreach(r => { b.sameLineListOne("result", r.show) })
 
         b.newLine()
         f.body.instr.foreach(writeInstr)
@@ -130,9 +130,12 @@ class WasmTextWriter {
   ) =
     b.newLineList(
       "global", {
-        b.appendName(g.name)
-        b.appendElement(g.typ.toString)
-        // TODO: init
+        b.appendElement(g.name.show)
+        b.appendElement(g.typ.show)
+        g.init.foreach { init =>
+          b.newLine()
+          init.instr.foreach(writeInstr)
+        }
       }
     )
 
@@ -145,7 +148,7 @@ class WasmTextWriter {
         case fun: WasmExport.Function =>
           b.sameLineList(
             "func",
-            { b.appendName(fun.field.name) }
+            { b.appendElement(fun.field.name.show) }
           )
         case _: WasmExport.Global => ???
       }
@@ -156,23 +159,24 @@ class WasmTextWriter {
     b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i =>
       val str = i match {
-        case WasmImmediate.I64(v)          => v.toString
-        case WasmImmediate.I32(v)          => v.toString
-        case WasmImmediate.F64(v)          => v.toString
-        case WasmImmediate.F32(v)          => v.toString
-        case WasmImmediate.LocalIdx(name)  => name.name
-        case WasmImmediate.GlobalIdx(name) => name.name
+        case WasmImmediate.I64(v)          => v.toString()
+        case WasmImmediate.I32(v)          => v.toString()
+        case WasmImmediate.F64(v)          => v.toString()
+        case WasmImmediate.F32(v)          => v.toString()
+        case WasmImmediate.LocalIdx(name)  => name.show
+        case WasmImmediate.GlobalIdx(name) => name.show
         case WasmImmediate.HeapType(ht) =>
           ht match {
-            case WasmHeapType.Type(typ) => typ.name
+            case WasmHeapType.Type(typ) => typ.show
+            case WasmHeapType.Func(typ) => typ.show
             case s: WasmHeapType.Simple => s.name
           }
-        case WasmImmediate.FuncIdx(name)                => name.name
-        case WasmImmediate.TypeIdx(name)                => name.name
-        case WasmImmediate.StructFieldIdx(name)         => name.name
-        case WasmImmediate.BlockType.FunctionType(name) => name.name
+        case WasmImmediate.FuncIdx(name)                => name.show
+        case WasmImmediate.TypeIdx(name)                => name.show
+        case WasmImmediate.StructFieldIdx(name)         => name.show
+        case WasmImmediate.BlockType.FunctionType(name) => name.show
         case WasmImmediate.BlockType.ValueType(optTy) =>
-          optTy.fold("") { ty => ty.toString() }
+          optTy.fold("") { ty => ty.show }
         case _ =>
           println(i)
           ???
@@ -227,12 +231,6 @@ object WasmTextWriter {
 
     def sameLineListOne(name: String, value: String) =
       sameLineList(name, { appendElement(value) })
-
-    def sameLineListOne(name: String, wasmName: WasmName) =
-      sameLineList(name, { appendName(wasmName) })
-
-    def appendName(name: WasmName): Unit =
-      appendElement(sanitizeWatIdentifier(name.name))
 
     def appendElement(value: String): Unit = {
       builder.append(" ")
