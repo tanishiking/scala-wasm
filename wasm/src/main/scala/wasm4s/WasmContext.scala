@@ -7,12 +7,28 @@ import Names.WasmTypeName._
 
 import org.scalajs.ir.{Names => IRNames}
 
-case class WasmContext() {
+import scala.collection.mutable.LinkedHashMap
+
+case class WasmContext(module: WasmModule) {
   import WasmContext._
-  val functionTypes = new WasmSymbolTable[WasmFunctionTypeName, WasmFunctionType]()
   val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
   val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
   val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
+
+  private val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
+
+  def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
+    functionSignatures.get(sig) match {
+      case None =>
+        val idx = functionSignatures.size
+        functionSignatures.update(sig, idx)
+        val typeName = WasmFunctionTypeName(idx)
+        val ty = WasmFunctionType(typeName, sig)
+        module.addFunctionType(ty)
+        typeName
+      case Some(value) => WasmFunctionTypeName(value)
+    }
+  }
 
   // ClassName -> functionNames and type
   private val vtables = mutable.Map[IRNames.ClassName, WasmVTable]()

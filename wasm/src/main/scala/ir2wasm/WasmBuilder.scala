@@ -12,8 +12,8 @@ import org.scalajs.ir.ClassKind
 
 import collection.mutable
 
-class WasmBuilder {
-  val module = new WasmModule()
+class WasmBuilder(module: WasmModule) {
+  // val module = new WasmModule()
 
   def transformClassDef(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
     clazz.kind match {
@@ -58,13 +58,9 @@ class WasmBuilder {
     val functions = clazz.methods.map { method =>
       val paramTys = receiver.typ +: method.args.map(arg => TypeTransformer.transformType(arg.ptpe))
       val resultTy = TypeTransformer.transformResultType(method.resultType)
-      val funcType = WasmFunctionType(
-        WasmTypeName.WasmFunctionTypeName.fromIR(method.name.name),
-        paramTys,
-        resultTy
-      )
-      ctx.functionTypes.define(funcType)
-      module.addFunctionType(funcType) // TODO: normalize
+      val sig = WasmFunctionSignature(paramTys, resultTy)
+      val typeName = ctx.addFunctionType(sig)
+      val functionType = WasmFunctionType(typeName, sig)
 
       implicit val fctx = WasmFunctionContext(receiver)
       (receiver +: method.args.map { arg =>
@@ -78,7 +74,7 @@ class WasmBuilder {
       val body = transformMethod(method)
       val func = WasmFunction(
         Names.WasmFunctionName(clazz.name.name, method.name.name),
-        funcType.name,
+        functionType,
         fctx.locals.all,
         WasmExpr(body)
       )
@@ -87,6 +83,49 @@ class WasmBuilder {
       func
     }
     structType
+  }
+
+  private def genLoadModuleFunc(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
+    import WasmInstr._
+    import WasmImmediate._
+    assert(clazz.kind == ClassKind.ModuleClass)
+    val ctor = clazz.methods
+      .find(_.methodName.isConstructor)
+      .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
+    val typeName = WasmTypeName.WasmStructTypeName(clazz.name.name)
+    val globalInstanceName = WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name)
+    val ctorName = WasmFunctionName(clazz.name.name, ctor.name.name)
+    val body = List(
+      // global.get $module_name
+      // ref.if_null
+      //   ref.null $module_type
+      //   call $module_init ;; should set to global
+      // end
+      // global.get $module_name
+      GLOBAL_GET(GlobalIdx(globalInstanceName)), // [rt]
+      REF_IS_NULL, // [rt] -> [i32] (bool)
+      IF(WasmImmediate.BlockType.ValueType(None)),
+      GLOBAL_GET(
+        GlobalIdx(globalInstanceName)
+      ), // [rt] // REF_NULL(HeapType(Types.WasmHeapType.Type(tyName))),
+      CALL(FuncIdx(ctorName)),
+      // ELSE,
+      END,
+      GLOBAL_GET(GlobalIdx(globalInstanceName)) // [rt]
+    )
+
+    val sig =
+      WasmFunctionSignature(Nil, List(Types.WasmRefNullType(Types.WasmHeapType.Type(typeName))))
+    val loadModuleTypeName = ctx.addFunctionType(sig)
+    val func = WasmFunction(
+      WasmFunctionName.loadModule(clazz.name.name),
+      WasmFunctionType(loadModuleTypeName, sig),
+      Nil,
+      WasmExpr(body)
+    )
+    println(func)
+    ctx.functions.define(func)
+    module.addFunction(func)
   }
 
   private def generateVTable(
@@ -155,6 +194,8 @@ class WasmBuilder {
     ctx.globals.define(global)
     module.addGlobal(global)
 
+    genLoadModuleFunc(clazz)
+
     clazz.topLevelExportDefs.foreach { i =>
       implicit val fctx = WasmFunctionContext()
       val expressionBuilder = new WasmExpressionBuilder(ctx, fctx)
@@ -222,15 +263,12 @@ class WasmBuilder {
       }
     }
 
-    val paramTys = newParams.map(arg => TypeTransformer.transformType(arg.ptpe))
-    val resultTy = TypeTransformer.transformResultType(resultType)
-    val funcType = WasmFunctionType(
-      WasmTypeName.WasmFunctionTypeName.fromLiteral(methodName),
-      paramTys,
-      resultTy
+    val sig = WasmFunctionSignature(
+      newParams.map(arg => TypeTransformer.transformType(arg.ptpe)),
+      TypeTransformer.transformResultType(resultType)
     )
-    ctx.functionTypes.define(funcType)
-    module.addFunctionType(funcType) // TODO: normalize
+    val typeName = ctx.addFunctionType(sig)
+    val functionType = WasmFunctionType(typeName, sig)
 
     val params = newParams.map { arg =>
       WasmLocal(
@@ -247,7 +285,7 @@ class WasmBuilder {
     }
     val func = WasmFunction(
       Names.WasmFunctionName(methodName),
-      funcType.name,
+      functionType,
       fctx.locals.all,
       WasmExpr(instrs)
     )

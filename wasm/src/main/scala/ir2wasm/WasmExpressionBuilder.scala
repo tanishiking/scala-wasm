@@ -11,6 +11,7 @@ import wasm4s.Names.WasmTypeName._
 import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
+import org.scalajs.ir.ClassKind
 
 class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
 
@@ -23,7 +24,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     *   local.set $receiver
     * end
     * ```
-    * 
+    *
     * Maybe we can unreachable in else branch?
     */
   def objectCreationPrefix(method: IRTrees.MethodDef): List[WasmInstr] = {
@@ -234,36 +235,12 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     transformTree(t.value) :+ GLOBAL_SET(GlobalIdx(name))
   }
 
-  // push the module to the stack
-  private def transformLoadModule(t: IRTrees.LoadModule): List[WasmInstr] = {
-    val tyName = WasmStructTypeName(t.tpe.className)
-    val gName = WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
-    val ctroName =
-      // TODO (design): maybe we should resolve functions with some other ways?
-      // or maybe we should index all the names of class and methods before traversing/transforming the given tree.
-      IRNames.MethodName(
-        IRNames.SimpleMethodName.Constructor,
-        Nil,
-        IRTypes.VoidRef
-      )
-    val wasmCtorName = WasmFunctionName(t.tpe.className, ctroName)
-    List(
-      // global.get $module_name
-      // ref.if_null
-      //   ref.null $module_type
-      //   call $module_init ;; should set to global
-      // end
-      // global.get $module_name
-      GLOBAL_GET(GlobalIdx(gName)), // [rt]
-      REF_IS_NULL, // [rt] -> [i32] (bool)
-      IF(WasmImmediate.BlockType.ValueType(None)),
-      GLOBAL_GET(GlobalIdx(gName)), // [rt] // REF_NULL(HeapType(Types.WasmHeapType.Type(tyName))),
-      CALL(FuncIdx(wasmCtorName)),
-      ELSE,
-      END,
-      GLOBAL_GET(GlobalIdx(gName)) // [rt]
-    )
-  }
+  /** Push module class instance to the stack.
+    *
+    * see: WasmBuilder.genLoadModuleFunc
+    */
+  private def transformLoadModule(t: IRTrees.LoadModule): List[WasmInstr] =
+    List(CALL(FuncIdx(Names.WasmFunctionName.loadModule(t.className))))
 
   private def transformUnaryOp(unary: IRTrees.UnaryOp): List[WasmInstr] = {
     ???

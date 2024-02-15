@@ -13,15 +13,14 @@ object Preprocessor {
       case method if !method.flags.namespace.isConstructor =>
         val name = Names.WasmFunctionName(clazz.name.name, method.name.name)
         val receiverType = makeReceiverType(clazz.name.name)
-        val paramTypes = method.args.map(a => transformType(a.ptpe))
-        val resultType = transformResultType(method.resultType)
+        val sig = WasmFunctionSignature(
+            receiverType +: method.args.map(a => transformType(a.ptpe)),
+            transformResultType(method.resultType)
+        )
+        val typeName = ctx.addFunctionType(sig)
         WasmFunctionInfo(
           Names.WasmFunctionName(clazz.name.name, method.name.name),
-          WasmFunctionType(
-            Names.WasmTypeName.WasmFunctionTypeName.fromIR(method.name.name),
-            receiverType +: paramTypes,
-            resultType
-          )
+          WasmFunctionType(typeName, sig)
         )
     }
     ctx.classInfo.put(clazz.name.name, WasmClassInfo(

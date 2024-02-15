@@ -9,17 +9,17 @@ import Names.WasmTypeName._
 sealed case class WasmExpr(instr: List[WasmInstr])
 
 sealed abstract class WasmExport[T <: WasmNamedDefinitionField[_]](
-  val name: String,
-  val field: T,
-  val kind: Byte,
-  val keyword: String
+    val name: String,
+    val field: T,
+    val kind: Byte,
+    val keyword: String
 )
 
 object WasmExport {
   class Function(name: String, field: WasmFunction)
-    extends WasmExport[WasmFunction](name, field, 0x0, "func")
+      extends WasmExport[WasmFunction](name, field, 0x0, "func")
   class Global(name: String, field: WasmGlobal)
-    extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+      extends WasmExport[WasmGlobal](name, field, 0x3, "global")
 
 }
 
@@ -28,7 +28,7 @@ object WasmExport {
   */
 case class WasmFunction(
     val name: WasmFunctionName,
-    val typ: WasmFunctionTypeName,
+    val typ: WasmFunctionType,
     val locals: List[WasmLocal],
     val body: WasmExpr
 ) extends WasmNamedDefinitionField[WasmFunctionName]
@@ -49,11 +49,21 @@ case class WasmGlobal(
 ) extends WasmNamedDefinitionField[WasmGlobalName]
 
 trait WasmTypeDefinition[T <: WasmName] extends WasmNamedDefinitionField[T]
+
+case class WasmFunctionSignature(
+    params: List[WasmType],
+    results: List[WasmType]
+)
 case class WasmFunctionType(
     name: WasmFunctionTypeName,
     params: List[WasmType],
     results: List[WasmType]
 ) extends WasmTypeDefinition[WasmFunctionTypeName]
+object WasmFunctionType {
+  def apply(name: WasmFunctionTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
+    WasmFunctionType(name, sig.params, sig.results)
+  }
+}
 
 sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmTypeName]
 case class WasmStructType(
@@ -89,7 +99,7 @@ class WasmModule(
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
-    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
+    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer()
     // val elements: List[WasmElement] = Nil,
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,

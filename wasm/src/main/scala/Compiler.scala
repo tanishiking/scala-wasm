@@ -19,8 +19,9 @@ import _root_.ir2wasm.Preprocessor
 object Compiler {
   def compileIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Unit] = {
     // IRFileImpl.fromIRFile()
-    val builder = new WasmBuilder()
-    implicit val context: WasmContext = WasmContext()
+    val module = new WasmModule
+    val builder = new WasmBuilder(module)
+    implicit val context: WasmContext = WasmContext(module)
     println("compiling")
     Future
       .traverse(irFiles)(i => IRFileImpl.fromIRFile(i).tree)
@@ -33,7 +34,7 @@ object Compiler {
           builder.transformClassDef(clazz)
         }
         val writer = new converters.WasmTextWriter()
-        println(writer.write(builder.module))
+        println(writer.write(module))
       }
   }
 }

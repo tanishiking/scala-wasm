@@ -77,6 +77,12 @@ object Names {
     def apply(clazz: IRNames.ClassName, method: IRNames.MethodName): WasmFunctionName =
       new WasmFunctionName(clazz.nameString, method.nameString)
     def apply(lit: IRTrees.StringLiteral): WasmFunctionName = new WasmFunctionName(lit.value, "")
+
+    // Adding prefix __ to avoid name clashes with user code.
+    // It should be safe not to add prefix to the method name
+    // since loadModule is a static method and it's not registered in the vtable.
+    def loadModule(clazz: IRNames.ClassName): WasmFunctionName =
+        new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
@@ -112,10 +118,7 @@ object Names {
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmFunctionTypeName {
-      def fromIR(name: IRNames.MethodName) = new WasmFunctionTypeName(name.nameString)
-      def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionTypeName = new WasmFunctionTypeName(
-        lit.value
-      )
+      def apply(idx: Int) = new WasmFunctionTypeName(s"fun_type___$idx")
     }
 
     /** Vtable type's name */

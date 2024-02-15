@@ -37,13 +37,13 @@ object Main {
 
     basicTestClassDefs.foreach(c => println(c.show))
 
-    val builder = new WasmBuilder()
-    implicit val context: WasmContext = WasmContext()
+    val module = new WasmModule
+    val builder = new WasmBuilder(module)
+    implicit val context: WasmContext = WasmContext(module)
     basicTestClassDefs.foreach { clazz =>
       builder.transformClassDef(clazz)
     }
     val writer = new converters.WasmTextWriter()
-    println(writer.write(builder.module))
-
+    println(writer.write(module))
   }
 }

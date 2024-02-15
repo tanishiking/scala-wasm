@@ -21,10 +21,10 @@ class WasmTextWriter {
   )(implicit b: WatBuilder, context: WasmContext): Unit = {
     b.newLineList(
       "module", {
-        module.functionTypes.foreach(writeFunctionType)
         b.newLineList(
           "rec", {
             module.recGroupTypes.foreach(writeGCTypeDefinition)
+            module.functionTypes.foreach(writeFunctionType)
           }
         )
         module.definedFunctions.foreach(writeFunction)
@@ -118,12 +118,11 @@ class WasmTextWriter {
       "func", {
         val (params, nonParams) = f.locals.partition(_.isParameter)
         b.appendElement(f.name.show)
-        b.sameLineListOne("type", f.typ.show)
+        b.sameLineListOne("type", f.typ.name.show)
 
         b.newLine()
         params.foreach(writeParam)
-        val fty = ctx.functionTypes.resolve(f.typ)
-        fty.results.foreach(r => { b.sameLineListOne("result", r.show) })
+        f.typ.results.foreach(r => { b.sameLineListOne("result", r.show) })
 
         b.newLine()
         if (nonParams.nonEmpty) {
