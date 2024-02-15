@@ -4,6 +4,7 @@ import scala.collection.mutable
 
 import Types._
 import Names._
+import Names.WasmTypeName._
 
 sealed case class WasmExpr(instr: List[WasmInstr])
 
@@ -54,15 +55,15 @@ case class WasmFunctionType(
     results: List[WasmType]
 ) extends WasmTypeDefinition[WasmFunctionTypeName]
 
-sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmGCTypeName]
+sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmTypeName]
 case class WasmStructType(
-    name: WasmGCTypeName,
+    name: WasmTypeName,
     fields: List[WasmStructField],
-    superType: Option[WasmGCTypeName]
+    superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
 
 case class WasmArrayType(
-    name: WasmGCTypeName,
+    name: WasmTypeName,
     field: WasmStructField
 ) extends WasmGCTypeDefinition
 

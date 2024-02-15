@@ -6,8 +6,11 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 
 import wasm4s._
+import wasm4s.Names._
+import wasm4s.Names.WasmTypeName._
 import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
+import org.scalajs.ir.Types.ClassType
 
 class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
 
@@ -20,6 +23,8 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     *   local.set $receiver
     * end
     * ```
+    * 
+    * Maybe we can unreachable in else branch?
     */
   def objectCreationPrefix(method: IRTrees.MethodDef): List[WasmInstr] = {
     assert(method.flags.namespace.isConstructor)
@@ -46,13 +51,11 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       case t: IRTrees.VarRef     => List(transformVarRef(t))
       case t: IRTrees.LoadModule => transformLoadModule(t)
       case t: IRTrees.StoreModule =>
-        println(t.show)
         transformStoreModule(t)
       case t: IRTrees.This => // push receiver to the stack
         List(LOCAL_GET(LocalIdx(fctx.receiver.name)))
       case t: IRTrees.ApplyStatic => ???
       case t: IRTrees.ApplyStatically =>
-        println(t.receiver)
         if (t.className.nameString == "java.lang.Object") Nil
         else transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
@@ -61,6 +64,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       case t: IRTrees.Select             => transformSelect(t)
       case t: IRTrees.Assign             => transformAssign(t)
       case t: IRTrees.VarDef             => transformVarDef(t)
+      case t: IRTrees.New                => transformNew(t)
       case _ =>
         println(tree)
         ???
@@ -70,7 +74,6 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       // case select: IRTrees.JSPrivateSelect => ???
       // case nul: IRTrees.Null => ???
       // case v: IRTrees.UnwrapFromThrowable => ???
-      // case v: IRTrees.New => ???
       // case IRTrees.Assign(pos) =>
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSTypeOfGlobalRef(pos) =>
@@ -118,7 +121,6 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       // case IRTrees.JSDelete(pos) =>
       // case IRTrees.ForIn(pos) =>
       // case IRTrees.JSArrayConstr(pos) =>
-      // case vd: IRTrees.VarDef => ???
       // case tc: IRTrees.TryCatch => ???
       // case IRTrees.JSImportCall(pos) =>
       // case IRTrees.IdentityHashCode(pos) =>
@@ -128,42 +130,78 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
 
   private def transformAssign(t: IRTrees.Assign): List[WasmInstr] = {
     val wasmRHS = transformTree(t.rhs)
-    val setInstruction: List[WasmInstr] =
-      t.lhs match {
-        case sel: IRTrees.Select =>
-          val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
-          val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
-          transformTree(sel.qualifier) :+
-            STRUCT_SET(TypeIdx(className), StructFieldIdx(fieldName))
-        case sel: IRTrees.SelectStatic => // OK?
-          val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
-          val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
-          List(
-            GLOBAL_GET(
-              GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
-            ),
-            STRUCT_SET(TypeIdx(className), StructFieldIdx(fieldName))
+    t.lhs match {
+      case sel: IRTrees.Select =>
+        val className = WasmStructTypeName(sel.className)
+        val fieldName = WasmFieldName(sel.field.name)
+        val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
+        transformTree(sel.qualifier) ++ wasmRHS :+
+          STRUCT_SET(TypeIdx(className), idx)
+
+      case sel: IRTrees.SelectStatic => // OK?
+        val className = WasmStructTypeName(sel.className)
+        val fieldName = WasmFieldName(sel.field.name)
+        val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
+        List(
+          GLOBAL_GET(
+            GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
           )
-        case assign: IRTrees.ArraySelect     => ??? // array.set
-        case assign: IRTrees.RecordSelect    => ??? // struct.set
-        case assign: IRTrees.JSPrivateSelect => ???
-        case assign: IRTrees.JSSelect        => ???
-        case assign: IRTrees.JSSuperSelect   => ???
-        case assign: IRTrees.JSGlobalRef     => ???
-        case ref: IRTrees.VarRef =>
-          List(LOCAL_SET(LocalIdx(Names.WasmLocalName.fromIR(ref.ident.name))))
-      }
-      wasmRHS ++ setInstruction
+        ) ++ wasmRHS ++ List(
+          STRUCT_SET(TypeIdx(className), idx)
+        )
+      case assign: IRTrees.ArraySelect     => ??? // array.set
+      case assign: IRTrees.RecordSelect    => ??? // struct.set
+      case assign: IRTrees.JSPrivateSelect => ???
+      case assign: IRTrees.JSSelect        => ???
+      case assign: IRTrees.JSSuperSelect   => ???
+      case assign: IRTrees.JSGlobalRef     => ???
+      case ref: IRTrees.VarRef =>
+        wasmRHS :+ LOCAL_SET(LocalIdx(Names.WasmLocalName.fromIR(ref.ident.name)))
+    }
   }
 
   private def transformApply(t: IRTrees.Apply): List[WasmInstr] = {
-    val wasmArgs = transformTree(t.receiver) ++ t.args.flatMap(transformTree)
-    val funcName = Names.WasmFunctionName.fromIR(t.method.name)
-    wasmArgs :+ CALL(FuncIdx(funcName))
+    val pushReceiver = transformTree(t.receiver)
+
+    val receiverClassName = t.receiver.tpe match {
+      case ClassType(className) => className
+      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+    }
+
+    val methodIdx = ctx
+      .getVtable(receiverClassName)
+      .indexWhere(_.name.methodName == t.method.name.nameString) match {
+      case i if i < 0 =>
+        throw new Error(
+          s"Method ${t.method.name.nameString} not found in vtable of ${receiverClassName}"
+        )
+      case i => StructFieldIdx(i)
+    }
+
+    val tpe = ctx.getVtable(receiverClassName)(methodIdx.value).tpe // should be safe
+
+    // local.get $this ;; for accessing funcref
+    // local.get $this ;; for accessing vtable
+    // struct.get $classType 0 ;; get vtable
+    // struct.get $vtableType $methodIdx ;; get funcref
+    // call.ref $funcType ;; call funcref
+    pushReceiver ++ pushReceiver ++
+      List(
+        STRUCT_GET(
+          TypeIdx(WasmStructTypeName(receiverClassName)),
+          StructFieldIdx(0)
+        ),
+        STRUCT_GET(
+          TypeIdx(WasmVTableTypeName.fromIR(receiverClassName)),
+          methodIdx
+        ),
+        CALL_REF(TypeIdx(tpe.name))
+      )
   }
+
   private def transformApplyStatically(t: IRTrees.ApplyStatically): List[WasmInstr] = {
     val wasmArgs = transformTree(t.receiver) ++ t.args.flatMap(transformTree)
-    val funcName = Names.WasmFunctionName.fromIR(t.method.name)
+    val funcName = Names.WasmFunctionName(t.className, t.method.name)
     wasmArgs :+ CALL(FuncIdx(funcName))
   }
 
@@ -184,21 +222,22 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
   }
 
   private def transformSelect(sel: IRTrees.Select): List[WasmInstr] = {
-    val className = Names.WasmGCTypeName.WasmStructTypeName.fromIR(sel.className)
-    val fieldName = Names.WasmFieldName.fromIR(sel.field.name)
+    val className = WasmStructTypeName(sel.className)
+    val fieldName = WasmFieldName(sel.field.name)
+    val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
     transformTree(sel.qualifier) :+
-      STRUCT_GET(TypeIdx(className), StructFieldIdx(fieldName))
+      STRUCT_GET(TypeIdx(className), idx)
   }
 
   private def transformStoreModule(t: IRTrees.StoreModule): List[WasmInstr] = {
-    val name = Names.WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
+    val name = WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
     transformTree(t.value) :+ GLOBAL_SET(GlobalIdx(name))
   }
 
   // push the module to the stack
   private def transformLoadModule(t: IRTrees.LoadModule): List[WasmInstr] = {
-    val tyName = Names.WasmGCTypeName.WasmStructTypeName.fromIR(t.tpe.className)
-    val gName = Names.WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
+    val tyName = WasmStructTypeName(t.tpe.className)
+    val gName = WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
     val ctroName =
       // TODO (design): maybe we should resolve functions with some other ways?
       // or maybe we should index all the names of class and methods before traversing/transforming the given tree.
@@ -207,7 +246,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
         Nil,
         IRTypes.VoidRef
       )
-    val wasmCtorName = Names.WasmFunctionName.fromIR(ctroName)
+    val wasmCtorName = WasmFunctionName(t.tpe.className, ctroName)
     List(
       // global.get $module_name
       // ref.if_null
@@ -218,8 +257,9 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       GLOBAL_GET(GlobalIdx(gName)), // [rt]
       REF_IS_NULL, // [rt] -> [i32] (bool)
       IF(WasmImmediate.BlockType.ValueType(None)),
-      REF_NULL(HeapType(Types.WasmHeapType.Type(tyName))),
+      GLOBAL_GET(GlobalIdx(gName)), // [rt] // REF_NULL(HeapType(Types.WasmHeapType.Type(tyName))),
       CALL(FuncIdx(wasmCtorName)),
+      ELSE,
       END,
       GLOBAL_GET(GlobalIdx(gName)) // [rt]
     )
@@ -315,14 +355,14 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
   }
 
   private def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
-    val name = Names.WasmLocalName.fromIR(r.ident.name)
+    val name = WasmLocalName.fromIR(r.ident.name)
     LOCAL_GET(LocalIdx(name))
   }
 
   private def transformVarDef(r: IRTrees.VarDef): List[WasmInstr] = {
     val local = WasmLocal(
-      Names.WasmLocalName.fromIR(r.name.name),
-      TypeTransformer.transform(r.vtpe)(ctx),
+      WasmLocalName.fromIR(r.name.name),
+      TypeTransformer.transformType(r.vtpe)(ctx),
       isParameter = false
     )
     fctx.locals.define(local)
@@ -330,4 +370,21 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     transformTree(r.rhs) :+ LOCAL_SET(LocalIdx(local.name))
   }
 
+  private def transformNew(n: IRTrees.New): List[WasmInstr] = {
+    val localInstance = WasmLocal(
+      fctx.genSyntheticLocalName(),
+      TypeTransformer.transformType(n.tpe)(ctx),
+      isParameter = false
+    )
+    fctx.locals.define(localInstance)
+
+    List(
+      REF_NULL(HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(n.className)))),
+      LOCAL_SET(LocalIdx(localInstance.name))
+    ) ++ n.args.flatMap(transformTree) ++
+      List(
+        CALL(FuncIdx(WasmFunctionName(n.className, n.ctor.name))),
+        LOCAL_GET(LocalIdx(localInstance.name))
+      )
+  }
 }

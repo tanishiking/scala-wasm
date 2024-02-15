@@ -3,6 +3,7 @@ package wasm.wasm4s
 
 import Types._
 import Names._
+import Names.WasmTypeName._
 
 abstract sealed class WasmInstr(
     val mnemonic: String,
@@ -217,8 +218,8 @@ object WasmInstr {
   // Memory instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
 
+  // ============================================================
   // Reference types
-
   /** evaluates to the null reference constant.
     *
     * `ref.null rt : [] -> [rtref]` (iff rt = func or rt = extern)
@@ -236,10 +237,22 @@ object WasmInstr {
     def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
   }
 
+
+  // ============================================================
+  // Typed Function References
+  // https://github.com/WebAssembly/function-references
+  case class  CALL_REF(i: TypeIdx) extends WasmInstr("call_ref", 0x14, List(i))
+  case class  RETURN_CALL_REF(i: TypeIdx) extends WasmInstr("return_call_ref", 0x15, List(i))
+  case object REF_AS_NOT_NULL extends WasmInstr("ref.as_non_null", 0xD4)
+  case class  BR_ON_NULL(i: LabelIdx) extends WasmInstr("br_on_null", 0xD5, List(i))
+  case class  BR_ON_NON_NULL(i: LabelIdx) extends WasmInstr("br_on_non_null", 0xD6, List(i))
+
+
+  // ============================================================
   // gc
   case class STRUCT_NEW(i: TypeIdx) extends WasmInstr("struct.new", 0xfb_00, List(i))
   object STRUCT_NEW {
-    def apply(i: WasmGCTypeName): STRUCT_NEW = STRUCT_NEW(WasmImmediate.TypeIdx(i))
+    def apply(i: WasmTypeName): STRUCT_NEW = STRUCT_NEW(WasmImmediate.TypeIdx(i))
   }
   case class STRUCT_NEW_DEFAULT(i: TypeIdx)
       extends WasmInstr("struct.new_default", 0xfb_01, List(i))
@@ -277,11 +290,11 @@ object WasmImmediate {
   case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate
   case class LabelIdx(val value: Int) extends WasmImmediate
   case class LabelIdxVector(val value: List[Int]) extends WasmImmediate
-  case class TypeIdx(val value: WasmGCTypeName) extends WasmImmediate
+  case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: Int) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
   case class HeapType(val value: WasmHeapType) extends WasmImmediate
-  case class StructFieldIdx(val value: WasmFieldName) extends WasmImmediate
+  case class StructFieldIdx(val value: Int) extends WasmImmediate
 }

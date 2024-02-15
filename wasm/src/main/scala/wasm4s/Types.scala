@@ -1,6 +1,7 @@
 package wasm.wasm4s
 
 import Names._
+import Names.WasmTypeName._
 
 object Types {
   abstract sealed class WasmType(
@@ -40,7 +41,7 @@ object Types {
     def show: String
   }
   object WasmHeapType {
-    case class Type(val typ: WasmGCTypeName) extends WasmHeapType {
+    case class Type(val typ: WasmTypeName) extends WasmHeapType {
         override def show: String = typ.show
     }
     case class Func(val typ: WasmFunctionTypeName) extends WasmHeapType {

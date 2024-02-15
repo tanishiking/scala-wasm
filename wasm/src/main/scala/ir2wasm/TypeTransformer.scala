@@ -2,20 +2,26 @@ package wasm
 package ir2wasm
 
 import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.{Names => IRNames}
 import wasm4s._
 
 object TypeTransformer {
+
+  def makeReceiverType(className: IRNames.ClassName): Types.WasmType =
+    Types.WasmRefNullType(
+      Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+    )
 
   /** This transformation should be used only for the result types of functions.
     * @see
     *   https://webassembly.github.io/spec/core/syntax/types.html#result-types
     */
-  def transformResultType(t: IRTypes.Type)(implicit context: WasmContext): List[Types.WasmType] =
+  def transformResultType(t: IRTypes.Type)(implicit ctx: WasmContext): List[Types.WasmType] =
     t match {
       case IRTypes.NoType => Nil
-      case _              => List(transform(t))
+      case _              => List(transformType(t))
     }
-  def transform(t: IRTypes.Type)(implicit context: WasmContext): Types.WasmType =
+  def transformType(t: IRTypes.Type)(implicit ctx: WasmContext): Types.WasmType =
     t match {
       case IRTypes.AnyType => Types.WasmAnyRef
 
@@ -34,11 +40,14 @@ object TypeTransformer {
         //   context.gcTypes.define(WasmArrayType(Names.WasmGCTypeName.fromIR(tpe), field))
         // Types.WasmRefType(Types.WasmHeapType.Type(arrayTySym))
         ???
-      case IRTypes.ClassType(className) => ???
-      case IRTypes.RecordType(fields)   => ???
-      case IRTypes.StringType           => ??? // TODO
-      case IRTypes.UndefType            => ???
-      case p: IRTypes.PrimTypeWithRef   => transformPrimType(p)
+      case IRTypes.ClassType(className) =>
+        Types.WasmRefType(
+          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+        )
+      case IRTypes.RecordType(fields) => ???
+      case IRTypes.StringType         => ??? // TODO
+      case IRTypes.UndefType          => ???
+      case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 
   def transformPrimType(

@@ -3,8 +3,16 @@ package wasm.wasm4s
 import Names.WasmLocalName
 
 class WasmFunctionContext private (private val _receiver: Option[WasmLocal]) {
+  private var cnt = 0
+
   val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
   def receiver = _receiver.getOrElse(throw new Error("Can access to the receiver in this context."))
+
+  def genSyntheticLocalName(): WasmLocalName = {
+    val name = WasmLocalName.synthetic(cnt)
+    cnt += 1
+    name
+  }
 }
 
 object WasmFunctionContext {

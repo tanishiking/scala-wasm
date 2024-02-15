@@ -14,6 +14,7 @@ import org.scalajs.linker.interface.IRFile
 import org.scalajs.linker.interface.unstable.IRFileImpl
 
 import scala.concurrent.{ExecutionContext, Future}
+import _root_.ir2wasm.Preprocessor
 
 object Compiler {
   def compileIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Unit] = {
@@ -24,6 +25,9 @@ object Compiler {
     Future
       .traverse(irFiles)(i => IRFileImpl.fromIRFile(i).tree)
       .map { classDefs =>
+        classDefs.foreach { clazz =>
+          Preprocessor.collectMethods(clazz)(context)
+        }
         classDefs.foreach { clazz =>
           println(clazz.show)
           builder.transformClassDef(clazz)

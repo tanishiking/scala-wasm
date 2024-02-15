@@ -27,6 +27,7 @@ class WasmSymbolTable[N <: WasmName, T <: WasmNamedDefinitionField[N]] {
 
   def define(field: T): Unit =
     defined.get(field.name) match {
+      case Some(f) if f.name.isInstanceOf[WasmTypeName.WasmFunctionTypeName] =>
       case Some(f) => throw new Exception(s"Symbol ${field.name} is already defined")
       case None    => defined.update(field.name, field)
     }

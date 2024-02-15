@@ -2,8 +2,12 @@ package wasm
 package ir2wasm
 
 import wasm4s._
+import wasm4s.WasmContext._
+import wasm4s.Names._
+
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.ClassKind
 
 import collection.mutable
@@ -20,15 +24,27 @@ class WasmBuilder {
   }
 
   private def transformClassCommon(
-      clazz: IRTrees.ClassDef,
-      additionalFields: List[WasmStructField] = Nil
+      clazz: IRTrees.ClassDef
   )(implicit ctx: WasmContext): WasmStructType = {
+    val (vtableType, vtable) = generateVTable(clazz)
+    val vtableField = WasmStructField(
+      Names.WasmFieldName.vtable,
+      Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
+      isMutable = false
+    )
+
+    val superType = clazz.superClass.flatMap(s =>
+      if (s.name.nameString == "java.lang.Object") None
+      else
+        Some(Names.WasmTypeName.WasmStructTypeName(s.name))
+    )
+
     // type definition
     val fields = clazz.fields.map(transformField)
     val structType = WasmStructType(
-      Names.WasmGCTypeName.WasmStructTypeName.fromIR(clazz.name.name),
-      additionalFields ++ fields,
-      None // TODO
+      Names.WasmTypeName.WasmStructTypeName(clazz.name.name),
+      vtableField +: fields,
+      superType
     )
     ctx.gcTypes.define(structType)
     module.addRecGroupType(structType)
@@ -40,10 +56,10 @@ class WasmBuilder {
     )
 
     val functions = clazz.methods.map { method =>
-      val paramTys = receiver.typ +: method.args.map(arg => TypeTransformer.transform(arg.ptpe))
+      val paramTys = receiver.typ +: method.args.map(arg => TypeTransformer.transformType(arg.ptpe))
       val resultTy = TypeTransformer.transformResultType(method.resultType)
       val funcType = WasmFunctionType(
-        Names.WasmFunctionTypeName.fromIR(method.name.name),
+        WasmTypeName.WasmFunctionTypeName.fromIR(method.name.name),
         paramTys,
         resultTy
       )
@@ -51,74 +67,77 @@ class WasmBuilder {
       module.addFunctionType(funcType) // TODO: normalize
 
       implicit val fctx = WasmFunctionContext(receiver)
-      val params = receiver +: method.args.map { arg =>
+      (receiver +: method.args.map { arg =>
         WasmLocal(
           Names.WasmLocalName.fromIR(arg.name.name),
-          TypeTransformer.transform(arg.ptpe),
+          TypeTransformer.transformType(arg.ptpe),
           isParameter = true
         )
-      }
-      params.foreach(fctx.locals.define)
+      }).foreach(fctx.locals.define)
 
       val body = transformMethod(method)
       val func = WasmFunction(
-        Names.WasmFunctionName.fromIR(method.name.name),
+        Names.WasmFunctionName(clazz.name.name, method.name.name),
         funcType.name,
-        params,
+        fctx.locals.all,
         WasmExpr(body)
       )
       ctx.functions.define(func)
       module.addFunction(func)
-
       func
     }
-
     structType
   }
 
   private def generateVTable(
       clazz: IRTrees.ClassDef
   )(implicit ctx: WasmContext): (WasmStructType, WasmGlobal) = {
-    val vtableFields = clazz.methods.map { method =>
-      val funcTyName = Names.WasmFunctionTypeName.fromIR(method.name.name)
-      WasmStructField(
-        Names.WasmFieldName.fromIR(method.name.name),
-        Types.WasmRefType(Types.WasmHeapType.Func(funcTyName)),
-        isMutable = false
+    def genVTableType(vtable: WasmVTable): WasmStructType = {
+      val vtableFields = vtable.map { method =>
+        WasmStructField(
+          Names.WasmFieldName.fromFunction(method.name),
+          Types.WasmRefType(Types.WasmHeapType.Func(method.tpe.name)),
+          isMutable = false
+        )
+      }
+      WasmStructType(
+        Names.WasmTypeName.WasmVTableTypeName.fromIR(clazz.name.name),
+        vtableFields,
+        clazz.superClass.flatMap(s =>
+          if (s.name.nameString == "java.lang.Object") None
+          else Some(Names.WasmTypeName.WasmVTableTypeName.fromIR(s.name))
+        )
       )
     }
-    val vtableType = WasmStructType(
-      Names.WasmGCTypeName.WasmVTableTypeName.fromIR(clazz.name.name),
-      vtableFields,
-      None // TODO
-    )
+
+    def genGlobalVTable(vtable: WasmVTable, vtableType: WasmStructType): WasmGlobal = {
+      // construct global vtable instance
+      val init = vtable.map { method =>
+        WasmInstr.REF_FUNC(method.name)
+      } :+ WasmInstr.STRUCT_NEW(vtableType.name)
+      WasmGlobal(
+        Names.WasmGlobalName.WasmGlobalVTableName.fromIR(clazz.name.name),
+        Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
+        Some(WasmExpr(init))
+      )
+    }
+
+    val vtable = ctx.getVtable(clazz.name.name)
+
+    val vtableType = genVTableType(vtable)
     ctx.gcTypes.define(vtableType)
     module.addRecGroupType(vtableType)
 
-    // construct global vtable instance
-    val init = clazz.methods.map { method =>
-      WasmInstr.REF_FUNC(Names.WasmFunctionName.fromIR(method.name.name))
-    } :+ WasmInstr.STRUCT_NEW(vtableType.name)
-    val vtable = WasmGlobal(
-      Names.WasmGlobalName.WasmGlobalVTableName.fromIR(clazz.name.name),
-      Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
-      Some(WasmExpr(init))
-    )
-    ctx.globals.define(vtable)
-    module.addGlobal(vtable)
+    val globalVTable = genGlobalVTable(vtable, vtableType)
+    ctx.globals.define(globalVTable)
+    module.addGlobal(globalVTable)
 
-    (vtableType, vtable)
+    (vtableType, globalVTable)
   }
 
-  private def transformClass(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
+  private def transformClass(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Class)
-    val (vtableType, vtable) = generateVTable(clazz)
-    val vtableField = WasmStructField(
-      Names.WasmFieldName.vtable,
-      Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
-      isMutable = false
-    )
-    transformClassCommon(clazz, additionalFields = List(vtableField))
+    transformClassCommon(clazz)
   }
 
   private def transformModuleClass(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
@@ -203,10 +222,10 @@ class WasmBuilder {
       }
     }
 
-    val paramTys = newParams.map(arg => TypeTransformer.transform(arg.ptpe))
+    val paramTys = newParams.map(arg => TypeTransformer.transformType(arg.ptpe))
     val resultTy = TypeTransformer.transformResultType(resultType)
     val funcType = WasmFunctionType(
-      Names.WasmFunctionTypeName.fromLiteral(methodName),
+      WasmTypeName.WasmFunctionTypeName.fromLiteral(methodName),
       paramTys,
       resultTy
     )
@@ -216,7 +235,7 @@ class WasmBuilder {
     val params = newParams.map { arg =>
       WasmLocal(
         Names.WasmLocalName.fromIR(arg.name.name),
-        TypeTransformer.transform(arg.ptpe),
+        TypeTransformer.transformType(arg.ptpe),
         isParameter = true
       )
     }
@@ -227,7 +246,7 @@ class WasmBuilder {
       case _                => builder.transformTree(newBody)
     }
     val func = WasmFunction(
-      Names.WasmFunctionName.fromLiteral(methodName),
+      Names.WasmFunctionName(methodName),
       funcType.name,
       fctx.locals.all,
       WasmExpr(instrs)
@@ -265,13 +284,13 @@ class WasmBuilder {
     val fieldName =
       field match {
         case f: IRTrees.FieldDef =>
-          Names.WasmFieldName.fromIR(f.name.name)
+          Names.WasmFieldName(f.name.name)
         // TODO
         case js: IRTrees.JSFieldDef => ???
       }
     WasmStructField(
       fieldName,
-      TypeTransformer.transform(field.ftpe),
+      TypeTransformer.transformType(field.ftpe),
       field.flags.isMutable
     )
   }

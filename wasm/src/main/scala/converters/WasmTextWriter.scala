@@ -105,20 +105,31 @@ class WasmTextWriter {
       )
     }
 
-    // def writeLocal(l: WasmLocal)(implicit b: WatBuilder): Unit = {
-    // }
+    def writeLocal(l: WasmLocal)(implicit b: WatBuilder): Unit = {
+      b.sameLineList(
+        "local", {
+          b.appendElement(l.name.show)
+          b.appendElement(l.typ.show)
+        }
+      )
+    }
 
     b.newLineList(
       "func", {
+        val (params, nonParams) = f.locals.partition(_.isParameter)
         b.appendElement(f.name.show)
         b.sameLineListOne("type", f.typ.show)
 
         b.newLine()
-        f.locals.filter(_.isParameter).foreach(p => { writeParam(p) })
+        params.foreach(writeParam)
         val fty = ctx.functionTypes.resolve(f.typ)
         fty.results.foreach(r => { b.sameLineListOne("result", r.show) })
 
         b.newLine()
+        if (nonParams.nonEmpty) {
+          nonParams.foreach(writeLocal)
+          b.newLine()
+        }
         f.body.instr.foreach(writeInstr)
       }
     )
@@ -173,7 +184,7 @@ class WasmTextWriter {
           }
         case WasmImmediate.FuncIdx(name)                => name.show
         case WasmImmediate.TypeIdx(name)                => name.show
-        case WasmImmediate.StructFieldIdx(name)         => name.show
+        case WasmImmediate.StructFieldIdx(v)            => v.toString
         case WasmImmediate.BlockType.FunctionType(name) => name.show
         case WasmImmediate.BlockType.ValueType(optTy) =>
           optTy.fold("") { ty => ty.show }

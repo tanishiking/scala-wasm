@@ -13,10 +13,6 @@ class CliReader(val classpath: List[String]) {
 
     NodeIRContainer
       .fromClasspath(classpath)
-      .map(x => {
-        println(x)
-        x
-      })
       .map(_._1)
       .flatMap(cache.cached _)
   }

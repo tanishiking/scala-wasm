@@ -10,18 +10,18 @@ object Names {
   sealed abstract class WasmName(private[wasm4s] val name: String) {
     def show: String = {
       val suffix = this match {
-        case _: WasmLocalName                         => "l"
+        case _: WasmLocalName                         => "local"
         case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
         case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
         case _: WasmFunctionName                      => "fun"
-        case _: WasmFunctionTypeName                  => "ty"
-        case _: WasmFieldName                         => "f"
-        case _: WasmExportName                        => "ex"
-        case _: WasmGCTypeName.WasmStructTypeName     => "str"
-        case _: WasmGCTypeName.WasmArrayTypeName      => "arr"
-        case _: WasmGCTypeName.WasmVTableTypeName     => "ty_vtable"
+        case _: WasmFieldName                         => "field"
+        case _: WasmExportName                        => "export"
+        case _: WasmTypeName.WasmFunctionTypeName     => "ty"
+        case _: WasmTypeName.WasmStructTypeName       => "struct"
+        case _: WasmTypeName.WasmArrayTypeName        => "arr"
+        case _: WasmTypeName.WasmVTableTypeName       => "vtable"
       }
-      s"${WasmName.sanitizeWatIdentifier(this.name)}__$suffix"
+      s"$$${WasmName.sanitizeWatIdentifier(this.name)}___$suffix"
     }
   }
   object WasmName {
@@ -38,24 +38,25 @@ object Names {
         "$.@_".contains(c)
   }
 
-  final class WasmLocalName private (override private[wasm4s] val name: String)
+  final case class WasmLocalName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmLocalName {
     def fromIR(name: IRNames.LocalName) = new WasmLocalName(name.nameString)
     def fromStr(str: String) = new WasmLocalName(str)
+    def synthetic(id: Int) = new WasmLocalName(s"local___$id")
   }
 
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
-    final class WasmModuleInstanceName private (override private[wasm4s] val name: String)
+    final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmModuleInstanceName {
       def fromIR(name: IRNames.ClassName): WasmModuleInstanceName = new WasmModuleInstanceName(
         name.nameString
       )
     }
-    final class WasmGlobalVTableName private (override private[wasm4s] val name: String)
+    final case class WasmGlobalVTableName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmGlobalVTableName {
       def fromIR(name: IRNames.ClassName): WasmGlobalVTableName = new WasmGlobalVTableName(
@@ -64,45 +65,42 @@ object Names {
     }
   }
 
-  // final class WasmGlobalName private (val name: String) extends WasmName(name) {
+  // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
   //     def apply(n: IRNames.LocalName): WasmLocalName = new WasmLocalName(n.nameString)
   // }
 
-  final class WasmFunctionName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmFunctionName private (
+      val className: String,
+      val methodName: String
+  ) extends WasmName(s"$className#$methodName")
   object WasmFunctionName {
-    def fromIR(name: IRNames.MethodName): WasmFunctionName = new WasmFunctionName(name.nameString)
-    def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionName = new WasmFunctionName(lit.value)
+    def apply(clazz: IRNames.ClassName, method: IRNames.MethodName): WasmFunctionName =
+      new WasmFunctionName(clazz.nameString, method.nameString)
+    def apply(lit: IRTrees.StringLiteral): WasmFunctionName = new WasmFunctionName(lit.value, "")
   }
 
-  final class WasmFunctionTypeName private (name: String) extends WasmName(name)
-  object WasmFunctionTypeName {
-    def fromIR(name: IRNames.MethodName) = new WasmFunctionTypeName(name.nameString)
-    def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionTypeName = new WasmFunctionTypeName(
-      lit.value
-    )
-  }
-
-  final class WasmFieldName private (name: String) extends WasmName(name)
+  final case class WasmFieldName private (override private[wasm4s] val name: String)
+      extends WasmName(name)
   object WasmFieldName {
-    def fromIR(name: IRNames.FieldName) = new WasmFieldName(name.nameString)
+    def apply(name: IRNames.FieldName) = new WasmFieldName(name.nameString)
     def fromIR(name: IRNames.MethodName) = new WasmFieldName(name.nameString)
+    def fromFunction(name: WasmFunctionName) = new WasmFieldName(name.name)
     val vtable = new WasmFieldName("vtable")
   }
 
   // GC types ====
-  sealed abstract class WasmGCTypeName(override private[wasm4s] val name: String)
+  sealed abstract class WasmTypeName(override private[wasm4s] val name: String)
       extends WasmName(name)
-  object WasmGCTypeName {
-    final class WasmStructTypeName private (override private[wasm4s] val name: String)
-        extends WasmGCTypeName(name)
+  object WasmTypeName {
+    final case class WasmStructTypeName private (override private[wasm4s] val name: String)
+        extends WasmTypeName(name)
     object WasmStructTypeName {
-      def fromIR(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
+      def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
     }
 
     /** Array type's name */
-    final class WasmArrayTypeName private (override private[wasm4s] val name: String)
-        extends WasmGCTypeName(name)
+    final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
+        extends WasmTypeName(name)
     object WasmArrayTypeName {
       def fromIR(ty: IRTypes.ArrayType) = {
         val ref = ty.arrayTypeRef
@@ -111,16 +109,25 @@ object Names {
       }
     }
 
+    final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)
+        extends WasmTypeName(name)
+    object WasmFunctionTypeName {
+      def fromIR(name: IRNames.MethodName) = new WasmFunctionTypeName(name.nameString)
+      def fromLiteral(lit: IRTrees.StringLiteral): WasmFunctionTypeName = new WasmFunctionTypeName(
+        lit.value
+      )
+    }
+
     /** Vtable type's name */
-    final class WasmVTableTypeName private (override private[wasm4s] val name: String)
-        extends WasmGCTypeName(name)
+    final case class WasmVTableTypeName private (override private[wasm4s] val name: String)
+        extends WasmTypeName(name)
     object WasmVTableTypeName {
       def fromIR(ir: IRNames.ClassName) = new WasmVTableTypeName(ir.nameString)
     }
 
   }
 
-  final class WasmExportName private (override private[wasm4s] val name: String)
+  final case class WasmExportName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmExportName {
     def fromStr(str: String) = new WasmExportName(str)
