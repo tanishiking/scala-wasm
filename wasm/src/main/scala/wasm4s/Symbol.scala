@@ -20,7 +20,7 @@ class WasmSymbolTable[N <: WasmName, T <: WasmNamedDefinitionField[N]] {
   // private val unbound = mutable.Map[Ident, WasmSymbol[T]]()
   // private val defined = mutable.Map[WasmSymbol[T], T]()
   // TODO: should keep the order
-  private val defined = mutable.Map[N, T]()
+  private val defined = mutable.LinkedHashMap[N, T]()
 
   // def reference(ident: Ident): WasmSymbol[T] =
   //   unbound.getOrElseUpdate(ident, new WasmSymbol[T](ident))

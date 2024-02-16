@@ -1,8 +1,26 @@
-## sbt project compiled with Scala 3
+## Experimental Scala.js linker backend for WasmGC
 
 ### Usage
 
-This is a normal sbt project. You can compile code with `sbt compile`, run it with `sbt run`, and `sbt console` will start a Scala 3 REPL.
+- `sample/run` to compile `sample/src/main/scala/Sample.scala` to WebAssembly Text Format (WAT) (Stack IR form)
+- Copy and paste the output WAT to a file, and transform it to binary using WasmGC reference interpreter.
+  - https://github.com/WebAssembly/gc/tree/main/interpreter
+  - Use docker image for it https://github.com/tanishiking/wasmgc-docker
 
-For more information on the sbt-dotty plugin, see the
-[scala3-example-project](https://github.com/scala/scala3-example-project/blob/main/README.md).
+
+Run the binary using Deno or something (`run.mjs`).
+
+```js
+import { readFileSync } from "node:fs";
+const wasmBuffer = readFileSync("test.wasm");
+const wasmModule = await WebAssembly.instantiate(wasmBuffer);
+const { bar } = wasmModule.instance.exports;
+const o = bar(100);
+console.log(o);
+```
+
+```sh
+$ deno run --allow-read run.mjs
+```
+
+

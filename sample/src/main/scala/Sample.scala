@@ -1,25 +1,24 @@
 package sample
 
-// import scala.scalajs.js.annotation._
+import scala.scalajs.js.annotation._
 
 object Main extends Base {
-    // @JSExportTopLevel("foo")
-    def foo(x: Int) = {
-        ident(x)
-        // val d = new Derived(1)
-        // d.derived(x)
-    }
+  def multiply(x: Int, y: Int) = x * y
+
+  @JSExportTopLevel("multSqrt")
+  def multSqrt(x: Int, y: Int) =
+    multiply(sqrt(x), sqrt(y))
 }
 
 class Base {
-    def ident(x: Int) = x
+  def sqrt(x: Int) = x * x
 }
 
-object Foo {
-    def foo =
-        Main.ident(1)
-}
-// 
+// object Foo {
+//     def foo =
+//         Main.ident(1)
+// }
+//
 // class Derived(override val i: Int) extends Base(i) {
 //     def derived(x: Int) = x * i
 //     override def base(x: Int): Int = x * i
