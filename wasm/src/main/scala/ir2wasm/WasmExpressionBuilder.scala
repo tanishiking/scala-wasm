@@ -39,7 +39,9 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       REF_IS_NULL,
       IF(WasmImmediate.BlockType.ValueType(None)),
       STRUCT_NEW_DEFAULT(TypeIdx(recieverGCTypeName)),
-      LOCAL_SET(LocalIdx(fctx.receiver.name)),
+      LOCAL_TEE(LocalIdx(fctx.receiver.name)),
+      GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(recieverGCTypeName))),
+      STRUCT_SET(TypeIdx(recieverGCTypeName), StructFieldIdx(0)),
       END
     )
   }
@@ -163,6 +165,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
 
   private def transformApply(t: IRTrees.Apply): List[WasmInstr] = {
     val pushReceiver = transformTree(t.receiver)
+    val wasmArgs = t.args.flatMap(transformTree)
 
     val receiverClassName = t.receiver.tpe match {
       case ClassType(className) => className
@@ -181,12 +184,14 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
 
     val tpe = ctx.getVtable(receiverClassName)(methodIdx.value).tpe // should be safe
 
+    // // push args to the stacks
     // local.get $this ;; for accessing funcref
     // local.get $this ;; for accessing vtable
     // struct.get $classType 0 ;; get vtable
     // struct.get $vtableType $methodIdx ;; get funcref
-    // call.ref $funcType ;; call funcref
-    pushReceiver ++ pushReceiver ++
+    // call.ref (type $funcType) ;; call funcref
+    (pushReceiver ++ wasmArgs) ++
+      pushReceiver ++ pushReceiver ++
       List(
         STRUCT_GET(
           TypeIdx(WasmStructTypeName(receiverClassName)),

@@ -29,8 +29,10 @@ class WasmBuilder(module: WasmModule) {
     val (vtableType, vtable) = generateVTable(clazz)
     val vtableField = WasmStructField(
       Names.WasmFieldName.vtable,
-      Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
-      isMutable = false
+      Types.WasmRefNullType(Types.WasmHeapType.Type(vtableType.name)),
+      // needs to be mutable since we create instance with new_default and then set the vtable
+      // maybe we can set immutable once if we define our own new_default-ish function
+      isMutable = true
     )
 
     val superType = clazz.superClass.flatMap(s =>
@@ -135,7 +137,7 @@ class WasmBuilder(module: WasmModule) {
       val vtableFields = vtable.map { method =>
         WasmStructField(
           Names.WasmFieldName.fromFunction(method.name),
-          Types.WasmRefType(Types.WasmHeapType.Func(method.tpe.name)),
+          Types.WasmRefNullType(Types.WasmHeapType.Func(method.tpe.name)),
           isMutable = false
         )
       }
@@ -155,9 +157,9 @@ class WasmBuilder(module: WasmModule) {
         WasmInstr.REF_FUNC(method.name)
       } :+ WasmInstr.STRUCT_NEW(vtableType.name)
       WasmGlobal(
-        Names.WasmGlobalName.WasmGlobalVTableName.fromIR(clazz.name.name),
-        Types.WasmRefType(Types.WasmHeapType.Type(vtableType.name)),
-        Some(WasmExpr(init))
+        Names.WasmGlobalName.WasmGlobalVTableName(clazz.name.name),
+        Types.WasmRefNullType(Types.WasmHeapType.Type(vtableType.name)),
+        WasmExpr(init)
       )
     }
 
@@ -183,13 +185,14 @@ class WasmBuilder(module: WasmModule) {
     assert(clazz.kind == ClassKind.ModuleClass)
 
     val structType = transformClassCommon(clazz)
+    val heapType = Types.WasmHeapType.Type(structType.name)
 
     // global instance
     // (global name (ref null type))
     val global = WasmGlobal(
       Names.WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name),
-      Types.WasmRefNullType(Types.WasmHeapType.Type(structType.name)),
-      None
+      Types.WasmRefNullType(heapType),
+      WasmExpr(List(WasmInstr.REF_NULL(WasmImmediate.HeapType(heapType))))
     )
     ctx.globals.define(global)
     module.addGlobal(global)
@@ -329,7 +332,9 @@ class WasmBuilder(module: WasmModule) {
     WasmStructField(
       fieldName,
       TypeTransformer.transformType(field.ftpe),
-      field.flags.isMutable
+      // needs to be mutable even if it's flags.isMutable = false
+      // because it's initialized by constructor
+      isMutable = true // field.flags.isMutable
     )
   }
 }

@@ -59,8 +59,11 @@ object Names {
     final case class WasmGlobalVTableName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmGlobalVTableName {
-      def fromIR(name: IRNames.ClassName): WasmGlobalVTableName = new WasmGlobalVTableName(
+      def apply(name: IRNames.ClassName): WasmGlobalVTableName = new WasmGlobalVTableName(
         name.nameString
+      )
+      def apply(name: WasmTypeName): WasmGlobalVTableName = new WasmGlobalVTableName(
+        name.name
       )
     }
   }

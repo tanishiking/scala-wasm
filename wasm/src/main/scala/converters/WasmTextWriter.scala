@@ -77,7 +77,7 @@ class WasmTextWriter {
 
   private def writeFunctionType(
       functionType: WasmFunctionType
-  )(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+  )(implicit b: WatBuilder, ctx: WasmContext): Unit =
     // (type type-name (func (param ty) (param ty) (result ty)))
     b.newLineList(
       "type", {
@@ -87,13 +87,14 @@ class WasmTextWriter {
             functionType.params.foreach { ty =>
               b.sameLineListOne("param", ty.show)
             }
+            if (functionType.results.nonEmpty)
+              functionType.results.foreach { ty =>
+                b.sameLineListOne("result", ty.show)
+              }
           }
         )
-        if (functionType.results.nonEmpty)
-          functionType.results.foreach { ty => b.sameLineListOne("result", ty.show) }
       }
     )
-  }
 
   private def writeFunction(f: WasmFunction)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
@@ -142,10 +143,8 @@ class WasmTextWriter {
       "global", {
         b.appendElement(g.name.show)
         b.appendElement(g.typ.show)
-        g.init.foreach { init =>
-          b.newLine()
-          init.instr.foreach(writeInstr)
-        }
+        b.newLine()
+        g.init.instr.foreach(writeInstr)
       }
     )
 
