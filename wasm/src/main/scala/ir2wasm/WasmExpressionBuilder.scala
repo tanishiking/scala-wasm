@@ -20,14 +20,14 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     * local.get $receiver ;; (ref null $struct)
     * ref.is_null
     * if
-    *   struct.new_default $struct
+    *   call $newDefault
     *   local.set $receiver
     * end
     * ```
     *
     * Maybe we can unreachable in else branch?
     */
-  def objectCreationPrefix(method: IRTrees.MethodDef): List[WasmInstr] = {
+  def objectCreationPrefix(clazz: IRTrees.ClassDef, method: IRTrees.MethodDef): List[WasmInstr] = {
     assert(method.flags.namespace.isConstructor)
     val recieverGCTypeName = fctx.receiver.typ match {
       case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
@@ -38,10 +38,8 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       LOCAL_GET(LocalIdx(fctx.receiver.name)),
       REF_IS_NULL,
       IF(WasmImmediate.BlockType.ValueType(None)),
-      STRUCT_NEW_DEFAULT(TypeIdx(recieverGCTypeName)),
-      LOCAL_TEE(LocalIdx(fctx.receiver.name)),
-      GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(recieverGCTypeName))),
-      STRUCT_SET(TypeIdx(recieverGCTypeName), StructFieldIdx(0)),
+      CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
+      LOCAL_SET(LocalIdx(fctx.receiver.name)),
       END
     )
   }
@@ -190,8 +188,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
     // struct.get $classType 0 ;; get vtable
     // struct.get $vtableType $methodIdx ;; get funcref
     // call.ref (type $funcType) ;; call funcref
-    (pushReceiver ++ wasmArgs) ++
-      pushReceiver ++ pushReceiver ++
+    pushReceiver ++ wasmArgs ++ pushReceiver ++
       List(
         STRUCT_GET(
           TypeIdx(WasmStructTypeName(receiverClassName)),

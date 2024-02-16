@@ -17,7 +17,7 @@ object Types {
   case object WasmInt64 extends WasmType("i64", -0x2)
   case object WasmFloat32 extends WasmType("f32", -0x3)
   case object WasmFloat64 extends WasmType("f64", -0x4)
-  case object WasmVec128 extends WasmType("v128", -0x5)
+  // case object WasmVec128 extends WasmType("v128", -0x5)
   // case object WasmInt8 extends WasmType("i8", -0x6)
   // case object WasmInt16 extends WasmType("i16", -0x7)
 

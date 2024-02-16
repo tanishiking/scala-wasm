@@ -142,7 +142,9 @@ class WasmTextWriter {
     b.newLineList(
       "global", {
         b.appendElement(g.name.show)
-        b.appendElement(g.typ.show)
+        if (g.isMutable)
+          b.sameLineList("mut", { b.appendElement(g.typ.show) })
+        else b.appendElement(g.typ.show)
         b.newLine()
         g.init.instr.foreach(writeInstr)
       }

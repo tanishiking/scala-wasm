@@ -72,7 +72,7 @@ object Names {
   //     def apply(n: IRNames.LocalName): WasmLocalName = new WasmLocalName(n.nameString)
   // }
 
-  final case class WasmFunctionName private (
+  case class WasmFunctionName private (
       val className: String,
       val methodName: String
   ) extends WasmName(s"$className#$methodName")
@@ -86,6 +86,8 @@ object Names {
     // since loadModule is a static method and it's not registered in the vtable.
     def loadModule(clazz: IRNames.ClassName): WasmFunctionName =
         new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
+    def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
+        new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
