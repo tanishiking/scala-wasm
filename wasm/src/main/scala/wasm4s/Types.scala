@@ -1,5 +1,6 @@
 package wasm.wasm4s
 
+import org.scalajs.ir.{Names => IRNames}
 import Names._
 import Names.WasmTypeName._
 
@@ -59,5 +60,7 @@ object Types {
       object None extends Simple("none", -0x0f)
       object NoExtern extends Simple("noextern", -0x0e)
     }
+
+    val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
   }
 }

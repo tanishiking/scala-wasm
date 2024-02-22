@@ -13,7 +13,7 @@ import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 
-class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
+class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext) {
 
   /** object creation prefix
     * ```
@@ -57,8 +57,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
         List(LOCAL_GET(LocalIdx(fctx.receiver.name)))
       case t: IRTrees.ApplyStatic => ???
       case t: IRTrees.ApplyStatically =>
-        if (t.className.nameString == "java.lang.Object") Nil
-        else transformApplyStatically(t)
+        transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
       case t: IRTrees.Block              => ???
@@ -66,6 +65,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       case t: IRTrees.Assign             => transformAssign(t)
       case t: IRTrees.VarDef             => transformVarDef(t)
       case t: IRTrees.New                => transformNew(t)
+      case t: IRTrees.Skip               => Nil
       case _ =>
         println(tree)
         ???
@@ -135,14 +135,14 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       case sel: IRTrees.Select =>
         val className = WasmStructTypeName(sel.className)
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
         transformTree(sel.qualifier) ++ wasmRHS :+
           STRUCT_SET(TypeIdx(className), idx)
 
       case sel: IRTrees.SelectStatic => // OK?
         val className = WasmStructTypeName(sel.className)
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
         List(
           GLOBAL_GET(
             GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
@@ -169,37 +169,36 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
       case ClassType(className) => className
       case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
+    val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
-    val methodIdx = ctx
-      .getVtable(receiverClassName)
-      .indexWhere(_.name.methodName == t.method.name.nameString) match {
-      case i if i < 0 =>
-        throw new Error(
-          s"Method ${t.method.name.nameString} not found in vtable of ${receiverClassName}"
+    if (receiverClassInfo.isInterface) {
+      ???
+    } else { // virtual dispatch
+      val (methodIdx, info) = ctx
+        .calculateVtable(receiverClassName)
+        .resolveWithIdx(WasmFunctionName(receiverClassName, t.method.name))
+
+      // // push args to the stacks
+      // local.get $this ;; for accessing funcref
+      // local.get $this ;; for accessing vtable
+      // struct.get $classType 0 ;; get vtable
+      // struct.get $vtableType $methodIdx ;; get funcref
+      // call.ref (type $funcType) ;; call funcref
+      pushReceiver ++ wasmArgs ++ pushReceiver ++
+        List(
+          STRUCT_GET(
+            TypeIdx(WasmStructTypeName(receiverClassName)),
+            StructFieldIdx(0)
+          ),
+          STRUCT_GET(
+            TypeIdx(WasmVTableTypeName.fromIR(receiverClassName)),
+            StructFieldIdx(methodIdx)
+          ),
+          CALL_REF(
+            TypeIdx(info.toWasmFunctionType(ctx.getClassInfo(receiverClassName))(ctx).name)
+          )
         )
-      case i => StructFieldIdx(i)
     }
-
-    val tpe = ctx.getVtable(receiverClassName)(methodIdx.value).tpe // should be safe
-
-    // // push args to the stacks
-    // local.get $this ;; for accessing funcref
-    // local.get $this ;; for accessing vtable
-    // struct.get $classType 0 ;; get vtable
-    // struct.get $vtableType $methodIdx ;; get funcref
-    // call.ref (type $funcType) ;; call funcref
-    pushReceiver ++ wasmArgs ++ pushReceiver ++
-      List(
-        STRUCT_GET(
-          TypeIdx(WasmStructTypeName(receiverClassName)),
-          StructFieldIdx(0)
-        ),
-        STRUCT_GET(
-          TypeIdx(WasmVTableTypeName.fromIR(receiverClassName)),
-          methodIdx
-        ),
-        CALL_REF(TypeIdx(tpe.name))
-      )
   }
 
   private def transformApplyStatically(t: IRTrees.ApplyStatically): List[WasmInstr] = {
@@ -227,7 +226,7 @@ class WasmExpressionBuilder(ctx: WasmContext, fctx: WasmFunctionContext) {
   private def transformSelect(sel: IRTrees.Select): List[WasmInstr] = {
     val className = WasmStructTypeName(sel.className)
     val fieldName = WasmFieldName(sel.field.name)
-    val idx = ctx.getClassinfo(sel.className).getFieldIdx(fieldName)
+    val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
     transformTree(sel.qualifier) :+
       STRUCT_GET(TypeIdx(className), idx)
   }

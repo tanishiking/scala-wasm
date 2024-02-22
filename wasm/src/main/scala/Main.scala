@@ -38,8 +38,8 @@ object Main {
     basicTestClassDefs.foreach(c => println(c.show))
 
     val module = new WasmModule
-    val builder = new WasmBuilder(module)
-    implicit val context: WasmContext = WasmContext(module)
+    val builder = new WasmBuilder()
+    implicit val context: WasmContext = new WasmContext(module)
     basicTestClassDefs.foreach { clazz =>
       builder.transformClassDef(clazz)
     }

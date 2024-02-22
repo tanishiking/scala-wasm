@@ -20,14 +20,18 @@ object Compiler {
   def compileIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Unit] = {
     // IRFileImpl.fromIRFile()
     val module = new WasmModule
-    val builder = new WasmBuilder(module)
-    implicit val context: WasmContext = WasmContext(module)
+    val builder = new WasmBuilder()
+    implicit val context: WasmContext = new WasmContext(module)
     println("compiling")
+    val filtered = irFiles.filter { i =>
+      val path = IRFileImpl.fromIRFile(i).path
+      path.contains("java/lang/Object") || path.contains("/sample/")
+    }
     Future
-      .traverse(irFiles)(i => IRFileImpl.fromIRFile(i).tree)
+      .traverse(filtered)(i => IRFileImpl.fromIRFile(i).tree)
       .map { classDefs =>
         classDefs.foreach { clazz =>
-          Preprocessor.collectMethods(clazz)(context)
+          Preprocessor.preprocess(clazz)(context)
         }
         classDefs.foreach { clazz =>
           println(clazz.show)

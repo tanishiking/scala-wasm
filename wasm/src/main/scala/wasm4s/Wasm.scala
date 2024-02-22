@@ -89,7 +89,7 @@ case class WasmStructField(
   */
 class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
-    private val _recGroupTypes: mutable.ListBuffer[WasmGCTypeDefinition] = new mutable.ListBuffer(),
+    private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
     // val importedFunctions: List[WasmFunction.Imported] = Nil,
     // val importedMemories: List[WasmMemory] = Nil,
@@ -109,13 +109,41 @@ class WasmModule(
 ) {
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
-  def addRecGroupType(typ: WasmGCTypeDefinition): Unit = _recGroupTypes.addOne(typ)
+  def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
   def addExport(export: WasmExport[_]) = _exports.addOne(export)
 
   def functionTypes = _functionTypes.toList
-  def recGroupTypes = _recGroupTypes.toList
+  def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
+}
+
+object WasmModule {
+  private def tsort(types: List[WasmStructType]): List[WasmStructType] = {
+    def tsort(
+        toPreds: Map[WasmTypeName, Option[WasmTypeName]],
+        done: List[WasmTypeName]
+    ): List[WasmTypeName] = {
+      val (noPreds, hasPreds) = toPreds.partition { _._2.isEmpty }
+      if (noPreds.isEmpty) {
+        if (hasPreds.isEmpty) done else sys.error(hasPreds.toString)
+      } else {
+        val found = noPreds.map { _._1 }.toSet
+        val updated = hasPreds.map {
+          case (k, Some(v)) => // should be safe because hasPreds has no None
+            (k, if (found.contains(v)) None else Some(v))
+        }
+        tsort(updated, done ++ found)
+      }
+    }
+    val predecessors: Map[WasmTypeName, Option[WasmTypeName]] =
+      types.map(t => t.name -> t.superType).toMap
+    val typeMap = types.map(t => t.name -> t).toMap
+
+    val sortedNames = tsort(predecessors, Nil)
+    sortedNames.map(name => typeMap(name))
+  }
+
 }

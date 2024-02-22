@@ -2,6 +2,7 @@ package wasm
 package ir2wasm
 
 import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Names => IRNames}
 import wasm4s._
 
@@ -12,16 +13,34 @@ object TypeTransformer {
       Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
     )
 
+  def transformFunctionType(
+      clazz: WasmContext.WasmClassInfo,
+      method: WasmContext.WasmFunctionInfo
+  )(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType = {
+    val className = clazz.name
+    val name = method.name
+    val receiverType =
+      if (clazz.kind.isClass) List(makeReceiverType(className)) else Nil
+    val sig = WasmFunctionSignature(
+      receiverType ++ method.argTypes.map(transformType),
+      transformResultType(method.resultType)
+    )
+    val typeName = ctx.addFunctionType(sig)
+    WasmFunctionType(typeName, sig)
+  }
+
   /** This transformation should be used only for the result types of functions.
     * @see
     *   https://webassembly.github.io/spec/core/syntax/types.html#result-types
     */
-  def transformResultType(t: IRTypes.Type)(implicit ctx: WasmContext): List[Types.WasmType] =
+  def transformResultType(
+      t: IRTypes.Type
+  )(implicit ctx: ReadOnlyWasmContext): List[Types.WasmType] =
     t match {
       case IRTypes.NoType => Nil
       case _              => List(transformType(t))
     }
-  def transformType(t: IRTypes.Type)(implicit ctx: WasmContext): Types.WasmType =
+  def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
     t match {
       case IRTypes.AnyType => Types.WasmAnyRef
 
@@ -40,10 +59,13 @@ object TypeTransformer {
         //   context.gcTypes.define(WasmArrayType(Names.WasmGCTypeName.fromIR(tpe), field))
         // Types.WasmRefType(Types.WasmHeapType.Type(arrayTySym))
         ???
-      case IRTypes.ClassType(className) =>
-        Types.WasmRefType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
-        )
+      case clazz @ IRTypes.ClassType(className) =>
+        if (ctx.getClassInfo(clazz.className).isInterface)
+          Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+        else
+          Types.WasmRefType(
+            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+          )
       case IRTypes.RecordType(fields) => ???
       case IRTypes.StringType         => ??? // TODO
       case IRTypes.UndefType          => ???
@@ -52,7 +74,7 @@ object TypeTransformer {
 
   def transformPrimType(
       t: IRTypes.PrimTypeWithRef
-  )(implicit context: WasmContext): Types.WasmType =
+  ): Types.WasmType =
     t match {
       case IRTypes.BooleanType => Types.WasmInt32
       case IRTypes.ByteType    => Types.WasmInt32

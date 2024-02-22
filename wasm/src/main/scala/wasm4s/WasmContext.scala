@@ -4,18 +4,54 @@ import scala.collection.mutable
 
 import Names._
 import Names.WasmTypeName._
+import Types._
 
 import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.ClassKind
 
 import scala.collection.mutable.LinkedHashMap
+import wasm.ir2wasm.TypeTransformer
 
-case class WasmContext(module: WasmModule) {
+trait ReadOnlyWasmContext {
   import WasmContext._
-  val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
-  val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
-  val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
+  protected val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
+  protected val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
+  protected val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
 
-  private val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
+  protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
+  private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
+
+  def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
+    classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
+
+  def calculateVtable(name: IRNames.ClassName): WasmVTable = {
+    // def collectMethodsFromInterface(iface)
+    def collectMethods(className: IRNames.ClassName): List[WasmFunctionInfo] = {
+      val info = classInfo.getOrElse(className, throw new Error(s"Class not found: $className"))
+      val fromSuperClass = info.superClass.map(collectMethods).getOrElse(Nil)
+      val fromInterfaces = info.interfaces.flatMap(collectMethods)
+      fromSuperClass ++ fromInterfaces ++ info.methods.filterNot(_.isAbstract)
+    }
+
+    vtablesCache.getOrElseUpdate(
+      name, {
+        val functions = collectMethods(name)
+          .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
+            acc.indexWhere(_.name.methodName == m.name.methodName) match {
+              case i if i < 0 => acc :+ m
+              case i          => acc.updated(i, m)
+            }
+          }
+          .toList
+        WasmVTable(functions)
+      }
+    )
+  }
+}
+
+trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
+  protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
 
   def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
     functionSignatures.get(sig) match {
@@ -29,50 +65,41 @@ case class WasmContext(module: WasmModule) {
       case Some(value) => WasmFunctionTypeName(value)
     }
   }
+}
 
-  // ClassName -> functionNames and type
-  private val vtables = mutable.Map[IRNames.ClassName, WasmVTable]()
-
-  val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
-
-  def getClassinfo(name: IRNames.ClassName): WasmClassInfo =
-    classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
-
-  def getVtable(name: IRNames.ClassName): WasmVTable = vtables.getOrElseUpdate(
-    name, {
-      collectMethods(name, mutable.ListBuffer.empty)
-        .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
-          acc.indexWhere(_.name.methodName == m.name.methodName) match {
-            case i if i < 0 => acc :+ m
-            case i          => acc.updated(i, m)
-          }
-        }
-        .toList
-    }
-  )
-
-  private def collectMethods(
-      className: IRNames.ClassName,
-      buf: mutable.ListBuffer[WasmFunctionInfo]
-  ): List[WasmFunctionInfo] = {
-    val info = classInfo.getOrElse(className, throw new Error(s"Class not found: $className"))
-    buf.prependAll(info.methods)
-    info.superClass match {
-      case None                                          => buf.toList
-      case Some(s) if s.nameString == "java.lang.Object" => buf.toList
-      case Some(s)                                       => collectMethods(s, buf)
-    }
+class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
+  import WasmContext._
+  def addExport(export: WasmExport[_]): Unit = module.addExport(export)
+  def addFunction(fun: WasmFunction): Unit = {
+    module.addFunction(fun)
+    functions.define(fun)
   }
+  def addGCType(ty: WasmStructType): Unit = {
+    module.addRecGroupType(ty)
+    gcTypes.define(ty)
+  }
+  def addGlobal(g: WasmGlobal): Unit = {
+    module.addGlobal(g)
+    globals.define(g)
+  }
+
+  def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
+    classInfo.put(name, info)
 
 }
 
 object WasmContext {
-  private val classFieldOffset = 1 // vtable
+  private val classFieldOffset = 2 // vtable, itables
   case class WasmClassInfo(
+      name: IRNames.ClassName,
+      kind: ClassKind,
       methods: List[WasmFunctionInfo],
       private val fields: List[WasmFieldName],
-      superClass: Option[IRNames.ClassName]
+      superClass: Option[IRNames.ClassName],
+      interfaces: List[IRNames.ClassName]
   ) {
+
+    def isInterface = kind == ClassKind.Interface
 
     def getFieldIdx(name: WasmFieldName): WasmImmediate.StructFieldIdx =
       fields.indexWhere(_ == name) match {
@@ -81,7 +108,38 @@ object WasmContext {
       }
   }
 
-  case class WasmFunctionInfo(name: WasmFunctionName, tpe: WasmFunctionType)
+  case class WasmFunctionInfo(
+      name: WasmFunctionName,
+      argTypes: List[IRTypes.Type],
+      resultType: IRTypes.Type,
+      isAbstract: Boolean
+  ) {
+    def toWasmFunctionType(clazz: WasmClassInfo)(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType =
+      TypeTransformer.transformFunctionType(clazz, this)
+
+  }
   case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
-  type WasmVTable = List[WasmFunctionInfo]
+
+  case class WasmVTable(val functions: List[WasmFunctionInfo]) {
+    def resolve(name: WasmFunctionName): WasmFunctionInfo =
+      functions
+        .find(_.name.methodName == name.methodName)
+        .getOrElse(throw new Error(s"Function not found: $name"))
+    def resolveWithIdx(name: WasmFunctionName): (Int, WasmFunctionInfo) = {
+      val idx = functions.indexWhere(_.name.methodName == name.methodName)
+      if (idx < 0) throw new Error(s"Function not found: $name")
+      else (idx, functions(idx))
+    }
+    def toVTableEntries(vtableTypeName: WasmTypeName): List[WasmInstr] = {
+      functions.map { method =>
+        WasmInstr.REF_FUNC(method.name)
+      } :+ WasmInstr.STRUCT_NEW(vtableTypeName)
+    }
+
+  }
+  // object WasmVTable {
+  //   def apply(functions: List[WasmFunctionInfo]): WasmVTable =
+  //       new WasmVTable(functions.map(f => f.name.methodName -> f).toMap)
+  // }
+  // type WasmVTable = List[WasmFunctionInfo]
 }

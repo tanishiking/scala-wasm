@@ -13,6 +13,7 @@ object Names {
         case _: WasmLocalName                         => "local"
         case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
         case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
+        case _: WasmGlobalName.WasmGlobalITableName   => "g_itable"
         case _: WasmFunctionName                      => "fun"
         case _: WasmFieldName                         => "field"
         case _: WasmExportName                        => "export"
@@ -20,6 +21,7 @@ object Names {
         case _: WasmTypeName.WasmStructTypeName       => "struct"
         case _: WasmTypeName.WasmArrayTypeName        => "arr"
         case _: WasmTypeName.WasmVTableTypeName       => "vtable"
+        case _: WasmTypeName.WasmITableTypeName       => "itable"
       }
       s"$$${WasmName.sanitizeWatIdentifier(this.name)}___$suffix"
     }
@@ -66,6 +68,14 @@ object Names {
         name.name
       )
     }
+
+    final case class WasmGlobalITableName private (override private[wasm4s] val name: String)
+        extends WasmGlobalName(name)
+    object WasmGlobalITableName {
+      def apply(name: IRNames.ClassName): WasmGlobalITableName = new WasmGlobalITableName(
+        name.nameString
+      )
+    }
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -85,18 +95,22 @@ object Names {
     // It should be safe not to add prefix to the method name
     // since loadModule is a static method and it's not registered in the vtable.
     def loadModule(clazz: IRNames.ClassName): WasmFunctionName =
-        new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
+      new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
-        new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
+      new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmFieldName {
     def apply(name: IRNames.FieldName) = new WasmFieldName(name.nameString)
-    def fromIR(name: IRNames.MethodName) = new WasmFieldName(name.nameString)
-    def fromFunction(name: WasmFunctionName) = new WasmFieldName(name.name)
+
+    /** For class itable fields, each fields point to an itable of the interfaces */
+    def apply(name: WasmTypeName.WasmITableTypeName) = new WasmFieldName(name.name)
+    def apply(name: IRNames.MethodName) = new WasmFieldName(name.nameString)
+    def apply(name: WasmFunctionName) = new WasmFieldName(name.name)
     val vtable = new WasmFieldName("vtable")
+    val itables = new WasmFieldName("itables")
   }
 
   // GC types ====
@@ -131,6 +145,12 @@ object Names {
         extends WasmTypeName(name)
     object WasmVTableTypeName {
       def fromIR(ir: IRNames.ClassName) = new WasmVTableTypeName(ir.nameString)
+    }
+
+    final case class WasmITableTypeName private (override private[wasm4s] val name: String)
+        extends WasmTypeName(name)
+    object WasmITableTypeName {
+      def apply(ir: IRNames.ClassName) = new WasmITableTypeName(ir.nameString)
     }
 
   }

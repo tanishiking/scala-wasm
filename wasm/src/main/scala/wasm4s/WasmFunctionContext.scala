@@ -18,4 +18,5 @@ class WasmFunctionContext private (private val _receiver: Option[WasmLocal]) {
 object WasmFunctionContext {
   def apply(): WasmFunctionContext = new WasmFunctionContext(None)
   def apply(receiver: WasmLocal): WasmFunctionContext = new WasmFunctionContext(Some(receiver))
+  def apply(receiver: Option[WasmLocal]): WasmFunctionContext = new WasmFunctionContext(receiver)
 }

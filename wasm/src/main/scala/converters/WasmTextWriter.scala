@@ -5,20 +5,17 @@ import wasm4s._
 import wasm4s.Names._
 import ir2wasm.WasmBuilder
 import wasm.wasm4s.Types.WasmHeapType
-import wasm.wasm4s.Types.WasmHeapType
 
 class WasmTextWriter {
   import WasmTextWriter._
 
-  def write(module: WasmModule)(implicit context: WasmContext): String = {
+  def write(module: WasmModule): String = {
     implicit val b = new WatBuilder()
     writeModule(module)
     b.toString()
   }
 
-  private def writeModule(
-      module: WasmModule
-  )(implicit b: WatBuilder, context: WasmContext): Unit = {
+  private def writeModule(module: WasmModule)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "module", {
         b.newLineList(
@@ -37,9 +34,9 @@ class WasmTextWriter {
 
   private def writeGCTypeDefinition(
       t: WasmGCTypeDefinition
-  )(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+  )(implicit b: WatBuilder): Unit = {
     def writeField(field: WasmStructField): Unit = {
-      b.sameLineList(
+      b.newLineList(
         "field", {
           b.appendElement(field.name.show)
           if (field.isMutable)
@@ -77,7 +74,7 @@ class WasmTextWriter {
 
   private def writeFunctionType(
       functionType: WasmFunctionType
-  )(implicit b: WatBuilder, ctx: WasmContext): Unit =
+  )(implicit b: WatBuilder): Unit =
     // (type type-name (func (param ty) (param ty) (result ty)))
     b.newLineList(
       "type", {
@@ -96,7 +93,7 @@ class WasmTextWriter {
       }
     )
 
-  private def writeFunction(f: WasmFunction)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+  private def writeFunction(f: WasmFunction)(implicit b: WatBuilder): Unit = {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
@@ -135,10 +132,7 @@ class WasmTextWriter {
     )
   }
 
-  private def writeGlobal(g: WasmGlobal)(implicit
-      b: WatBuilder,
-      ctx: WasmContext
-  ) =
+  private def writeGlobal(g: WasmGlobal)(implicit b: WatBuilder) =
     b.newLineList(
       "global", {
         b.appendElement(g.name.show)
@@ -166,7 +160,7 @@ class WasmTextWriter {
     }
   )
 
-  private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder, ctx: WasmContext): Unit = {
+  private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i =>
       val str = i match {
@@ -200,18 +194,7 @@ class WasmTextWriter {
 }
 
 object WasmTextWriter {
-  def sanitizeWatIdentifier(indent: String): String =
-    if (indent.isEmpty) "_"
-    else if (indent.forall(isValidWatIdentifierChar)) indent
-    else indent.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
-
-  /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
-  def isValidWatIdentifierChar(c: Char): Boolean =
-    c.isDigit || c.isLetter ||
-      "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
-      "$.@_".contains(c)
-
-  class WatBuilder {
+  private class WatBuilder {
     private val builder = new StringBuilder
     private var level = 0
     private val indent = "  "

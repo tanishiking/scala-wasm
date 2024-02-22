@@ -9,8 +9,9 @@ lazy val cli = project
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= {
       _.withModuleKind(ModuleKind.CommonJSModule),
-    },
-  ).dependsOn(wasm)
+    }
+  )
+  .dependsOn(wasm)
 
 lazy val wasm = project
   .in(file("wasm"))
@@ -26,7 +27,7 @@ lazy val wasm = project
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= {
       _.withModuleKind(ModuleKind.CommonJSModule),
-    },
+    }
   )
 //   .enablePlugins(ScalaJSPlugin)
 
@@ -38,9 +39,16 @@ lazy val sample = project
     scalaJSUseMainModuleInitializer := true,
     Compile / jsEnv := {
       import org.scalajs.jsenv.nodejs.NodeJSEnv
-      val cp = Attributed.data((Compile / fullClasspath).value).filter(_.toString().contains("sample/target")).mkString(";")
+      val cp = Attributed
+        .data((Compile / fullClasspath).value)
+        // .filter { path =>
+        //     val pathStr = path.toString()
+        //     println(pathStr)
+        //     pathStr.contains("sample/target")
+        // }
+        .mkString(";")
       val env = Map("SCALAJS_CLASSPATH" -> cp, "SCALAJS_MODE" -> "sample")
       new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
     },
-    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value,
+    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
