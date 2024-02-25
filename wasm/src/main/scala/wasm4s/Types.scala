@@ -56,6 +56,7 @@ object Types {
       object Extern extends Simple("extern", -0x11)
       object Any extends Simple("any", -0x12)
       object Eq extends Simple("eq", -0x13)
+      object Array extends Simple("array", -0x14)
       object Struct extends Simple("struct", -0x15)
       object None extends Simple("none", -0x0f)
       object NoExtern extends Simple("noextern", -0x0e)

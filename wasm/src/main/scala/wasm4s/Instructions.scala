@@ -237,16 +237,14 @@ object WasmInstr {
     def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
   }
 
-
   // ============================================================
   // Typed Function References
   // https://github.com/WebAssembly/function-references
-  case class  CALL_REF(i: TypeIdx) extends WasmInstr("call_ref", 0x14, List(i))
-  case class  RETURN_CALL_REF(i: TypeIdx) extends WasmInstr("return_call_ref", 0x15, List(i))
-  case object REF_AS_NOT_NULL extends WasmInstr("ref.as_non_null", 0xD4)
-  case class  BR_ON_NULL(i: LabelIdx) extends WasmInstr("br_on_null", 0xD5, List(i))
-  case class  BR_ON_NON_NULL(i: LabelIdx) extends WasmInstr("br_on_non_null", 0xD6, List(i))
-
+  case class CALL_REF(i: TypeIdx) extends WasmInstr("call_ref", 0x14, List(i))
+  case class RETURN_CALL_REF(i: TypeIdx) extends WasmInstr("return_call_ref", 0x15, List(i))
+  case object REF_AS_NOT_NULL extends WasmInstr("ref.as_non_null", 0xd4)
+  case class BR_ON_NULL(i: LabelIdx) extends WasmInstr("br_on_null", 0xd5, List(i))
+  case class BR_ON_NON_NULL(i: LabelIdx) extends WasmInstr("br_on_non_null", 0xd6, List(i))
 
   // ============================================================
   // gc
@@ -262,6 +260,25 @@ object WasmInstr {
   // STRUCT_GET_U
   case class STRUCT_SET(tyidx: TypeIdx, fidx: StructFieldIdx)
       extends WasmInstr("struct.set", 0xfb_05, List(tyidx, fidx))
+
+  case class ARRAY_NEW(i: TypeIdx) extends WasmInstr("array.new", 0xfb_06, List(i))
+  case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xfb_07, List(i))
+  case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xfb_0b, List(i))
+  case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xfb_0c, List(i))
+  case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xfb_0d, List(i))
+  case class ARRAY_SET(i: TypeIdx) extends WasmInstr("array.set", 0xfb_0e, List(i))
+  case object ARRAY_LEN extends WasmInstr("array.len", 0xfb_0f)
+  // ARRAY_FILL,
+  // ARRAY_COPY
+  // ARRAY_NEW_DATA
+  // array_NEW_FIXED
+
+  case object REF_EQ extends WasmInstr("ref.eq", 0xd3)
+  case class REF_TEST(i: HeapType) extends WasmInstr("ref.test", 0xfb_14, List(i))
+  case class REF_TEST_NULL(i: HeapType) extends WasmInstr("ref.test null", 0xfb_15, List(i))
+  case class REF_CAST(i: HeapType) extends WasmInstr("ref.cast", 0xfb_16, List(i))
+  case class REF_CAST_NULL(i: HeapType) extends WasmInstr("ref.cast null", 0xfb_17, List(i))
+
 }
 
 abstract sealed trait WasmImmediate

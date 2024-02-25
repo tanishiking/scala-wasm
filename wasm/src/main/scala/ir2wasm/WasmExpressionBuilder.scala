@@ -171,8 +171,44 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
-    if (receiverClassInfo.isInterface) {
-      ???
+    if (receiverClassInfo.isInterface) { // interface dispatch
+      val (idx, info) =
+        ctx.calculateClassItables(clazz = receiverClassName).resolveWithIdx(receiverClassInfo.name)
+
+      val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
+      if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
+      val method = info.methods(methodIdx)
+
+      // val rttReceiverClassName =
+      //   TypeTransformer.transformType(t.receiver.tpe)(ctx) match {
+      //     case Types.WasmRefNullType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_))) => name
+      //     case Types.WasmRefType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_)))     => name
+      //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+      //   }
+
+      pushReceiver ++ wasmArgs ++ pushReceiver ++
+        List(
+          STRUCT_GET(
+            // receiver type should be upcasted into `Object` if it's interface
+            // by TypeTransformer#transformType
+            TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
+            StructFieldIdx(1)
+          ),
+          I32_CONST(I32(idx)),
+          ARRAY_GET(
+            TypeIdx(WasmArrayType.itables.name)
+          ),
+          REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmITableTypeName(receiverClassName)))
+          ),
+          STRUCT_GET(
+            TypeIdx(WasmITableTypeName(receiverClassName)),
+            StructFieldIdx(methodIdx)
+          ),
+          CALL_REF(
+            TypeIdx(method.toWasmFunctionType(ctx.getClassInfo(receiverClassName))(ctx).name)
+          )
+        )
     } else { // virtual dispatch
       val (methodIdx, info) = ctx
         .calculateVtable(receiverClassName)

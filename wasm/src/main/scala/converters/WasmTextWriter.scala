@@ -5,6 +5,7 @@ import wasm4s._
 import wasm4s.Names._
 import ir2wasm.WasmBuilder
 import wasm.wasm4s.Types.WasmHeapType
+import wasm.wasm4s.WasmInstr._
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -22,6 +23,7 @@ class WasmTextWriter {
           "rec", {
             module.recGroupTypes.foreach(writeGCTypeDefinition)
             module.functionTypes.foreach(writeFunctionType)
+            module.arrayTypes.foreach(writeGCTypeDefinition)
           }
         )
         module.definedFunctions.foreach(writeFunction)
@@ -55,6 +57,18 @@ class WasmTextWriter {
         b.appendElement(t.name.show)
         t match {
           case WasmArrayType(name, field) =>
+            b.sameLineList(
+              "array", {
+                if (field.isMutable)
+                  b.sameLineList(
+                    "mut", {
+                      b.appendElement(field.typ.show)
+                    }
+                  )
+                else b.appendElement(field.typ.show)
+
+              }
+            )
           // (type $kotlin.Any___type_13 (struct (field (ref $kotlin.Any.vtable___type_12)) (field (ref null struct)) (field (mut i32)) (field (mut i32))))
           case WasmStructType(name, fields, superType) =>
             b.sameLineList(
@@ -160,34 +174,38 @@ class WasmTextWriter {
     }
   )
 
+  private def writeImmediate(i: WasmImmediate, instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+    val str = i match {
+      case WasmImmediate.I64(v)          => v.toString()
+      case WasmImmediate.I32(v)          => v.toString()
+      case WasmImmediate.F64(v)          => v.toString()
+      case WasmImmediate.F32(v)          => v.toString()
+      case WasmImmediate.LocalIdx(name)  => name.show
+      case WasmImmediate.GlobalIdx(name) => name.show
+      case WasmImmediate.HeapType(ht) =>
+        instr match {
+          case _: REF_CAST      => s"(ref ${ht.show})"
+          case _: REF_CAST_NULL => s"(ref null ${ht.show})"
+          case _: REF_TEST      => s"(ref ${ht.show})"
+          case _: REF_TEST_NULL => s"(ref null ${ht.show})"
+          case _                => ht.show
+        }
+      case WasmImmediate.FuncIdx(name)                => name.show
+      case WasmImmediate.TypeIdx(name)                => name.show
+      case WasmImmediate.StructFieldIdx(v)            => v.toString
+      case WasmImmediate.BlockType.FunctionType(name) => name.show
+      case WasmImmediate.BlockType.ValueType(optTy) =>
+        optTy.fold("") { ty => ty.show }
+      case _ =>
+        println(i)
+        ???
+    }
+    b.appendElement(str)
+  }
+
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     b.appendElement(instr.mnemonic)
-    instr.immediates.foreach { i =>
-      val str = i match {
-        case WasmImmediate.I64(v)          => v.toString()
-        case WasmImmediate.I32(v)          => v.toString()
-        case WasmImmediate.F64(v)          => v.toString()
-        case WasmImmediate.F32(v)          => v.toString()
-        case WasmImmediate.LocalIdx(name)  => name.show
-        case WasmImmediate.GlobalIdx(name) => name.show
-        case WasmImmediate.HeapType(ht) =>
-          ht match {
-            case WasmHeapType.Type(typ) => typ.show
-            case WasmHeapType.Func(typ) => typ.show
-            case s: WasmHeapType.Simple => s.name
-          }
-        case WasmImmediate.FuncIdx(name)                => name.show
-        case WasmImmediate.TypeIdx(name)                => name.show
-        case WasmImmediate.StructFieldIdx(v)            => v.toString
-        case WasmImmediate.BlockType.FunctionType(name) => name.show
-        case WasmImmediate.BlockType.ValueType(optTy) =>
-          optTy.fold("") { ty => ty.show }
-        case _ =>
-          println(i)
-          ???
-      }
-      b.appendElement(str)
-    }
+    instr.immediates.foreach { i => writeImmediate(i, instr) }
     b.newLine()
   }
 

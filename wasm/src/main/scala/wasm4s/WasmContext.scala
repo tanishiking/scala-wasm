@@ -21,6 +21,7 @@ trait ReadOnlyWasmContext {
 
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
   private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
+  private val itablesCache = mutable.Map[IRNames.ClassName, WasmClassItables]()
 
   def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
@@ -47,6 +48,21 @@ trait ReadOnlyWasmContext {
         WasmVTable(functions)
       }
     )
+  }
+
+  def calculateClassItables(clazz: IRNames.ClassName): WasmClassItables = {
+    def collectInterfaces(info: WasmClassInfo): List[WasmClassInfo] = {
+      val superInterfaces =
+        info.superClass.map(s => collectInterfaces(getClassInfo(s))).getOrElse(Nil)
+      val ifaces = info.interfaces.flatMap { iface =>
+        collectInterfaces(getClassInfo(iface))
+      }
+
+      if (info.isInterface) superInterfaces ++ ifaces :+ info
+      else superInterfaces ++ ifaces
+    }
+
+    itablesCache.getOrElseUpdate(clazz, WasmClassItables(collectInterfaces(getClassInfo(clazz))))
   }
 }
 
@@ -114,12 +130,22 @@ object WasmContext {
       resultType: IRTypes.Type,
       isAbstract: Boolean
   ) {
-    def toWasmFunctionType(clazz: WasmClassInfo)(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType =
+    def toWasmFunctionType(clazz: WasmClassInfo)(implicit
+        ctx: FunctionTypeWriterWasmContext
+    ): WasmFunctionType =
       TypeTransformer.transformFunctionType(clazz, this)
 
   }
   case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
 
+  case class WasmClassItables(val itables: List[WasmClassInfo]) {
+    def isEmpty = itables.isEmpty
+    def resolveWithIdx(name: IRNames.ClassName): (Int, WasmClassInfo) = {
+      val idx = itables.indexWhere(_.name  == name)
+      if (idx < 0) throw new Error(s"itable not found: $name")
+      else (idx, itables(idx))
+    }
+  }
   case class WasmVTable(val functions: List[WasmFunctionInfo]) {
     def resolve(name: WasmFunctionName): WasmFunctionInfo =
       functions

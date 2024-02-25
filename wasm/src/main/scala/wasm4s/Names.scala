@@ -110,6 +110,7 @@ object Names {
     def apply(name: IRNames.MethodName) = new WasmFieldName(name.nameString)
     def apply(name: WasmFunctionName) = new WasmFieldName(name.name)
     val vtable = new WasmFieldName("vtable")
+    val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
   }
 
@@ -118,7 +119,9 @@ object Names {
       extends WasmName(name)
   object WasmTypeName {
     final case class WasmStructTypeName private (override private[wasm4s] val name: String)
-        extends WasmTypeName(name)
+        extends WasmTypeName(name) {
+      def toIRName = IRNames.ClassName(name)
+    }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
     }
@@ -127,11 +130,12 @@ object Names {
     final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmArrayTypeName {
-      def fromIR(ty: IRTypes.ArrayType) = {
+      def apply(ty: IRTypes.ArrayType) = {
         val ref = ty.arrayTypeRef
         // TODO: better naming?
         new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
       }
+      val itables = new WasmArrayTypeName("itable")
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)

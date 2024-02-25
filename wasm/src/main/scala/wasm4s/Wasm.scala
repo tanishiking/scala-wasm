@@ -77,12 +77,27 @@ case class WasmArrayType(
     name: WasmTypeName,
     field: WasmStructField
 ) extends WasmGCTypeDefinition
+object WasmArrayType {
+  /** array (ref struct) */
+  val itables = WasmArrayType(
+    WasmArrayTypeName.itables,
+    WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
+  )
+
+}
 
 case class WasmStructField(
     name: WasmFieldName,
     typ: WasmType,
     isMutable: Boolean
 )
+object WasmStructField {
+    val itables = WasmStructField(
+        WasmFieldName.itables,
+        WasmRefType(WasmHeapType.Type(WasmArrayType.itables.name)),
+        isMutable = false
+    )
+}
 
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
@@ -115,12 +130,14 @@ class WasmModule(
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
+  def arrayTypes = List(WasmArrayType.itables)
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
 }
 
 object WasmModule {
+
   private def tsort(types: List[WasmStructType]): List[WasmStructType] = {
     def tsort(
         toPreds: Map[WasmTypeName, Option[WasmTypeName]],

@@ -38,16 +38,10 @@ class WasmBuilder {
       WasmRefNullType(WasmHeapType.Type(vtableType.name)),
       isMutable = false
     )
-    val itablesField = WasmStructField(
-      Names.WasmFieldName.itables,
-      WasmRefNullType(WasmHeapType.Simple.Struct), // (ref null struct)
-      isMutable = false
-    )
     calculateClassITable(clazz) match {
       case None =>
         genStructNewDefault(clazz, vtableName, None)
-      case Some((itableType, globalITable)) =>
-        ctx.addGCType(itableType)
+      case Some(globalITable) =>
         ctx.addGlobal(globalITable)
         genStructNewDefault(clazz, vtableName, Some(globalITable))
     }
@@ -56,7 +50,7 @@ class WasmBuilder {
     val fields = clazz.fields.map(transformField)
     val structType = WasmStructType(
       Names.WasmTypeName.WasmStructTypeName(clazz.name.name),
-      vtableField +: itablesField +: fields,
+      vtableField +: WasmStructField.itables +: fields,
       clazz.superClass.map(s => Names.WasmTypeName.WasmStructTypeName(s.name))
     )
     ctx.addGCType(structType)
@@ -126,7 +120,7 @@ class WasmBuilder {
   )(implicit ctx: WasmContext): Unit = {
     val getVTable = GLOBAL_GET(WasmImmediate.GlobalIdx(vtable))
     val getITable = itable match {
-      case None    => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Simple.Struct))
+      case None    => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Simple.Array))
       case Some(i) => GLOBAL_GET(WasmImmediate.GlobalIdx(i.name))
     }
     val defaultFields =
@@ -156,50 +150,39 @@ class WasmBuilder {
     */
   private def calculateClassITable(
       clazz: IRTrees.ClassDef
-  )(implicit ctx: ReadOnlyWasmContext): Option[(WasmStructType, WasmGlobal)] = {
-    def collectInterfaces(info: WasmClassInfo): List[WasmClassInfo] = {
-      val superInterfaces =
-        info.superClass.map(s => collectInterfaces(ctx.getClassInfo(s))).getOrElse(Nil)
-      val ifaces = info.interfaces.flatMap { iface =>
-        collectInterfaces(ctx.getClassInfo(iface))
-      }
-
-      if (info.isInterface) superInterfaces ++ ifaces :+ info
-      else superInterfaces ++ ifaces
-    }
-
-    val interfaceInfos = collectInterfaces(ctx.getClassInfo(clazz.name.name))
-    if (!interfaceInfos.isEmpty) {
-      val classITableTypeName = WasmTypeName.WasmITableTypeName(clazz.name.name)
-      val classITableType = WasmStructType(
-        classITableTypeName,
-        interfaceInfos.map { info =>
-          val itableTypeName = WasmTypeName.WasmITableTypeName(info.name)
-          WasmStructField(
-            Names.WasmFieldName(itableTypeName),
-            WasmRefType(WasmHeapType.Type(itableTypeName)),
-            isMutable = false
-          )
-        },
-        None
-      )
+  )(implicit ctx: ReadOnlyWasmContext): Option[WasmGlobal] = {
+    val classItables = ctx.calculateClassItables(clazz.name.name)
+    if (!classItables.isEmpty) {
+      // val classITableTypeName = WasmTypeName.WasmITableTypeName(clazz.name.name)
+      // val classITableType = WasmStructType(
+      //   classITableTypeName,
+      //   interfaceInfos.map { info =>
+      //     val itableTypeName = WasmTypeName.WasmITableTypeName(info.name)
+      //     WasmStructField(
+      //       Names.WasmFieldName(itableTypeName),
+      //       WasmRefType(WasmHeapType.Type(itableTypeName)),
+      //       isMutable = false
+      //     )
+      //   },
+      //   None
+      // )
 
       val vtable = ctx.calculateVtable(clazz.name.name)
 
-      val itableInit: List[WasmInstr] = interfaceInfos.flatMap { iface =>
+      val itablesInit: List[WasmInstr] = classItables.itables.flatMap { iface =>
         iface.methods.map { method =>
           val func = vtable.resolve(method.name)
           REF_FUNC(WasmImmediate.FuncIdx(func.name))
         } :+ STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
-      } :+ STRUCT_NEW(classITableTypeName)
+      } :+ ARRAY_NEW(WasmImmediate.TypeIdx(WasmArrayType.itables.name))
 
       val globalITable = WasmGlobal(
         WasmGlobalName.WasmGlobalITableName(clazz.name.name),
-        WasmRefType(WasmHeapType.Type(classITableTypeName)),
-        init = WasmExpr(itableInit),
+        WasmRefType(WasmHeapType.Type(WasmArrayType.itables.name)),
+        init = WasmExpr(itablesInit),
         isMutable = false
       )
-      Some(classITableType, globalITable)
+      Some(globalITable)
     } else None
   }
 
