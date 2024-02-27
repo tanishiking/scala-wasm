@@ -46,6 +46,7 @@ object Names {
     def fromIR(name: IRNames.LocalName) = new WasmLocalName(name.nameString)
     def fromStr(str: String) = new WasmLocalName(str)
     def synthetic(id: Int) = new WasmLocalName(s"local___$id")
+    val receiver = new WasmLocalName("___<this>")
   }
 
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)

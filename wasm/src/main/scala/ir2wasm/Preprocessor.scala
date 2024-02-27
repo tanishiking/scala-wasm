@@ -19,12 +19,9 @@ object Preprocessor {
   }
   private def collectMethods(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
     val infos =
-      if (clazz.name.name == IRNames.ObjectClass)
-        clazz.methods.filter(_.name.name == IRNames.NoArgConstructorName).map { method =>
-          makeWasmFunctionInfo(clazz, method)
-        }
+      if (clazz.name.name == IRNames.ObjectClass) Nil
       else
-        clazz.methods.map { method =>
+        clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
           makeWasmFunctionInfo(clazz, method)
         }
     ctx.putClassInfo(
@@ -48,6 +45,7 @@ object Preprocessor {
       Names.WasmFunctionName(clazz.name.name, method.name.name),
       method.args.map(_.ptpe),
       method.resultType,
+      // flags = method.flags,
       isAbstract = method.body.isEmpty
     )
   }

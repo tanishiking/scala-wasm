@@ -27,22 +27,23 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     *
     * Maybe we can unreachable in else branch?
     */
-  def objectCreationPrefix(clazz: IRTrees.ClassDef, method: IRTrees.MethodDef): List[WasmInstr] = {
-    assert(method.flags.namespace.isConstructor)
-    val recieverGCTypeName = fctx.receiver.typ match {
-      case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
-      case Types.WasmRefType(Types.WasmHeapType.Type(gcType))     => gcType
-      case _                                                      => ???
-    }
-    List(
-      LOCAL_GET(LocalIdx(fctx.receiver.name)),
-      REF_IS_NULL,
-      IF(WasmImmediate.BlockType.ValueType(None)),
-      CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
-      LOCAL_SET(LocalIdx(fctx.receiver.name)),
-      END
-    )
-  }
+  // def objectCreationPrefix(clazz: IRTrees.ClassDef, method: IRTrees.MethodDef): List[WasmInstr] = {
+  //   assert(method.flags.namespace.isConstructor)
+  //   val recieverGCTypeName = fctx.receiver.typ match {
+  //     case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
+  //     case Types.WasmRefType(Types.WasmHeapType.Type(gcType))     => gcType
+  //     case _                                                      => ???
+  //   }
+  //   Nil
+  //   // List(
+  //   //   LOCAL_GET(LocalIdx(fctx.receiver.name)),
+  //   //   REF_IS_NULL,
+  //   //   IF(WasmImmediate.BlockType.ValueType(None)),
+  //   //   CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
+  //   //   LOCAL_SET(LocalIdx(fctx.receiver.name)),
+  //   //   END
+  //   // )
+  // }
 
   def transformTree(tree: IRTrees.Tree): List[WasmInstr] = {
     tree match {
@@ -136,7 +137,18 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         val className = WasmStructTypeName(sel.className)
         val fieldName = WasmFieldName(sel.field.name)
         val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
-        transformTree(sel.qualifier) ++ wasmRHS :+
+        val castIfRequired = sel.qualifier match {
+          case _: IRTrees.This =>
+            List(
+              // requires cast if the qualifier is `this`
+              // because receiver type is Object in wasm
+              REF_CAST(
+                HeapType(Types.WasmHeapType.Type(WasmStructTypeName(sel.className)))
+              ),
+            )
+          case _ => Nil
+        }
+        transformTree(sel.qualifier) ++ castIfRequired ++ wasmRHS :+
           STRUCT_SET(TypeIdx(className), idx)
 
       case sel: IRTrees.SelectStatic => // OK?
@@ -222,6 +234,9 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       // call.ref (type $funcType) ;; call funcref
       pushReceiver ++ wasmArgs ++ pushReceiver ++
         List(
+          REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
+          ),
           STRUCT_GET(
             TypeIdx(WasmStructTypeName(receiverClassName)),
             StructFieldIdx(0)
@@ -263,8 +278,21 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     val className = WasmStructTypeName(sel.className)
     val fieldName = WasmFieldName(sel.field.name)
     val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
-    transformTree(sel.qualifier) :+
-      STRUCT_GET(TypeIdx(className), idx)
+
+    val select = sel.qualifier match {
+      case _: IRTrees.This =>
+        List(
+          // requires cast if the qualifier is `this`
+          // because receiver type is Object in wasm
+          REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName(sel.className)))
+          ),
+          STRUCT_GET(TypeIdx(className), idx)
+        )
+      case _ =>
+        List(STRUCT_GET(TypeIdx(className), idx))
+    }
+    transformTree(sel.qualifier) ++ select
   }
 
   private def transformStoreModule(t: IRTrees.StoreModule): List[WasmInstr] = {
@@ -393,8 +421,10 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     fctx.locals.define(localInstance)
 
     List(
-      REF_NULL(HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(n.className)))),
-      LOCAL_SET(LocalIdx(localInstance.name))
+      // REF_NULL(HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(n.className)))),
+      // LOCAL_TEE(LocalIdx(localInstance.name))
+      CALL(FuncIdx(WasmFunctionName.newDefault(n.className))),
+      LOCAL_TEE(LocalIdx(localInstance.name))
     ) ++ n.args.flatMap(transformTree) ++
       List(
         CALL(FuncIdx(WasmFunctionName(n.className, n.ctor.name))),

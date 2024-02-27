@@ -8,10 +8,8 @@ import wasm4s._
 
 object TypeTransformer {
 
-  def makeReceiverType(className: IRNames.ClassName): Types.WasmType =
-    Types.WasmRefNullType(
-      Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
-    )
+  val makeReceiverType: Types.WasmType =
+    Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
 
   def transformFunctionType(
       clazz: WasmContext.WasmClassInfo,
@@ -19,10 +17,10 @@ object TypeTransformer {
   )(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType = {
     val className = clazz.name
     val name = method.name
-    val receiverType =
-      if (clazz.kind.isClass) List(makeReceiverType(className)) else Nil
+    val receiverType = makeReceiverType
+    //   if (clazz.kind.isClass) List(makeReceiverType) else Nil
     val sig = WasmFunctionSignature(
-      receiverType ++ method.argTypes.map(transformType),
+      receiverType +: method.argTypes.map(transformType),
       transformResultType(method.resultType)
     )
     val typeName = ctx.addFunctionType(sig)

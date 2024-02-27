@@ -55,19 +55,14 @@ class WasmBuilder {
     )
     ctx.addGCType(structType)
 
-    val receiver = WasmLocal(
-      Names.WasmLocalName.fromStr("<this>"),
-      WasmRefNullType(WasmHeapType.Type(structType.name)),
-      isParameter = true
-    )
-
-    if (clazz.name.name != IRNames.ObjectClass)
-      clazz.methods.foreach { method =>
-        genFunction(clazz, method, Some(receiver))
+    // Do not generate methods in Object for now
+    if (clazz.name.name == IRNames.ObjectClass)
+      clazz.methods.filter(_.name.name == IRNames.NoArgConstructorName).foreach { method =>
+        genFunction(clazz, method)
       }
     else
-      clazz.methods.filter(_.name.name == IRNames.NoArgConstructorName).foreach { method =>
-        genFunction(clazz, method, Some(receiver))
+      clazz.methods.foreach { method =>
+        genFunction(clazz, method)
       }
 
     structType
@@ -92,9 +87,9 @@ class WasmBuilder {
       GLOBAL_GET(GlobalIdx(globalInstanceName)), // [rt]
       REF_IS_NULL, // [rt] -> [i32] (bool)
       IF(WasmImmediate.BlockType.ValueType(None)),
-      GLOBAL_GET(
-        GlobalIdx(globalInstanceName)
-      ), // [rt] // REF_NULL(HeapType(Types.WasmHeapType.Type(tyName))),
+      CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
+      GLOBAL_SET(GlobalIdx(globalInstanceName)),
+      GLOBAL_GET(GlobalIdx(globalInstanceName)),
       CALL(FuncIdx(ctorName)),
       // ELSE,
       END,
@@ -120,7 +115,7 @@ class WasmBuilder {
   )(implicit ctx: WasmContext): Unit = {
     val getVTable = GLOBAL_GET(WasmImmediate.GlobalIdx(vtable))
     val getITable = itable match {
-      case None    => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Simple.Array))
+      case None => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Type(WasmArrayType.itables.name)))
       case Some(i) => GLOBAL_GET(WasmImmediate.GlobalIdx(i.name))
     }
     val defaultFields =
@@ -174,7 +169,10 @@ class WasmBuilder {
           val func = vtable.resolve(method.name)
           REF_FUNC(WasmImmediate.FuncIdx(func.name))
         } :+ STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
-      } :+ ARRAY_NEW(WasmImmediate.TypeIdx(WasmArrayType.itables.name))
+      } ++ List(
+        I32_CONST(WasmImmediate.I32(classItables.itables.size)),
+        ARRAY_NEW(WasmImmediate.TypeIdx(WasmArrayType.itables.name))
+      )
 
       val globalITable = WasmGlobal(
         WasmGlobalName.WasmGlobalITableName(clazz.name.name),
@@ -242,7 +240,13 @@ class WasmBuilder {
         val funcName = WasmFunctionName(className, m.name.name)
         val funcTy = transformFunctionType(
           ctx.getClassInfo(className),
-          WasmFunctionInfo(funcName, m.args.map(_.ptpe), m.resultType, m.body.isEmpty)
+          WasmFunctionInfo(
+            funcName,
+            m.args.map(_.ptpe),
+            m.resultType,
+            // m.flags,
+            m.body.isEmpty
+          )
         )
         WasmStructField(
           Names.WasmFieldName(m.name.name),
@@ -260,7 +264,7 @@ class WasmBuilder {
     // Do we need receivers?
     clazz.methods.collect {
       case method if method.body.isDefined =>
-        genFunction(clazz, method, receiver = None)
+        genFunction(clazz, method)
     }
   }
 
@@ -386,12 +390,20 @@ class WasmBuilder {
 
   private def genFunction(
       clazz: IRTrees.ClassDef,
-      method: IRTrees.MethodDef,
-      receiver: Option[WasmLocal]
+      method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
-    // Define function type
-    val receiverList = receiver.map(l => List(l)).getOrElse(Nil)
-    val paramTys = receiverList.map(_.typ) ++
+    val receiver = WasmLocal(
+      Names.WasmLocalName.receiver,
+      // Receiver type for non-constructor methods needs to be Object type because params are invariant
+      // Otherwise, vtable can't be a subtype of the supertype's subtype
+      // Constructor can use the exact type because it won't be registered to vtables.
+      if (method.flags.namespace.isConstructor)
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
+      else
+        WasmRefNullType(WasmHeapType.ObjectType),
+      isParameter = true
+    )
+    val paramTys = receiver.typ +:
       method.args.map(arg => transformType(arg.ptpe))
     val resultTy = transformResultType(method.resultType)
     val sig = WasmFunctionSignature(paramTys, resultTy)
@@ -400,7 +412,7 @@ class WasmBuilder {
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(receiver)
-    (receiverList ++ method.args.map { arg =>
+    (receiver +: method.args.map { arg =>
       WasmLocal(
         Names.WasmLocalName.fromIR(arg.name.name),
         transformType(arg.ptpe),
@@ -411,15 +423,15 @@ class WasmBuilder {
     // build function body
     val builder = new WasmExpressionBuilder(ctx, fctx)
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
-    val prefix =
-      if (method.flags.namespace.isConstructor) builder.objectCreationPrefix(clazz, method) else Nil
+    // val prefix =
+    //   if (method.flags.namespace.isConstructor) builder.objectCreationPrefix(clazz, method) else Nil
     val instrs = body match {
       case t: IRTrees.Block => t.stats.flatMap(builder.transformTree)
       case _                => builder.transformTree(body)
     }
     val expr = method.resultType match {
-      case IRTypes.NoType => WasmExpr(prefix ++ instrs)
-      case _              => WasmExpr(prefix ++ instrs :+ RETURN)
+      case IRTypes.NoType => WasmExpr(instrs)
+      case _              => WasmExpr(instrs :+ RETURN)
     }
 
     val func = WasmFunction(

@@ -8,6 +8,7 @@ import Types._
 
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{Types => IRTypes}
+import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.ClassKind
 
 import scala.collection.mutable.LinkedHashMap
@@ -32,7 +33,7 @@ trait ReadOnlyWasmContext {
       val info = classInfo.getOrElse(className, throw new Error(s"Class not found: $className"))
       val fromSuperClass = info.superClass.map(collectMethods).getOrElse(Nil)
       val fromInterfaces = info.interfaces.flatMap(collectMethods)
-      fromSuperClass ++ fromInterfaces ++ info.methods.filterNot(_.isAbstract)
+      fromSuperClass ++ fromInterfaces ++ info.methods.filterNot(m => m.isAbstract)
     }
 
     vtablesCache.getOrElseUpdate(
@@ -128,6 +129,7 @@ object WasmContext {
       name: WasmFunctionName,
       argTypes: List[IRTypes.Type],
       resultType: IRTypes.Type,
+      // flags: IRTrees.MemberFlags,
       isAbstract: Boolean
   ) {
     def toWasmFunctionType(clazz: WasmClassInfo)(implicit

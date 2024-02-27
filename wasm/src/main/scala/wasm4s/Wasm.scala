@@ -94,7 +94,7 @@ case class WasmStructField(
 object WasmStructField {
     val itables = WasmStructField(
         WasmFieldName.itables,
-        WasmRefType(WasmHeapType.Type(WasmArrayType.itables.name)),
+        WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name)),
         isMutable = false
     )
 }
