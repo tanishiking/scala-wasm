@@ -170,8 +170,10 @@ class WasmBuilder {
           REF_FUNC(WasmImmediate.FuncIdx(func.name))
         } :+ STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
       } ++ List(
-        I32_CONST(WasmImmediate.I32(classItables.itables.size)),
-        ARRAY_NEW(WasmImmediate.TypeIdx(WasmArrayType.itables.name))
+        ARRAY_NEW_FIXED(
+          WasmImmediate.TypeIdx(WasmArrayType.itables.name),
+          WasmImmediate.I32(classItables.itables.size)
+        )
       )
 
       val globalITable = WasmGlobal(
@@ -193,9 +195,7 @@ class WasmBuilder {
         vtable.functions.map { method =>
           WasmStructField(
             Names.WasmFieldName(method.name),
-            WasmRefNullType(
-              WasmHeapType.Func(method.toWasmFunctionType(ctx.getClassInfo(className)).name)
-            ),
+            WasmRefNullType(WasmHeapType.Func(method.toWasmFunctionType().name)),
             isMutable = false
           )
         }
@@ -239,7 +239,6 @@ class WasmBuilder {
       clazz.methods.map { m =>
         val funcName = WasmFunctionName(className, m.name.name)
         val funcTy = transformFunctionType(
-          ctx.getClassInfo(className),
           WasmFunctionInfo(
             funcName,
             m.args.map(_.ptpe),

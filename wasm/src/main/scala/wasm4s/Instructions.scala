@@ -263,6 +263,7 @@ object WasmInstr {
 
   case class ARRAY_NEW(i: TypeIdx) extends WasmInstr("array.new", 0xfb_06, List(i))
   case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xfb_07, List(i))
+  case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32) extends WasmInstr("array.new_fixed", 0xfb_07, List(i, size))
   case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xfb_0b, List(i))
   case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xfb_0c, List(i))
   case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xfb_0d, List(i))

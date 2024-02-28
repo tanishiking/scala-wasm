@@ -144,7 +144,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
               // because receiver type is Object in wasm
               REF_CAST(
                 HeapType(Types.WasmHeapType.Type(WasmStructTypeName(sel.className)))
-              ),
+              )
             )
           case _ => Nil
         }
@@ -184,12 +184,17 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
     if (receiverClassInfo.isInterface) { // interface dispatch
-      val (idx, info) =
-        ctx.calculateClassItables(clazz = receiverClassName).resolveWithIdx(receiverClassInfo.name)
+      val itables = ctx.calculateClassItables(clazz = receiverClassName)
 
-      val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
-      if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
-      val method = info.methods(methodIdx)
+      val (itableIdx, methodIdx) = itables.resolveMethod(t.method.name)
+      val targetClass = itables.itables(itableIdx)
+      val method = targetClass.methods(
+        methodIdx
+      ) // should be safe since resolveMethod should return valid value
+
+      // val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
+      // if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
+      // val method = info.methods(methodIdx)
 
       // val rttReceiverClassName =
       //   TypeTransformer.transformType(t.receiver.tpe)(ctx) match {
@@ -206,19 +211,19 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
             TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
             StructFieldIdx(1)
           ),
-          I32_CONST(I32(idx)),
+          I32_CONST(I32(itableIdx)),
           ARRAY_GET(
             TypeIdx(WasmArrayType.itables.name)
           ),
           REF_CAST(
-            HeapType(Types.WasmHeapType.Type(WasmITableTypeName(receiverClassName)))
+            HeapType(Types.WasmHeapType.Type(WasmITableTypeName(targetClass.name)))
           ),
           STRUCT_GET(
-            TypeIdx(WasmITableTypeName(receiverClassName)),
+            TypeIdx(WasmITableTypeName(targetClass.name)),
             StructFieldIdx(methodIdx)
           ),
           CALL_REF(
-            TypeIdx(method.toWasmFunctionType(ctx.getClassInfo(receiverClassName))(ctx).name)
+            TypeIdx(method.toWasmFunctionType()(ctx).name)
           )
         )
     } else { // virtual dispatch
@@ -246,7 +251,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
             StructFieldIdx(methodIdx)
           ),
           CALL_REF(
-            TypeIdx(info.toWasmFunctionType(ctx.getClassInfo(receiverClassName))(ctx).name)
+            TypeIdx(info.toWasmFunctionType()(ctx).name)
           )
         )
     }

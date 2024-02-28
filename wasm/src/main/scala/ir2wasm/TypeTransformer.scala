@@ -12,10 +12,10 @@ object TypeTransformer {
     Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
 
   def transformFunctionType(
-      clazz: WasmContext.WasmClassInfo,
+      // clazz: WasmContext.WasmClassInfo,
       method: WasmContext.WasmFunctionInfo
   )(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType = {
-    val className = clazz.name
+    // val className = clazz.name
     val name = method.name
     val receiverType = makeReceiverType
     //   if (clazz.kind.isClass) List(makeReceiverType) else Nil

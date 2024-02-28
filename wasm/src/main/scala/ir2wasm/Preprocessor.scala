@@ -45,7 +45,6 @@ object Preprocessor {
       Names.WasmFunctionName(clazz.name.name, method.name.name),
       method.args.map(_.ptpe),
       method.resultType,
-      // flags = method.flags,
       isAbstract = method.body.isEmpty
     )
   }

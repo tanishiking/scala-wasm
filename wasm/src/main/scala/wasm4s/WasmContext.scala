@@ -132,20 +132,42 @@ object WasmContext {
       // flags: IRTrees.MemberFlags,
       isAbstract: Boolean
   ) {
-    def toWasmFunctionType(clazz: WasmClassInfo)(implicit
-        ctx: FunctionTypeWriterWasmContext
-    ): WasmFunctionType =
-      TypeTransformer.transformFunctionType(clazz, this)
+    def toWasmFunctionType()(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType =
+      TypeTransformer.transformFunctionType(this)
 
   }
   case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
 
+  /** itables in order that super class's interface -> interfaces
+    */
   case class WasmClassItables(val itables: List[WasmClassInfo]) {
     def isEmpty = itables.isEmpty
-    def resolveWithIdx(name: IRNames.ClassName): (Int, WasmClassInfo) = {
-      val idx = itables.indexWhere(_.name  == name)
-      if (idx < 0) throw new Error(s"itable not found: $name")
-      else (idx, itables(idx))
+    // def resolveWithIdx(name: IRNames.ClassName): (Int, WasmClassInfo) = {
+    //   val idx = itables.indexWhere(_.name == name)
+    //   if (idx < 0) throw new Error(s"itable not found: $name")
+    //   else (idx, itables(idx))
+    // }
+    /** @param name
+      *   method name to find
+      * @return
+      *   (itableIdx, methodIdx) where itableIdx is the index of the interface in itables and
+      *   methodIdx is the index of the method in that
+      */
+    def resolveMethod(name: IRNames.MethodName): (Int, Int) = {
+      var foundMethodIdx = -1
+      val itableIdx =
+        itables.lastIndexWhere { classInfo =>
+          val methodIdx = classInfo.methods.lastIndexWhere { func =>
+            func.name.methodName == name.nameString
+          }
+          if (methodIdx >= 0) {
+            foundMethodIdx = methodIdx
+            true
+          } else false
+        }
+      if (itableIdx >= 0)
+        (itableIdx, foundMethodIdx)
+      else throw new Error(s"Method not found: $name")
     }
   }
   case class WasmVTable(val functions: List[WasmFunctionInfo]) {

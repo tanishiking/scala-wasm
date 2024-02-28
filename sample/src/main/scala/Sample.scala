@@ -10,25 +10,25 @@ import scala.scalajs.js.annotation._
 object Main {
   @JSExportTopLevel("test")
   def test() = {
-    val d = new Derived
-    foo(d)
+    val d = new Derived2
+    incr(d, plus(d, 1, 2))
   }
-  def foo(x: IFace) = x.iface
+  def plus(x: Base1, a: Int, b: Int) = x.plus(a, b)
+  def incr(x: Derived, a: Int): Int = x.incr(a)
 }
 
-class Derived extends IFace {
-    val y = 1
-    override def iface: Int = {
-        incr
-        incr
-        x + y
-    }
+class Derived2 extends Derived {
+    override def incr(x: Int) = super.incr(x)
+}
+class Derived extends Base1
+
+trait Base1 extends Base2 {
+    def incr(x: Int): Int = x + 1
 }
 
-trait IFace {
-    var x = 1
-    def iface: Int
-    def incr = x += 1
+trait Base2 {
+    def plus(a: Int, b: Int) = a + b
+
 }
 
 // 
