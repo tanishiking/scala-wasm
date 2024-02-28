@@ -13,6 +13,8 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.ClassKind
 
+import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
+
 import collection.mutable
 import java.awt.Window.Type
 import _root_.wasm4s.Defaults
@@ -20,7 +22,7 @@ import _root_.wasm4s.Defaults
 class WasmBuilder {
   // val module = new WasmModule()
 
-  def transformClassDef(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
+  def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     clazz.kind match {
       case ClassKind.ModuleClass => transformModuleClass(clazz)
       case ClassKind.Class       => transformClass(clazz)
@@ -29,8 +31,19 @@ class WasmBuilder {
     }
   }
 
+  def transformTopLevelExport(export: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
+    implicit val fctx = WasmFunctionContext()
+    val expressionBuilder = new WasmExpressionBuilder(ctx, fctx)
+    export.tree match {
+      case d: IRTrees.TopLevelFieldExportDef   => ???
+      case d: IRTrees.TopLevelJSClassExportDef => ???
+      case d: IRTrees.TopLevelMethodExportDef  => transformToplevelMethodExportDef(d)
+      case d: IRTrees.TopLevelModuleExportDef  => ???
+    }
+  }
+
   private def transformClassCommon(
-      clazz: IRTrees.ClassDef
+      clazz: LinkedClass
   )(implicit ctx: WasmContext): WasmStructType = {
     val (vtableType, vtableName) = genVTable(clazz)
     val vtableField = WasmStructField(
@@ -68,7 +81,7 @@ class WasmBuilder {
     structType
   }
 
-  private def genLoadModuleFunc(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
+  private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     assert(clazz.kind == ClassKind.ModuleClass)
     val ctor = clazz.methods
@@ -109,7 +122,7 @@ class WasmBuilder {
   }
 
   private def genStructNewDefault(
-      clazz: IRTrees.ClassDef,
+      clazz: LinkedClass,
       vtable: WasmGlobalName.WasmGlobalVTableName,
       itable: Option[WasmGlobal]
   )(implicit ctx: WasmContext): Unit = {
@@ -144,7 +157,7 @@ class WasmBuilder {
     *   global instance of the class itable
     */
   private def calculateClassITable(
-      clazz: IRTrees.ClassDef
+      clazz: LinkedClass
   )(implicit ctx: ReadOnlyWasmContext): Option[WasmGlobal] = {
     val classItables = ctx.calculateClassItables(clazz.name.name)
     if (!classItables.isEmpty) {
@@ -187,7 +200,7 @@ class WasmBuilder {
   }
 
   private def genVTable(
-      clazz: IRTrees.ClassDef
+      clazz: LinkedClass
   )(implicit ctx: WasmContext): (WasmStructType, WasmGlobalName.WasmGlobalVTableName) = {
     val className = clazz.name.name
     def genVTableType(vtable: WasmVTable): WasmStructType = {
@@ -224,32 +237,23 @@ class WasmBuilder {
     (vtableType, vtableName)
   }
 
-  private def transformClass(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
+  private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Class)
     transformClassCommon(clazz)
   }
 
-  private def transformInterface(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext): Unit = {
+  private def transformInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
     // gen itable type
     val className = clazz.name.name
     // val typeName = WasmTypeName.WasmITableTypeName(className)
+    val classInfo = ctx.getClassInfo(clazz.className)
     val itableType = WasmStructType(
       Names.WasmTypeName.WasmITableTypeName(className),
-      clazz.methods.map { m =>
-        val funcName = WasmFunctionName(className, m.name.name)
-        val funcTy = transformFunctionType(
-          WasmFunctionInfo(
-            funcName,
-            m.args.map(_.ptpe),
-            m.resultType,
-            // m.flags,
-            m.body.isEmpty
-          )
-        )
+      classInfo.methods.map { m =>
         WasmStructField(
-          Names.WasmFieldName(m.name.name),
-          WasmRefNullType(WasmHeapType.Func(funcTy.name)),
+          Names.WasmFieldName(m.name.methodName),
+          WasmRefNullType(WasmHeapType.Func(m.toWasmFunctionType().name)),
           isMutable = false
         )
       },
@@ -267,7 +271,7 @@ class WasmBuilder {
     }
   }
 
-  private def transformModuleClass(clazz: IRTrees.ClassDef)(implicit ctx: WasmContext) = {
+  private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     assert(clazz.kind == ClassKind.ModuleClass)
 
     val structType = transformClassCommon(clazz)
@@ -284,17 +288,6 @@ class WasmBuilder {
     ctx.addGlobal(global)
 
     genLoadModuleFunc(clazz)
-
-    clazz.topLevelExportDefs.foreach { i =>
-      implicit val fctx = WasmFunctionContext()
-      val expressionBuilder = new WasmExpressionBuilder(ctx, fctx)
-      i match {
-        case d: IRTrees.TopLevelFieldExportDef   => ???
-        case d: IRTrees.TopLevelJSClassExportDef => ???
-        case d: IRTrees.TopLevelMethodExportDef  => transformToplevelMethodExportDef(d)
-        case d: IRTrees.TopLevelModuleExportDef  => ???
-      }
-    }
   }
 
   private def transformToplevelMethodExportDef(
@@ -388,7 +381,7 @@ class WasmBuilder {
   }
 
   private def genFunction(
-      clazz: IRTrees.ClassDef,
+      clazz: LinkedClass,
       method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
     val receiver = WasmLocal(
