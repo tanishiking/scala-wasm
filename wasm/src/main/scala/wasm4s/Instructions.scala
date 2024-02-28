@@ -179,7 +179,7 @@ object WasmInstr {
   case object UNREACHABLE extends WasmInstr("unreachable", 0x00)
   case object NOP extends WasmInstr("nop", 0x01)
   case class BLOCK(i: BlockType) extends WasmInstr("block", 0x02, List(i))
-  case class LOOP(i: BlockType) extends WasmInstr("loop", 0x03, List(i))
+  case class LOOP(i: LabelIdx) extends WasmInstr("loop", 0x03, List(i))
   case class IF(i: BlockType) extends WasmInstr("if", 0x04, List(i))
   case object ELSE extends WasmInstr("else", 0x05)
   case object END extends WasmInstr("end", 0x0b)
@@ -302,7 +302,14 @@ object WasmImmediate {
   abstract sealed trait BlockType extends WasmImmediate
   object BlockType {
     case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
-    case class ValueType(ty: Option[WasmType]) extends BlockType
+    case class ValueType private (ty: Option[WasmType]) extends BlockType
+    object ValueType {
+        def apply(ty: WasmType): ValueType = ty match {
+            case WasmNoType => ValueType(None)
+            case _ => ValueType(Some(ty))
+        }
+        def apply(): ValueType = ValueType(None)
+    }
   }
 
   case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate

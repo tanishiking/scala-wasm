@@ -139,7 +139,6 @@ class WasmTextWriter {
         b.newLine()
         if (nonParams.nonEmpty) {
           nonParams.foreach(writeLocal)
-          b.newLine()
         }
         f.body.instr.foreach(writeInstr)
       }
@@ -153,7 +152,6 @@ class WasmTextWriter {
         if (g.isMutable)
           b.sameLineList("mut", { b.appendElement(g.typ.show) })
         else b.appendElement(g.typ.show)
-        b.newLine()
         g.init.instr.foreach(writeInstr)
       }
     )
@@ -195,7 +193,8 @@ class WasmTextWriter {
       case WasmImmediate.StructFieldIdx(v)            => v.toString
       case WasmImmediate.BlockType.FunctionType(name) => name.show
       case WasmImmediate.BlockType.ValueType(optTy) =>
-        optTy.fold("") { ty => ty.show }
+        optTy.fold("") { ty => s"(result ${ty.show})" }
+      case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
       case _ =>
         println(i)
         ???
@@ -204,9 +203,17 @@ class WasmTextWriter {
   }
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+    instr match {
+      case END | ELSE | _: CATCH => b.deindent()
+      case _                     => ()
+    }
+    b.newLine()
     b.appendElement(instr.mnemonic)
     instr.immediates.foreach { i => writeImmediate(i, instr) }
-    b.newLine()
+    instr match {
+      case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
+      case _                                                     => ()
+    }
   }
 
 }
@@ -215,7 +222,7 @@ object WasmTextWriter {
   private class WatBuilder {
     private val builder = new StringBuilder
     private var level = 0
-    private val indent = "  "
+    private val indentStr = "  "
 
     private def indented(body: => Unit): Unit = {
       level += 1
@@ -223,9 +230,12 @@ object WasmTextWriter {
       level -= 1
     }
 
+    def indent(): Unit = level += 1
+    def deindent(): Unit = level -= 1
+
     def newLine(): Unit = {
       builder.append("\n")
-      builder.append(indent * level)
+      builder.append(indentStr * level)
     }
 
     def newLineList(name: String, body: => Unit): Unit = {

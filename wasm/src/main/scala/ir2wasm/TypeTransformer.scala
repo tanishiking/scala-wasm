@@ -85,6 +85,6 @@ object TypeTransformer {
       // ???
       case IRTypes.NothingType => Types.WasmRefNullrefType
       case IRTypes.NullType    => Types.WasmRefNullrefType
-      case IRTypes.NoType      => throw new Exception("NoType")
+      case IRTypes.NoType      => Types.WasmNoType
     }
 }
