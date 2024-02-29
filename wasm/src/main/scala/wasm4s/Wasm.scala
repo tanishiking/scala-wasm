@@ -72,6 +72,15 @@ case class WasmStructType(
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
+object WasmStructType {
+  val string: WasmStructType = WasmStructType(
+    WasmTypeName.WasmStructTypeName.string,
+    List(
+      WasmStructField(WasmFieldName.stringData, WasmRefType(WasmHeapType.Type(WasmArrayTypeName.stringData)), false)
+    ),
+    None
+  )
+}
 
 case class WasmArrayType(
     name: WasmTypeName,
@@ -84,11 +93,16 @@ object WasmArrayType {
     WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
   )
 
+  /** array i16 */
+  val stringData = WasmArrayType(
+    WasmArrayTypeName.stringData,
+    WasmStructField(WasmFieldName.stringData, WasmInt16, false)
+  )
 }
 
 case class WasmStructField(
     name: WasmFieldName,
-    typ: WasmType,
+    typ: WasmStorageType,
     isMutable: Boolean
 )
 object WasmStructField {
@@ -130,10 +144,12 @@ class WasmModule(
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables)
+  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.stringData)
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
+
+  addRecGroupType(WasmStructType.string)
 }
 
 object WasmModule {

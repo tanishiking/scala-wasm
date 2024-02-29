@@ -58,14 +58,24 @@ object TypeTransformer {
         // Types.WasmRefType(Types.WasmHeapType.Type(arrayTySym))
         ???
       case clazz @ IRTypes.ClassType(className) =>
-        if (ctx.getClassInfo(clazz.className).isInterface)
-          Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
-        else
-          Types.WasmRefType(
-            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
-          )
+        className match {
+          case IRNames.BoxedStringClass =>
+            Types.WasmRefNullType(
+              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
+            )
+          case _ =>
+            if (ctx.getClassInfo(clazz.className).isInterface)
+              Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+            else
+              Types.WasmRefType(
+                Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+              )
+        }
       case IRTypes.RecordType(fields) => ???
-      case IRTypes.StringType         => ??? // TODO
+      case IRTypes.StringType =>
+        Types.WasmRefType(
+          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
+        )
       case IRTypes.UndefType          => ???
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }

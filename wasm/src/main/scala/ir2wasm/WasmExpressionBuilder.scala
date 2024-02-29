@@ -47,7 +47,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   def transformTree(tree: IRTrees.Tree): List[WasmInstr] = {
     tree match {
-      case t: IRTrees.Literal    => List(transformLiteral(t))
+      case t: IRTrees.Literal    => transformLiteral(t)
       case t: IRTrees.UnaryOp    => transformUnaryOp(t)
       case t: IRTrees.BinaryOp   => transformBinaryOp(t)
       case t: IRTrees.VarRef     => List(transformVarRef(t))
@@ -262,19 +262,28 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     wasmArgs :+ CALL(FuncIdx(funcName))
   }
 
-  private def transformLiteral(l: IRTrees.Literal): WasmInstr = l match {
-    case IRTrees.BooleanLiteral(v) => WasmInstr.I32_CONST(if (v) I32(1) else I32(0))
-    case IRTrees.ByteLiteral(v)    => WasmInstr.I32_CONST(I32(v))
-    case IRTrees.ShortLiteral(v)   => WasmInstr.I32_CONST(I32(v))
-    case IRTrees.IntLiteral(v)     => WasmInstr.I32_CONST(I32(v))
-    case IRTrees.CharLiteral(v)    => WasmInstr.I32_CONST(I32(v))
-    case IRTrees.LongLiteral(v)    => WasmInstr.I64_CONST(I64(v))
-    case IRTrees.FloatLiteral(v)   => WasmInstr.F32_CONST(F32(v))
-    case IRTrees.DoubleLiteral(v)  => WasmInstr.F64_CONST(F64(v))
+  private def transformLiteral(l: IRTrees.Literal): List[WasmInstr] = l match {
+    case IRTrees.BooleanLiteral(v) => WasmInstr.I32_CONST(if (v) I32(1) else I32(0)) :: Nil
+    case IRTrees.ByteLiteral(v)    => WasmInstr.I32_CONST(I32(v)) :: Nil
+    case IRTrees.ShortLiteral(v)   => WasmInstr.I32_CONST(I32(v)) :: Nil
+    case IRTrees.IntLiteral(v)     => WasmInstr.I32_CONST(I32(v)) :: Nil
+    case IRTrees.CharLiteral(v)    => WasmInstr.I32_CONST(I32(v)) :: Nil
+    case IRTrees.LongLiteral(v)    => WasmInstr.I64_CONST(I64(v)) :: Nil
+    case IRTrees.FloatLiteral(v)   => WasmInstr.F32_CONST(F32(v)) :: Nil
+    case IRTrees.DoubleLiteral(v)  => WasmInstr.F64_CONST(F64(v)) :: Nil
 
     case v: IRTrees.Undefined     => ???
     case v: IRTrees.Null          => ???
-    case v: IRTrees.StringLiteral => ???
+
+    case v: IRTrees.StringLiteral =>
+      // TODO We should allocate literal strings once and for all as globals
+      val str = v.value
+      str.toList.map(c => WasmInstr.I32_CONST(I32(c.toInt))) :::
+        List(
+          WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length())),
+          WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
+        )
+
     case v: IRTrees.ClassOf       => ???
   }
 
@@ -317,12 +326,20 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   private def transformBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
     import IRTrees.BinaryOp
+    binary.op match {
+      case BinaryOp.String_+ => transformStringConcat(binary.lhs, binary.rhs)
+
+      case _ => transformElementaryBinaryOp(binary)
+    }
+  }
+
+  private def transformElementaryBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
+    import IRTrees.BinaryOp
     val lhsInstrs = transformTree(binary.lhs)
     val rhsInstrs = transformTree(binary.rhs)
     val operation = binary.op match {
-      case BinaryOp.===      => ???
-      case BinaryOp.!==      => ???
-      case BinaryOp.String_+ => ???
+      case BinaryOp.=== => ???
+      case BinaryOp.!== => ???
 
       case BinaryOp.Boolean_== => I32_EQ
       case BinaryOp.Boolean_!= => I32_NE
@@ -398,6 +415,40 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.String_charAt => ??? // TODO
     }
     lhsInstrs ++ rhsInstrs :+ operation
+  }
+
+  private def transformStringConcat(lhs: IRTrees.Tree, rhs: IRTrees.Tree): List[WasmInstr] = {
+    val wasmStringType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.string))
+
+    def transformToString(tree: IRTrees.Tree): List[WasmInstr] = {
+      val valueInstrs = transformTree(tree)
+      tree.tpe match {
+        case IRTypes.StringType =>
+          valueInstrs
+
+        case IRTypes.BooleanType =>
+          valueInstrs ++
+            List(IF(BlockType.ValueType(wasmStringType))) ++
+            transformLiteral(IRTrees.StringLiteral("true")(tree.pos)) ++
+            List(ELSE) ++
+            transformLiteral(IRTrees.StringLiteral("false")(tree.pos)) ++
+            List(END)
+
+        case _ =>
+          // TODO
+          ???
+      }
+    }
+
+    lhs match {
+      case IRTrees.StringLiteral("") =>
+        // Common case where we don't actually need a concatenation
+        transformToString(rhs)
+
+      case _ =>
+        // TODO: transformToString(lhs) ::: transformToString(rhs) :: callHelperConcat() :: Nil
+        ???
+    }
   }
 
   private def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {

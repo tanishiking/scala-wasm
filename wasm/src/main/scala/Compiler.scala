@@ -70,6 +70,8 @@ object Compiler {
       Set(
         ClassClass, // java.lang.Class
         ClassName("java.lang.FloatingPointBits$")
+      ) -- Set(
+        BoxedBooleanClass.withSuffix("$")
       )
   }
 
