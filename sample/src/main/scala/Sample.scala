@@ -7,26 +7,18 @@ import scala.scalajs.js.annotation._
 //   def sqrt(x: Int) = x * x
 // }
 //
-object Main extends Eq {
+object Main {
   @JSExportTopLevel("test")
-  def test(i: Int) = {
-    val l = new Loop
-    val r = new Rec
-    eq(
-        fib(l, i),
-        fib(r, i)
-    )
+  def test() = {
+    val i = 4
+    val l = new LoopFib {}
+    val r = new RecFib {}
+    fib(l, i) == fib(r, i)
 
   }
   def fib(fib: Fib, n: Int): Int = fib.fib(n)
 }
 
-class Loop extends LoopFib
-class Rec extends RecFib
-
-trait Eq {
-    def eq(a: Int, b: Int): Boolean = a == b
-}
 
 trait LoopFib extends Fib {
   def fib(n: Int): Int = {
