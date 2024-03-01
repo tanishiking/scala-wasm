@@ -27,6 +27,16 @@ trait ReadOnlyWasmContext {
   def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
 
+  def inferTypeFromTypeRef(typeRef: IRTypes.TypeRef): IRTypes.Type = typeRef match {
+    case IRTypes.PrimRef(tpe) =>
+      tpe
+    case IRTypes.ClassRef(className) =>
+      if (className == IRNames.ObjectClass) IRTypes.AnyType
+      else IRTypes.ClassType(className)
+    case typeRef: IRTypes.ArrayTypeRef =>
+      IRTypes.ArrayType(typeRef)
+  }
+
   def calculateVtable(name: IRNames.ClassName): WasmVTable = {
     // def collectMethodsFromInterface(iface)
     def collectMethods(className: IRNames.ClassName): List[WasmFunctionInfo] = {
@@ -107,16 +117,27 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
 
 object WasmContext {
   private val classFieldOffset = 2 // vtable, itables
-  case class WasmClassInfo(
-      name: IRNames.ClassName,
-      kind: ClassKind,
-      methods: List[WasmFunctionInfo],
+  final class WasmClassInfo(
+      val name: IRNames.ClassName,
+      val kind: ClassKind,
+      private var _methods: List[WasmFunctionInfo],
       private val fields: List[WasmFieldName],
-      superClass: Option[IRNames.ClassName],
-      interfaces: List[IRNames.ClassName]
+      val superClass: Option[IRNames.ClassName],
+      val interfaces: List[IRNames.ClassName]
   ) {
 
     def isInterface = kind == ClassKind.Interface
+
+    def methods: List[WasmFunctionInfo] = _methods
+
+    def maybeAddAbstractMethod(methodName: IRNames.MethodName, ctx: WasmContext): Unit = {
+      if (!methods.exists(_.name.methodName == methodName.nameString)) {
+        val wasmName = WasmFunctionName(name, methodName)
+        val argTypes = methodName.paramTypeRefs.map(ctx.inferTypeFromTypeRef(_))
+        val resultType = ctx.inferTypeFromTypeRef(methodName.resultTypeRef)
+        _methods = _methods :+ WasmFunctionInfo(wasmName, argTypes, resultType, isAbstract = true)
+      }
+    }
 
     def getFieldIdx(name: WasmFieldName): WasmImmediate.StructFieldIdx =
       fields.indexWhere(_ == name) match {
