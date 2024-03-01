@@ -21,5 +21,6 @@ object Defaults {
     case WasmRefNullType(heapType) => REF_NULL(HeapType(heapType))
     case WasmInt64                 => I64_CONST(I64(0))
     case WasmFloat64               => F64_CONST(F64(0))
+    case WasmNoType => nonDefaultable(t)
   }
 }

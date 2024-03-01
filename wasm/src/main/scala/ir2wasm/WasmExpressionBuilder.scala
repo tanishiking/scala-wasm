@@ -61,11 +61,13 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
-      case t: IRTrees.Block              => ???
+      case t: IRTrees.Block              => transformBlock(t)
       case t: IRTrees.Select             => transformSelect(t)
       case t: IRTrees.Assign             => transformAssign(t)
       case t: IRTrees.VarDef             => transformVarDef(t)
       case t: IRTrees.New                => transformNew(t)
+      case t: IRTrees.If                 => transformIf(t)
+      case t: IRTrees.While              => transformWhile(t)
       case t: IRTrees.Skip               => Nil
       case _ =>
         println(tree)
@@ -76,7 +78,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       // case select: IRTrees.JSPrivateSelect => ???
       // case nul: IRTrees.Null => ???
       // case v: IRTrees.UnwrapFromThrowable => ???
-      // case IRTrees.Assign(pos) =>
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSTypeOfGlobalRef(pos) =>
       // case IRTrees.JSMethodApply(pos) =>
@@ -101,7 +102,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       // case IRTrees.JSObjectConstr(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.AsInstanceOf(pos) =>
-      // case IRTrees.If(tpe) =>
       // case IRTrees.TryFinally(pos) =>
       // case IRTrees.Labeled(pos) =>
       // case IRTrees.SelectJSNativeMember(pos) =>
@@ -111,7 +111,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.ArraySelect(tpe) =>
       // case IRTrees.JSSelect(pos) =>
-      // case IRTrees.Skip(pos) =>
       // case IRTrees.LoadJSModule(pos) =>
       // case IRTrees.JSFunctionApply(pos) =>
       // case IRTrees.WrapAsThrowable(pos) =>
@@ -415,6 +414,48 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     fctx.locals.define(local)
 
     transformTree(r.rhs) :+ LOCAL_SET(LocalIdx(local.name))
+  }
+
+  private def transformIf(t: IRTrees.If): List[WasmInstr] = {
+    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    transformTree(t.cond) ++
+      List(IF(BlockType.ValueType(ty))) ++
+      transformTree(t.thenp) ++
+      List(ELSE) ++
+      transformTree(t.elsep) ++
+      List(END)
+  }
+
+  private def transformWhile(t: IRTrees.While): List[WasmInstr] = {
+    val label = fctx.genLabel()
+    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    val cond = transformTree(t.cond)
+
+    // cond
+    // if
+    //   loop $label
+    //   body
+    //   cond
+    //   br_if $label
+    // end
+
+    cond ++
+      List(
+        IF(BlockType.ValueType(ty)),
+        LOOP(label)
+      ) ++ transformTree(t.body) ++ cond ++
+      List(
+        BR_IF(label),
+        END, // LOOP
+        END // IF
+      )
+  }
+
+  private def transformBlock(t: IRTrees.Block): List[WasmInstr] = {
+    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    BLOCK(BlockType.ValueType(ty)) +:
+      t.stats.flatMap(transformTree) :+
+      END
   }
 
   private def transformNew(n: IRTrees.New): List[WasmInstr] = {
