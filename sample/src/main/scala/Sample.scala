@@ -1,5 +1,7 @@
 package sample
 
+import scala.annotation.tailrec
+
 import scala.scalajs.js.annotation._
 
 //
@@ -11,10 +13,10 @@ object Main {
   @JSExportTopLevel("test")
   def test() = {
     val i = 4
-    val l = new LoopFib {}
-    val r = new RecFib {}
-    fib(l, i) == fib(r, i)
-
+    val loopFib = fib(new LoopFib {}, i)
+    val recFib = fib(new RecFib {}, i)
+    val tailrecFib = fib(new TailRecFib {}, i)
+    loopFib == recFib && loopFib == tailrecFib
   }
   def fib(fib: Fib, n: Int): Int = fib.fib(n)
 }
@@ -43,6 +45,15 @@ trait RecFib extends Fib {
     } else {
       fib(n - 1) + fib(n - 2)
     }
+}
+
+trait TailRecFib extends Fib {
+  def fib(n: Int): Int = fibLoop(n, 0, 1)
+
+  @tailrec
+  final def fibLoop(n: Int, a: Int, b: Int): Int =
+    if (n == 0) a
+    else fibLoop(n - 1, b, a + b)
 }
 
 trait Fib {
