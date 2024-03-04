@@ -479,27 +479,47 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   private def transformWhile(t: IRTrees.While): List[WasmInstr] = {
     val label = fctx.genLabel()
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    val cond = transformTree(t.cond)
+    val noResultType = BlockType.ValueType(Types.WasmNoType)
 
-    // cond
-    // if
-    //   loop $label
-    //   body
-    //   cond
-    //   br_if $label
-    // end
+    t.cond match {
+      case IRTrees.BooleanLiteral(true) =>
+        // infinite loop that must be typed as `nothing`, i.e., unreachable
+        // loop $label
+        //   body
+        //   br $label
+        // end
+        // unreachable
+        List(
+          LOOP(noResultType, Some(label)),
+        ) ++ transformTree(t.body) ++
+          List(
+            BR(label),
+            END,
+            UNREACHABLE
+          )
 
-    cond ++
-      List(
-        IF(BlockType.ValueType(ty)),
-        LOOP(BlockType.ValueType(ty), Some(label))
-      ) ++ transformTree(t.body) ++ cond ++
-      List(
-        BR_IF(label),
-        END, // LOOP
-        END // IF
-      )
+      case _ =>
+        // loop $label
+        //   cond
+        //   if
+        //     body
+        //     br $label
+        //   end
+        // end
+
+        List(
+          LOOP(noResultType, Some(label)),
+        ) ++ transformTree(t.cond) ++
+          List(
+            IF(noResultType),
+          ) ++
+          transformTree(t.body) ++
+          List(
+            BR(label),
+            END, // IF
+            END // LOOP
+          )
+    }
   }
 
   private def transformBlock(t: IRTrees.Block): List[WasmInstr] =
