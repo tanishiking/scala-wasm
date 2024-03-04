@@ -62,6 +62,8 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
       case t: IRTrees.Block              => transformBlock(t)
+      case t: IRTrees.Labeled            => transformLabeled(t)
+      case t: IRTrees.Return             => transformReturn(t)
       case t: IRTrees.Select             => transformSelect(t)
       case t: IRTrees.Assign             => transformAssign(t)
       case t: IRTrees.VarDef             => transformVarDef(t)
@@ -524,6 +526,20 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   private def transformBlock(t: IRTrees.Block): List[WasmInstr] =
     t.stats.flatMap(transformTree)
+
+  private def transformLabeled(t: IRTrees.Labeled): List[WasmInstr] = {
+    val label = fctx.getLabelFor(t.label.name)
+    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    BLOCK(BlockType.ValueType(ty), Some(label)) +:
+      transformTree(t.body) :+
+      END
+  }
+
+  private def transformReturn(t: IRTrees.Return): List[WasmInstr] = {
+    val label = fctx.getLabelFor(t.label.name)
+    transformTree(t.expr) :+
+      BR(label)
+  }
 
   private def transformNew(n: IRTrees.New): List[WasmInstr] = {
     val localInstance = WasmLocal(
