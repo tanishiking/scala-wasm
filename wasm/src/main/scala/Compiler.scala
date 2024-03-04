@@ -43,7 +43,7 @@ object Compiler {
         val onlyModule = moduleSet.modules.head
 
         val filteredClasses = onlyModule.classDefs.filter { c =>
-          c.className == ir.Names.ObjectClass || c.className.nameString.startsWith("sample.")
+          !ExcludedClasses.contains(c.className)
         }
 
         filteredClasses.sortBy(_.className).foreach(showLinkedClass(_))
@@ -61,6 +61,18 @@ object Compiler {
         val binaryOutput = new converters.WasmBinaryWriter(module).write()
         FS.writeFileSync("./target/output.wasm", binaryOutput.toTypedArray)
       }
+  }
+
+  private val ExcludedClasses: Set[ir.Names.ClassName] = {
+    import ir.Names._
+    HijackedClasses ++ // hijacked classes
+      HijackedClasses.map(_.withSuffix("$")) ++ // their companions
+      Set(
+        ClassClass, // java.lang.Class
+        ClassName("java.lang.FloatingPointBits$")
+      ) -- Set(
+        BoxedBooleanClass.withSuffix("$")
+      )
   }
 
   private def showLinkedClass(clazz: LinkedClass): Unit = {

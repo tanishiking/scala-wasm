@@ -113,6 +113,7 @@ object Names {
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
+    val stringData = new WasmFieldName("string_data")
   }
 
   // GC types ====
@@ -125,6 +126,7 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
+      val string = new WasmStructTypeName("string")
     }
 
     /** Array type's name */
@@ -137,6 +139,7 @@ object Names {
         new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
       }
       val itables = new WasmArrayTypeName("itable")
+      val stringData = new WasmArrayTypeName("string_data")
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)

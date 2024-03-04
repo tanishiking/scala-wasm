@@ -144,7 +144,7 @@ final class WasmBinaryWriter(module: WasmModule) {
     }
   }
 
-  private def writeType(buf: Buffer, typ: WasmType): Unit = {
+  private def writeType(buf: Buffer, typ: WasmStorageType): Unit = {
     buf.byte(typ.code)
     typ match {
       case WasmRefNullType(heapType) => writeHeapType(buf, heapType)

@@ -5,12 +5,14 @@ import Names._
 import Names.WasmTypeName._
 
 object Types {
-  abstract sealed class WasmType(
+  abstract sealed class WasmStorageType(
       private val name: String,
       val code: Byte
   ) {
     def show: String = name
   }
+
+  abstract sealed class WasmType(name: String, code: Byte) extends WasmStorageType(name, code)
 
   // todo
   case object WasmNoType extends WasmType("", 0x00)
@@ -22,8 +24,10 @@ object Types {
   case object WasmFloat32 extends WasmType("f32", 0x7D)
   case object WasmFloat64 extends WasmType("f64", 0x7C)
   // case object WasmVec128 extends WasmType("v128", -0x5)
-  // case object WasmInt8 extends WasmType("i8", -0x6)
-  // case object WasmInt16 extends WasmType("i16", -0x7)
+
+  sealed abstract class WasmPackedType(name: String, code: Byte) extends WasmStorageType(name, code)
+  case object WasmInt8 extends WasmPackedType("i8", 0x78)
+  case object WasmInt16 extends WasmPackedType("i16", 0x77)
 
   // shorthands
   // https://github.com/WebAssembly/gc/blob/main/proposals/gc/MVP.md#reference-types-1
