@@ -442,7 +442,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     cond ++
       List(
         IF(BlockType.ValueType(ty)),
-        LOOP(label)
+        LOOP(BlockType.ValueType(ty), Some(label))
       ) ++ transformTree(t.body) ++ cond ++
       List(
         BR_IF(label),
@@ -453,7 +453,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   private def transformBlock(t: IRTrees.Block): List[WasmInstr] = {
     val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    BLOCK(BlockType.ValueType(ty)) +:
+    BLOCK(BlockType.ValueType(ty), None) +:
       t.stats.flatMap(transformTree) :+
       END
   }

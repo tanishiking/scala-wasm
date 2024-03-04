@@ -209,6 +209,12 @@ class WasmTextWriter {
     }
     b.newLine()
     b.appendElement(instr.mnemonic)
+    instr match {
+      case instr: StructuredLabeledInstr =>
+        instr.label.foreach(writeImmediate(_, instr))
+      case _ =>
+        ()
+    }
     instr.immediates.foreach { i => writeImmediate(i, instr) }
     instr match {
       case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
