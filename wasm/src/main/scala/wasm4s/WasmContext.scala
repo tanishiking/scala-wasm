@@ -113,6 +113,12 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
     classInfo.put(name, info)
 
+  addGlobal(WasmGlobal(
+    WasmGlobalName.WasmUndefName,
+    TypeTransformer.transformType(IRTypes.UndefType)(this),
+    WasmExpr(List(WasmInstr.STRUCT_NEW(WasmImmediate.TypeIdx(WasmTypeName.WasmStructTypeName.undef)))),
+    isMutable = false
+  ))
 }
 
 object WasmContext {

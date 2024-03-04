@@ -76,7 +76,10 @@ object TypeTransformer {
         Types.WasmRefType(
           Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
         )
-      case IRTypes.UndefType          => ???
+      case IRTypes.UndefType =>
+        Types.WasmRefType(
+          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
+        )
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 

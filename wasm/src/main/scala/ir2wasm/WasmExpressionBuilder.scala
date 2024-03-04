@@ -272,7 +272,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     case IRTrees.FloatLiteral(v)   => WasmInstr.F32_CONST(F32(v)) :: Nil
     case IRTrees.DoubleLiteral(v)  => WasmInstr.F64_CONST(F64(v)) :: Nil
 
-    case v: IRTrees.Undefined     => ???
+    case v: IRTrees.Undefined     => WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName)) :: Nil
     case v: IRTrees.Null          => ???
 
     case v: IRTrees.StringLiteral =>

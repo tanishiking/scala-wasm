@@ -80,6 +80,12 @@ object WasmStructType {
     ),
     None
   )
+
+  val undef: WasmStructType = WasmStructType(
+    WasmTypeName.WasmStructTypeName.undef,
+    Nil,
+    None
+  )
 }
 
 case class WasmArrayType(
@@ -150,6 +156,7 @@ class WasmModule(
   def exports = _exports.toList
 
   addRecGroupType(WasmStructType.string)
+  addRecGroupType(WasmStructType.undef)
 }
 
 object WasmModule {

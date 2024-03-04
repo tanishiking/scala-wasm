@@ -14,6 +14,7 @@ object Names {
         case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
         case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName   => "g_itable"
+        case WasmGlobalName.WasmUndefName             => "undef"
         case _: WasmFunctionName                      => "fun"
         case _: WasmFieldName                         => "field"
         case _: WasmExportName                        => "export"
@@ -52,6 +53,8 @@ object Names {
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
+    object WasmUndefName extends WasmGlobalName("undef")
+
     final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmModuleInstanceName {
@@ -127,6 +130,7 @@ object Names {
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
       val string = new WasmStructTypeName("string")
+      val undef = new WasmStructTypeName("undef")
     }
 
     /** Array type's name */
