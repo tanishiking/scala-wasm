@@ -502,12 +502,8 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       )
   }
 
-  private def transformBlock(t: IRTrees.Block): List[WasmInstr] = {
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    BLOCK(BlockType.ValueType(ty), None) +:
-      t.stats.flatMap(transformTree) :+
-      END
-  }
+  private def transformBlock(t: IRTrees.Block): List[WasmInstr] =
+    t.stats.flatMap(transformTree)
 
   private def transformNew(n: IRTrees.New): List[WasmInstr] = {
     val localInstance = WasmLocal(
