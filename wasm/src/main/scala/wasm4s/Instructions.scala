@@ -176,11 +176,19 @@ object WasmInstr {
 
   // Control instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
+  sealed abstract class StructuredLabeledInstr(
+    mnemonic: String,
+    opcode: Int,
+    immediates: List[WasmImmediate]
+  ) extends WasmInstr(mnemonic, opcode, immediates) {
+    val label: Option[LabelIdx]
+  }
+
   case object UNREACHABLE extends WasmInstr("unreachable", 0x00)
   case object NOP extends WasmInstr("nop", 0x01)
-  case class BLOCK(i: BlockType) extends WasmInstr("block", 0x02, List(i))
-  case class LOOP(i: LabelIdx) extends WasmInstr("loop", 0x03, List(i))
-  case class IF(i: BlockType) extends WasmInstr("if", 0x04, List(i))
+  case class BLOCK(i: BlockType, label: Option[LabelIdx]) extends StructuredLabeledInstr("block", 0x02, List(i))
+  case class LOOP(i: BlockType, label: Option[LabelIdx]) extends StructuredLabeledInstr("loop", 0x03, List(i))
+  case class IF(i: BlockType, label: Option[LabelIdx] = None) extends StructuredLabeledInstr("if", 0x04, List(i))
   case object ELSE extends WasmInstr("else", 0x05)
   case object END extends WasmInstr("end", 0x0b)
   case class BR(i: LabelIdx) extends WasmInstr("br", 0x0c, List(i))
@@ -263,7 +271,7 @@ object WasmInstr {
 
   case class ARRAY_NEW(i: TypeIdx) extends WasmInstr("array.new", 0xfb_06, List(i))
   case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xfb_07, List(i))
-  case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32) extends WasmInstr("array.new_fixed", 0xfb_07, List(i, size))
+  case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32) extends WasmInstr("array.new_fixed", 0xfb_08, List(i, size))
   case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xfb_0b, List(i))
   case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xfb_0c, List(i))
   case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xfb_0d, List(i))

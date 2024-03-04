@@ -17,6 +17,11 @@ import org.scalajs.linker.standard.{LinkedClass, SymbolRequirement}
 import org.scalajs.logging.{Level, ScalaConsoleLogger}
 
 import scala.concurrent.{ExecutionContext, Future}
+
+import scala.scalajs.js
+import scala.scalajs.js.annotation._
+import scala.scalajs.js.typedarray._
+
 import _root_.ir2wasm.Preprocessor
 
 object Compiler {
@@ -52,6 +57,9 @@ object Compiler {
         }
         val writer = new converters.WasmTextWriter()
         println(writer.write(module))
+
+        val binaryOutput = new converters.WasmBinaryWriter(module).write()
+        FS.writeFileSync("./target/output.wasm", binaryOutput.toTypedArray)
       }
   }
 
@@ -102,5 +110,10 @@ object Compiler {
         "{", "", "}"
       )
     }
+  }
+
+  private object FS {
+    @js.native @JSImport("fs")
+    def writeFileSync(file: String, data: Int8Array): Unit = js.native
   }
 }

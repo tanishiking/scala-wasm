@@ -17,27 +17,27 @@ object Types {
 
   // case object WasmTypeNone extends WasmType
   case object WasmUnreachableType extends WasmType("unreachable", -0x40)
-  case object WasmInt32 extends WasmType("i32", -0x1)
-  case object WasmInt64 extends WasmType("i64", -0x2)
-  case object WasmFloat32 extends WasmType("f32", -0x3)
-  case object WasmFloat64 extends WasmType("f64", -0x4)
+  case object WasmInt32 extends WasmType("i32", 0x7F)
+  case object WasmInt64 extends WasmType("i64", 0x7E)
+  case object WasmFloat32 extends WasmType("f32", 0x7D)
+  case object WasmFloat64 extends WasmType("f64", 0x7C)
   // case object WasmVec128 extends WasmType("v128", -0x5)
   // case object WasmInt8 extends WasmType("i8", -0x6)
   // case object WasmInt16 extends WasmType("i16", -0x7)
 
   // shorthands
   // https://github.com/WebAssembly/gc/blob/main/proposals/gc/MVP.md#reference-types-1
-  case object WasmFuncRef extends WasmType("funcref", -0x10)
-  case object WasmExternRef extends WasmType("externref", -0x11)
+  case object WasmFuncRef extends WasmType("funcref", 0x70)
+  case object WasmExternRef extends WasmType("externref", 0x6F)
   /** shorthand for (ref null any) */
-  case object WasmAnyRef extends WasmType("anyref", -0x12)
-  case object WasmEqRef extends WasmType("eqref", -0x13)
+  case object WasmAnyRef extends WasmType("anyref", 0x6E)
+  case object WasmEqRef extends WasmType("eqref", 0x6D)
   case object WasmRefNullrefType extends WasmType("nullref", -0x0F) // Shorthand for (ref null none)
   case object WasmRefNullExternrefType extends WasmType("nullexternref", -0x0E) // Shorthand for (ref null noextern)
-  case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", -0x14) {
+  case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", 0x63) {
     override def show: String = s"(ref null ${heapType.show})"
   }
-  case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", -0x15) {
+  case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", 0x64) {
     override def show: String = s"(ref ${heapType.show})"
   }
 
@@ -55,14 +55,14 @@ object Types {
         override def show: String = name
     }
     object Simple {
-      object Func extends Simple("func", -0x10)
-      object Extern extends Simple("extern", -0x11)
-      object Any extends Simple("any", -0x12)
-      object Eq extends Simple("eq", -0x13)
-      object Array extends Simple("array", -0x14)
-      object Struct extends Simple("struct", -0x15)
-      object None extends Simple("none", -0x0f)
-      object NoExtern extends Simple("noextern", -0x0e)
+      object Func extends Simple("func", 0x70)
+      object Extern extends Simple("extern", 0x6F)
+      object Any extends Simple("any", 0x6E)
+      object Eq extends Simple("eq", 0x6D)
+      object Array extends Simple("array", 0x6A)
+      object Struct extends Simple("struct", 0x6B)
+      object None extends Simple("none", 0x71)
+      object NoExtern extends Simple("noextern", 0x72)
     }
 
     val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
