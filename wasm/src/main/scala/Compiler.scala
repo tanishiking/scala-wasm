@@ -1,10 +1,7 @@
 package wasm
 
+import wasm.ir2wasm._
 import wasm.wasm4s._
-import wasm.ir2wasm.TypeTransformer
-import wasm.ir2wasm.WasmBuilder
-import wasm.wasm4s.WasmInstr._
-import wasm.utils.TestIRBuilder._
 
 import org.scalajs.ir
 import org.scalajs.ir.Trees._
@@ -21,8 +18,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
 import scala.scalajs.js.typedarray._
-
-import _root_.ir2wasm.Preprocessor
 
 object Compiler {
   def compileIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Unit] = {
