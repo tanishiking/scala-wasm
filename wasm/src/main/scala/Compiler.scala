@@ -33,40 +33,38 @@ object Compiler {
     val symbolRequirements = SymbolRequirement.factory("none").none()
     val logger = new ScalaConsoleLogger(Level.Error)
 
-    linkerFrontend.link(irFiles, Nil, symbolRequirements, logger)
-      .map { moduleSet =>
-        val onlyModule = moduleSet.modules.head
+    for {
+      patchedIRFiles <- LibraryPatches.patchIRFiles(irFiles)
+      moduleSet <- linkerFrontend.link(patchedIRFiles, Nil, symbolRequirements, logger)
+    } yield {
+      val onlyModule = moduleSet.modules.head
 
-        val filteredClasses = onlyModule.classDefs.filter { c =>
-          !ExcludedClasses.contains(c.className)
-        }
-
-        filteredClasses.sortBy(_.className).foreach(showLinkedClass(_))
-
-        Preprocessor.preprocess(filteredClasses)(context)
-        filteredClasses.foreach { clazz =>
-          builder.transformClassDef(clazz)
-        }
-        onlyModule.topLevelExports.foreach { tle =>
-          builder.transformTopLevelExport(tle)
-        }
-        val writer = new converters.WasmTextWriter()
-        println(writer.write(module))
-
-        val binaryOutput = new converters.WasmBinaryWriter(module).write()
-        FS.writeFileSync("./target/output.wasm", binaryOutput.toTypedArray)
+      val filteredClasses = onlyModule.classDefs.filter { c =>
+        !ExcludedClasses.contains(c.className)
       }
+
+      filteredClasses.sortBy(_.className).foreach(showLinkedClass(_))
+
+      Preprocessor.preprocess(filteredClasses)(context)
+      filteredClasses.foreach { clazz =>
+        builder.transformClassDef(clazz)
+      }
+      onlyModule.topLevelExports.foreach { tle =>
+        builder.transformTopLevelExport(tle)
+      }
+      val writer = new converters.WasmTextWriter()
+      println(writer.write(module))
+
+      val binaryOutput = new converters.WasmBinaryWriter(module).write()
+      FS.writeFileSync("./target/output.wasm", binaryOutput.toTypedArray)
+    }
   }
 
   private val ExcludedClasses: Set[ir.Names.ClassName] = {
     import ir.Names._
     HijackedClasses ++ // hijacked classes
-      HijackedClasses.map(_.withSuffix("$")) ++ // their companions
       Set(
-        ClassClass, // java.lang.Class
-        ClassName("java.lang.FloatingPointBits$")
-      ) -- Set(
-        BoxedBooleanClass.withSuffix("$")
+        ClassClass // java.lang.Class
       )
   }
 

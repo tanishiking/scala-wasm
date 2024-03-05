@@ -30,7 +30,11 @@ object TestIRBuilder {
   val JSCtorFlags = EMF.withNamespace(MemberNamespace.Public)
 
   val V = VoidRef
+  val C = CharRef
   val I = IntRef
+  val J = LongRef
+  val F = FloatRef
+  val D = DoubleRef
   val Z = BooleanRef
   val O = ClassRef(ObjectClass)
   val T = ClassRef(BoxedStringClass)
