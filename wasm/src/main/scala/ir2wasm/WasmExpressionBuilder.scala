@@ -1,6 +1,8 @@
 package wasm
 package ir2wasm
 
+import scala.annotation.switch
+
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
@@ -323,13 +325,80 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     List(CALL(FuncIdx(Names.WasmFunctionName.loadModule(t.className))))
 
   private def transformUnaryOp(unary: IRTrees.UnaryOp): List[WasmInstr] = {
-    ???
+    import IRTrees.UnaryOp._
+
+    val lhsInstrs = transformTree(unary.lhs)
+
+    (unary.op: @switch) match {
+      case Boolean_! =>
+        lhsInstrs ++
+          List(
+            I32_CONST(I32(1)),
+            I32_XOR
+          )
+
+      // Widening conversions
+      case CharToInt | ByteToInt | ShortToInt =>
+        lhsInstrs // these are no-ops because they are all represented as i32's with the right mathematical value
+      case IntToLong =>
+        lhsInstrs :+ I64_EXTEND32_S
+      case IntToDouble =>
+        lhsInstrs :+ F64_CONVERT_I32_S
+      case FloatToDouble =>
+        lhsInstrs :+ F64_PROMOTE_F32
+
+      // Narrowing conversions
+      case IntToChar =>
+        lhsInstrs ++ List(I32_CONST(I32(0xffff)), I32_AND)
+      case IntToByte =>
+        lhsInstrs :+ I32_EXTEND8_S
+      case IntToShort =>
+        lhsInstrs :+ I32_EXTEND16_S
+      case LongToInt =>
+        lhsInstrs :+ I32_WRAP_I64
+      case DoubleToInt =>
+        lhsInstrs :+ I32_TRUNC_SAT_F64_S
+      case DoubleToFloat =>
+        lhsInstrs :+ F32_DEMOTE_F64
+
+      // Long <-> Double (neither widening nor narrowing)
+      case LongToDouble =>
+        lhsInstrs :+ F64_CONVERT_I64_S
+      case DoubleToLong =>
+        lhsInstrs :+ I64_TRUNC_SAT_F64_S
+
+      // Long -> Float (neither widening nor narrowing), introduced in 1.6
+      case LongToFloat =>
+        lhsInstrs :+ F32_CONVERT_I64_S
+
+      // String.length, introduced in 1.11
+      case String_length =>
+        lhsInstrs ++
+          List(
+            STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)), // get the array
+            ARRAY_LEN
+          )
+    }
   }
 
   private def transformBinaryOp(binary: IRTrees.BinaryOp): List[WasmInstr] = {
     import IRTrees.BinaryOp
+
+    def longShiftOp(shiftInstr: WasmInstr): List[WasmInstr] = {
+      transformTree(binary.lhs) ++
+        transformTree(binary.rhs) ++
+        List(
+          I64_EXTEND_I32_S,
+          shiftInstr
+        )
+    }
+
     binary.op match {
       case BinaryOp.String_+ => transformStringConcat(binary.lhs, binary.rhs)
+
+      case BinaryOp.Long_<<  => longShiftOp(I64_SHL)
+      case BinaryOp.Long_>>> => longShiftOp(I64_SHR_U)
+      case BinaryOp.Long_>>  => longShiftOp(I64_SHR_S)
 
       case _ => transformElementaryBinaryOp(binary)
     }
@@ -353,12 +422,12 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Int_*   => I32_MUL
       case BinaryOp.Int_/   => I32_DIV_S // signed division
       case BinaryOp.Int_%   => I32_REM_S // signed remainder
-      case BinaryOp.Int_|   => ???
-      case BinaryOp.Int_&   => ???
-      case BinaryOp.Int_^   => ???
-      case BinaryOp.Int_<<  => ???
-      case BinaryOp.Int_>>> => ???
-      case BinaryOp.Int_>>  => ???
+      case BinaryOp.Int_|   => I32_OR
+      case BinaryOp.Int_&   => I32_AND
+      case BinaryOp.Int_^   => I32_XOR
+      case BinaryOp.Int_<<  => I32_SHL
+      case BinaryOp.Int_>>> => I32_SHR_U
+      case BinaryOp.Int_>>  => I32_SHR_S
       case BinaryOp.Int_==  => I32_EQ
       case BinaryOp.Int_!=  => I32_NE
       case BinaryOp.Int_<   => I32_LT_S
@@ -371,12 +440,9 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Long_*   => I64_MUL
       case BinaryOp.Long_/   => I64_DIV_S
       case BinaryOp.Long_%   => I64_REM_S
-      case BinaryOp.Long_|   => ???
-      case BinaryOp.Long_&   => ???
-      case BinaryOp.Long_^   => ???
-      case BinaryOp.Long_<<  => ???
-      case BinaryOp.Long_>>> => ???
-      case BinaryOp.Long_>>  => ???
+      case BinaryOp.Long_|   => I64_OR
+      case BinaryOp.Long_&   => I64_AND
+      case BinaryOp.Long_^   => I64_XOR
 
       case BinaryOp.Long_== => I64_EQ
       case BinaryOp.Long_!= => I64_NE
@@ -435,6 +501,25 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
             List(ELSE) ++
             transformLiteral(IRTrees.StringLiteral("false")(tree.pos)) ++
             List(END)
+
+        case IRTypes.CharType =>
+          valueInstrs ++
+            List(
+              WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(1)),
+              WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
+            )
+
+        case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>
+          // TODO Write a correct implementation
+          valueInstrs ++ (DROP +: transformLiteral(IRTrees.StringLiteral("0")(tree.pos)))
+
+        case IRTypes.LongType =>
+          // TODO Write a correct implementation
+          valueInstrs ++ (DROP +: transformLiteral(IRTrees.StringLiteral("0")(tree.pos)))
+
+        case IRTypes.FloatType | IRTypes.DoubleType =>
+          // TODO Write a correct implementation
+          valueInstrs ++ (DROP +: transformLiteral(IRTrees.StringLiteral("0.0")(tree.pos)))
 
         case _ =>
           // TODO
