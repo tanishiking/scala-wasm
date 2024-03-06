@@ -36,8 +36,8 @@ object Types {
   /** shorthand for (ref null any) */
   case object WasmAnyRef extends WasmType("anyref", 0x6E)
   case object WasmEqRef extends WasmType("eqref", 0x6D)
-  case object WasmRefNullrefType extends WasmType("nullref", -0x0F) // Shorthand for (ref null none)
-  case object WasmRefNullExternrefType extends WasmType("nullexternref", -0x0E) // Shorthand for (ref null noextern)
+  case object WasmRefNullrefType extends WasmType("nullref", 0x71) // Shorthand for (ref null none)
+  case object WasmRefNullExternrefType extends WasmType("nullexternref", 0x72) // Shorthand for (ref null noextern)
   case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", 0x63) {
     override def show: String = s"(ref null ${heapType.show})"
   }

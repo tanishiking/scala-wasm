@@ -62,6 +62,8 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
       case t: IRTrees.Block              => transformBlock(t)
+      case t: IRTrees.Labeled            => transformLabeled(t)
+      case t: IRTrees.Return             => transformReturn(t)
       case t: IRTrees.Select             => transformSelect(t)
       case t: IRTrees.Assign             => transformAssign(t)
       case t: IRTrees.VarDef             => transformVarDef(t)
@@ -272,7 +274,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     case IRTrees.FloatLiteral(v)   => WasmInstr.F32_CONST(F32(v)) :: Nil
     case IRTrees.DoubleLiteral(v)  => WasmInstr.F64_CONST(F64(v)) :: Nil
 
-    case v: IRTrees.Undefined     => ???
+    case v: IRTrees.Undefined     => WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName)) :: Nil
     case v: IRTrees.Null          => ???
 
     case v: IRTrees.StringLiteral =>
@@ -479,34 +481,64 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
 
   private def transformWhile(t: IRTrees.While): List[WasmInstr] = {
     val label = fctx.genLabel()
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    val cond = transformTree(t.cond)
+    val noResultType = BlockType.ValueType(Types.WasmNoType)
 
-    // cond
-    // if
-    //   loop $label
-    //   body
-    //   cond
-    //   br_if $label
-    // end
+    t.cond match {
+      case IRTrees.BooleanLiteral(true) =>
+        // infinite loop that must be typed as `nothing`, i.e., unreachable
+        // loop $label
+        //   body
+        //   br $label
+        // end
+        // unreachable
+        List(
+          LOOP(noResultType, Some(label)),
+        ) ++ transformTree(t.body) ++
+          List(
+            BR(label),
+            END,
+            UNREACHABLE
+          )
 
-    cond ++
-      List(
-        IF(BlockType.ValueType(ty)),
-        LOOP(BlockType.ValueType(ty), Some(label))
-      ) ++ transformTree(t.body) ++ cond ++
-      List(
-        BR_IF(label),
-        END, // LOOP
-        END // IF
-      )
+      case _ =>
+        // loop $label
+        //   cond
+        //   if
+        //     body
+        //     br $label
+        //   end
+        // end
+
+        List(
+          LOOP(noResultType, Some(label)),
+        ) ++ transformTree(t.cond) ++
+          List(
+            IF(noResultType),
+          ) ++
+          transformTree(t.body) ++
+          List(
+            BR(label),
+            END, // IF
+            END // LOOP
+          )
+    }
   }
 
-  private def transformBlock(t: IRTrees.Block): List[WasmInstr] = {
+  private def transformBlock(t: IRTrees.Block): List[WasmInstr] =
+    t.stats.flatMap(transformTree)
+
+  private def transformLabeled(t: IRTrees.Labeled): List[WasmInstr] = {
+    val label = fctx.getLabelFor(t.label.name)
     val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    BLOCK(BlockType.ValueType(ty), None) +:
-      t.stats.flatMap(transformTree) :+
+    BLOCK(BlockType.ValueType(ty), Some(label)) +:
+      transformTree(t.body) :+
       END
+  }
+
+  private def transformReturn(t: IRTrees.Return): List[WasmInstr] = {
+    val label = fctx.getLabelFor(t.label.name)
+    transformTree(t.expr) :+
+      BR(label)
   }
 
   private def transformNew(n: IRTrees.New): List[WasmInstr] = {
