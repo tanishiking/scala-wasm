@@ -77,7 +77,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         println(tree)
         ???
 
-      // case undef: IRTrees.Undefined => ???
       // case unary: IRTrees.JSUnaryOp => ???
       // case select: IRTrees.JSPrivateSelect => ???
       // case nul: IRTrees.Null => ???
@@ -276,19 +275,21 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     case IRTrees.FloatLiteral(v)   => WasmInstr.F32_CONST(F32(v)) :: Nil
     case IRTrees.DoubleLiteral(v)  => WasmInstr.F64_CONST(F64(v)) :: Nil
 
-    case v: IRTrees.Undefined     => WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName)) :: Nil
-    case v: IRTrees.Null          => ???
+    case v: IRTrees.Undefined =>
+      WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName)) :: Nil
+    case v: IRTrees.Null => ???
 
     case v: IRTrees.StringLiteral =>
       // TODO We should allocate literal strings once and for all as globals
       val str = v.value
       str.toList.map(c => WasmInstr.I32_CONST(I32(c.toInt))) :::
         List(
-          WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length())),
+          WasmInstr
+            .ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length())),
           WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
         )
 
-    case v: IRTrees.ClassOf       => ???
+    case v: IRTrees.ClassOf => ???
   }
 
   private def transformSelect(sel: IRTrees.Select): List[WasmInstr] = {
@@ -544,14 +545,20 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
   }
 
   private def transformVarDef(r: IRTrees.VarDef): List[WasmInstr] = {
-    val local = WasmLocal(
-      WasmLocalName.fromIR(r.name.name),
-      TypeTransformer.transformType(r.vtpe)(ctx),
-      isParameter = false
-    )
-    fctx.locals.define(local)
+    r.vtpe match {
+      // val _: Unit = rhs
+      case ClassType(className) if className == IRNames.BoxedUnitClass =>
+        transformTree(r.rhs) :+ DROP
+      case _ =>
+        val local = WasmLocal(
+          WasmLocalName.fromIR(r.name.name),
+          TypeTransformer.transformType(r.vtpe)(ctx),
+          isParameter = false
+        )
+        fctx.locals.define(local)
 
-    transformTree(r.rhs) :+ LOCAL_SET(LocalIdx(local.name))
+        transformTree(r.rhs) :+ LOCAL_SET(LocalIdx(local.name))
+    }
   }
 
   private def transformIf(t: IRTrees.If): List[WasmInstr] = {
@@ -577,7 +584,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         // end
         // unreachable
         List(
-          LOOP(noResultType, Some(label)),
+          LOOP(noResultType, Some(label))
         ) ++ transformTree(t.body) ++
           List(
             BR(label),
@@ -595,10 +602,10 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         // end
 
         List(
-          LOOP(noResultType, Some(label)),
+          LOOP(noResultType, Some(label))
         ) ++ transformTree(t.cond) ++
           List(
-            IF(noResultType),
+            IF(noResultType)
           ) ++
           transformTree(t.body) ++
           List(

@@ -8,7 +8,7 @@ import org.scalajs.ir.Trees._
 import org.scalajs.ir.Types._
 
 import org.scalajs.linker.frontend.LinkerFrontendImpl
-import org.scalajs.linker.interface.IRFile
+import org.scalajs.linker.interface.{IRFile, ModuleInitializer}
 import org.scalajs.linker.standard.{LinkedClass, SymbolRequirement}
 
 import org.scalajs.logging.{Level, ScalaConsoleLogger}
@@ -20,22 +20,34 @@ import scala.scalajs.js.annotation._
 import scala.scalajs.js.typedarray._
 
 object Compiler {
-  def compileIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Unit] = {
+  def compileIRFiles(
+      irFiles: Seq[IRFile],
+      moduleInitializers: List[ModuleInitializer],
+      // outputDir: String,
+      outputName: String
+  )(implicit ec: ExecutionContext): Future[Unit] = {
+
     val module = new WasmModule
     val builder = new WasmBuilder()
     implicit val context: WasmContext = new WasmContext(module)
-    println("compiling")
+    println("compiling...  ")
 
-    val config = LinkerFrontendImpl.Config()
+    val config = LinkerFrontendImpl
+      .Config()
       .withOptimizer(false)
     val linkerFrontend = LinkerFrontendImpl(config)
 
     val symbolRequirements = SymbolRequirement.factory("none").none()
-    val logger = new ScalaConsoleLogger(Level.Error)
+    val logger = new ScalaConsoleLogger(Level.Info)
 
     for {
       patchedIRFiles <- LibraryPatches.patchIRFiles(irFiles)
-      moduleSet <- linkerFrontend.link(patchedIRFiles, Nil, symbolRequirements, logger)
+      moduleSet <- linkerFrontend.link(
+        patchedIRFiles,
+        moduleInitializers,
+        symbolRequirements,
+        logger
+      )
     } yield {
       val onlyModule = moduleSet.modules.head
 
@@ -46,17 +58,18 @@ object Compiler {
       filteredClasses.sortBy(_.className).foreach(showLinkedClass(_))
 
       Preprocessor.preprocess(filteredClasses)(context)
+      println("preprocessed")
       filteredClasses.foreach { clazz =>
         builder.transformClassDef(clazz)
       }
       onlyModule.topLevelExports.foreach { tle =>
         builder.transformTopLevelExport(tle)
       }
-      val writer = new converters.WasmTextWriter()
-      println(writer.write(module))
+      val textOutput = new converters.WasmTextWriter().write(module)
+      FS.writeFileSync(s"./target/$outputName.wat", textOutput.getBytes().toTypedArray)
 
       val binaryOutput = new converters.WasmBinaryWriter(module).write()
-      FS.writeFileSync("./target/output.wasm", binaryOutput.toTypedArray)
+      FS.writeFileSync(s"./target/$outputName.wasm", binaryOutput.toTypedArray)
     }
   }
 
@@ -112,7 +125,9 @@ object Compiler {
           ::: clazz.jsConstructorDef.toList
           ::: clazz.exportedMembers
           ::: clazz.jsNativeMembers,
-        "{", "", "}"
+        "{",
+        "",
+        "}"
       )
     }
   }

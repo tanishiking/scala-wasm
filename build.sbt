@@ -9,9 +9,15 @@ lazy val cli = project
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= {
       _.withModuleKind(ModuleKind.CommonJSModule),
-    }
+    },
+    libraryDependencies ++= Seq(
+      "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1"
+    ),
   )
-  .dependsOn(wasm)
+  .dependsOn(
+    wasm,
+    // tests // for TestSuites constant
+  )
 
 lazy val wasm = project
   .in(file("wasm"))
@@ -21,7 +27,6 @@ lazy val wasm = project
     version := "0.1.0-SNAPSHOT",
     scalaVersion := scalaV,
     libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit" % "0.7.29" % Test,
       "org.scala-js" %%% "scalajs-linker" % "1.15.0"
     ),
     scalaJSUseMainModuleInitializer := true,
@@ -41,14 +46,50 @@ lazy val sample = project
       import org.scalajs.jsenv.nodejs.NodeJSEnv
       val cp = Attributed
         .data((Compile / fullClasspath).value)
-        // .filter { path =>
-        //     val pathStr = path.toString()
-        //     println(pathStr)
-        //     pathStr.contains("sample/target")
-        // }
         .mkString(";")
-      val env = Map("SCALAJS_CLASSPATH" -> cp, "SCALAJS_MODE" -> "sample")
+      val env = Map(
+        "SCALAJS_CLASSPATH" -> cp,
+        "SCALAJS_MODE" -> "sample",
+      )
       new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
     },
     Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
+
+lazy val testSuite = project
+  .in(file("test-suite"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    scalaVersion := scalaV,
+    scalaJSUseMainModuleInitializer := true,
+    Compile / jsEnv := {
+      import org.scalajs.jsenv.nodejs.NodeJSEnv
+      val cp = Attributed
+        .data((Compile / fullClasspath).value)
+        .mkString(";")
+      val env = Map(
+        "SCALAJS_CLASSPATH" -> cp,
+        "SCALAJS_MODE" -> "testsuite",
+      )
+      new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
+    },
+    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
+  )
+
+lazy val tests = project
+  .in(file("tests"))
+  .enablePlugins(ScalaJSPlugin)
+  .settings(
+    scalaVersion := scalaV,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "0.7.29" % Test,
+      "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1" % Test
+    ),
+    scalaJSLinkerConfig ~= {
+      _.withModuleKind(ModuleKind.CommonJSModule),
+    },
+    test := Def.sequential(
+      (testSuite / Compile / run).toTask(""),
+      (Test / test)
+    ).value
+  ).dependsOn(cli)

@@ -17,3 +17,19 @@ $ deno run --allow-read run.mjs
 - The WasmGC reference interpreter can be used to validate and convert between the binary and text form:
   - https://github.com/WebAssembly/gc/tree/main/interpreter
   - Use docker image for it https://github.com/tanishiking/wasmgc-docker
+
+### Testing
+
+Requires NodeJS >= 22 (for enough support of WasmGC).
+
+```sh
+$ NVM_NODEJS_ORG_MIRROR=https://nodejs.org/download/nightly nvm install v22
+```
+
+- `tests/test` will
+  - Run `testSuite/run` to compile the Scala code under `test-suite` to WebAssembly
+  - Run the WebAssembly binary using NodeJS
+- Each Scala program in `test-suite` should have a function that has no arguments and return a Boolean value. The test passes if the function returns `true`.
+- When you add a test, 
+  - Add a file under `test-suite`
+  - Add a test case to `cli/src/main/scala/TestSuites.scala` (`methodName` should be a exported function name).
