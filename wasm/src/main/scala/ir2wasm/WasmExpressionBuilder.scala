@@ -15,7 +15,16 @@ import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 
-class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext) {
+object WasmExpressionBuilder {
+  def transformBody(tree: IRTrees.Tree)(
+    implicit ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext
+  ): WasmExpr = {
+    val builder = new WasmExpressionBuilder(ctx, fctx)
+    WasmExpr(builder.transformTree(tree))
+  }
+}
+
+private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext) {
 
   /** object creation prefix
     * ```

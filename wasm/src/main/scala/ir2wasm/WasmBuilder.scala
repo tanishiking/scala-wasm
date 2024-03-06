@@ -34,7 +34,6 @@ class WasmBuilder {
 
   def transformTopLevelExport(export: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
     implicit val fctx = WasmFunctionContext()
-    val expressionBuilder = new WasmExpressionBuilder(ctx, fctx)
     export.tree match {
       case d: IRTrees.TopLevelFieldExportDef   => ???
       case d: IRTrees.TopLevelJSClassExportDef => ???
@@ -295,7 +294,6 @@ class WasmBuilder {
   private def transformToplevelMethodExportDef(
       exportDef: IRTrees.TopLevelMethodExportDef
   )(implicit ctx: WasmContext, fctx: WasmFunctionContext) = {
-    val builder = new WasmExpressionBuilder(ctx, fctx)
     val method = exportDef.methodDef
     val methodName = method.name match {
       case lit: IRTrees.StringLiteral => lit
@@ -363,12 +361,12 @@ class WasmBuilder {
     }
     params.foreach(fctx.locals.define)
 
-    val instrs = builder.transformTree(newBody)
+    val expr = WasmExpressionBuilder.transformBody(newBody)
     val func = WasmFunction(
       Names.WasmFunctionName(methodName),
       functionType,
       fctx.locals.all,
-      WasmExpr(instrs)
+      expr
     )
     ctx.addFunction(func)
 
@@ -414,12 +412,10 @@ class WasmBuilder {
     }).foreach(fctx.locals.define)
 
     // build function body
-    val builder = new WasmExpressionBuilder(ctx, fctx)
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
     // val prefix =
     //   if (method.flags.namespace.isConstructor) builder.objectCreationPrefix(clazz, method) else Nil
-    val instrs = builder.transformTree(body)
-    val expr = WasmExpr(instrs)
+    val expr = WasmExpressionBuilder.transformBody(body)
 
     val func = WasmFunction(
       Names.WasmFunctionName(clazz.name.name, method.name.name),
