@@ -129,7 +129,8 @@ object WasmContext {
       private var _methods: List[WasmFunctionInfo],
       private val fields: List[WasmFieldName],
       val superClass: Option[IRNames.ClassName],
-      val interfaces: List[IRNames.ClassName]
+      val interfaces: List[IRNames.ClassName],
+      val ancestors: List[IRNames.ClassName]
   ) {
 
     def isInterface = kind == ClassKind.Interface

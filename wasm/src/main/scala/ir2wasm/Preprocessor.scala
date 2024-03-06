@@ -48,7 +48,8 @@ object Preprocessor {
         infos,
         clazz.fields.collect { case f: IRTrees.FieldDef => Names.WasmFieldName(f.name.name) },
         clazz.superClass.map(_.name),
-        clazz.interfaces.map(_.name)
+        clazz.interfaces.map(_.name),
+        clazz.ancestors
       )
     )
   }

@@ -63,6 +63,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
+      case t: IRTrees.AsInstanceOf       => transformAsInstanceOf(t)
       case t: IRTrees.Block              => transformBlock(t)
       case t: IRTrees.Labeled            => transformLabeled(t)
       case t: IRTrees.Return             => transformReturn(t)
@@ -538,6 +539,24 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         ???
     }
   }
+
+  private def transformAsInstanceOf(tree: IRTrees.AsInstanceOf): List[WasmInstr] = {
+    val exprInstrs = transformTree(tree.expr)
+
+    val sourceTpe = tree.expr.tpe
+    val targetTpe = tree.tpe
+
+    if (IRTypes.isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
+      // Common case where no cast is necessary
+      exprInstrs
+    } else {
+      println(tree)
+      ???
+    }
+  }
+
+  private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
+    ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
   private def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
     val name = WasmLocalName.fromIR(r.ident.name)
