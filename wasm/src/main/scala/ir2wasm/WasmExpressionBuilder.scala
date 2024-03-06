@@ -402,6 +402,17 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Long_>>> => longShiftOp(I64_SHR_U)
       case BinaryOp.Long_>>  => longShiftOp(I64_SHR_S)
 
+      // New in 1.11
+      case BinaryOp.String_charAt =>
+        transformTree(binary.lhs) ++ // push the string
+          List(
+            STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)), // get the array
+          ) ++
+          transformTree(binary.rhs) ++ // push the index
+          List(
+            ARRAY_GET_U(TypeIdx(WasmArrayTypeName.stringData)) // access the element of the array
+          )
+
       case _ => transformElementaryBinaryOp(binary)
     }
   }
@@ -480,9 +491,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Double_<= => F64_LE
       case BinaryOp.Double_>  => F64_GT
       case BinaryOp.Double_>= => F64_GE
-
-      // // New in 1.11
-      case BinaryOp.String_charAt => ??? // TODO
     }
     lhsInstrs ++ rhsInstrs :+ operation
   }
