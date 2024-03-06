@@ -146,6 +146,12 @@ object WasmContext {
       }
     }
 
+    def getMethodInfo(methodName: IRNames.MethodName): WasmFunctionInfo = {
+      methods.find(_.name.methodName == methodName.nameString).getOrElse {
+        throw new IllegalArgumentException(s"Cannot find method ${methodName.nameString} in class ${name.nameString}")
+      }
+    }
+
     def getFieldIdx(name: WasmFieldName): WasmImmediate.StructFieldIdx =
       fields.indexWhere(_ == name) match {
         case i if i < 0 => throw new Error(s"Field not found: $name")

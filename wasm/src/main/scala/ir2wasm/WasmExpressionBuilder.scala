@@ -181,8 +181,9 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     val wasmArgs = t.args.flatMap(transformTree)
 
     val receiverClassName = t.receiver.tpe match {
-      case ClassType(className) => className
-      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+      case ClassType(className)   => className
+      case prim: IRTypes.PrimType => IRTypes.PrimTypeToBoxedClass(prim)
+      case _                      => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
@@ -228,6 +229,18 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
           CALL_REF(
             TypeIdx(method.toWasmFunctionType()(ctx).name)
           )
+        )
+    } else if (receiverClassInfo.kind == ClassKind.HijackedClass) {
+      // statically resolved call
+      val info = receiverClassInfo.getMethodInfo(t.method.name)
+      val castIfNeeded =
+        if (receiverClassName == IRNames.BoxedStringClass && t.receiver.tpe == ClassType(IRNames.BoxedStringClass))
+          List(REF_CAST(HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))))
+        else
+          Nil
+      pushReceiver ++ castIfNeeded ++ wasmArgs ++
+        List(
+          CALL(FuncIdx(info.name))
         )
     } else { // virtual dispatch
       val (methodIdx, info) = ctx

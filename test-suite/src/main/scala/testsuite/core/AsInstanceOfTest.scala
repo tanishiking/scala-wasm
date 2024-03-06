@@ -8,7 +8,8 @@ object AsInstanceOfTest {
   @JSExportTopLevel("asInstanceOf")
   def test(): Boolean = {
     testInt(5) &&
-      testClasses(new Child())
+      testClasses(new Child()) &&
+      testString("foo", true)
   }
 
   def testClasses(c: Child): Boolean = {
@@ -20,6 +21,12 @@ object AsInstanceOfTest {
   def testInt(x: Int): Boolean = {
     val x1 = x.asInstanceOf[Int]
     x1 == 5
+  }
+
+  def testString(s: String, b: Boolean): Boolean = {
+    val s1 = s.asInstanceOf[String]
+    val s2 = ("" + b).asInstanceOf[String]
+    s1.length() == 3 && s2.length() == 4
   }
 
   class Parent {

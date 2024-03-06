@@ -24,10 +24,11 @@ class WasmBuilder {
 
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     clazz.kind match {
-      case ClassKind.ModuleClass => transformModuleClass(clazz)
-      case ClassKind.Class       => transformClass(clazz)
-      case ClassKind.Interface   => transformInterface(clazz)
-      case _                     =>
+      case ClassKind.ModuleClass   => transformModuleClass(clazz)
+      case ClassKind.Class         => transformClass(clazz)
+      case ClassKind.HijackedClass => transformHijackedClass(clazz)
+      case ClassKind.Interface     => transformInterface(clazz)
+      case _                       => ???
     }
   }
 
@@ -242,6 +243,12 @@ class WasmBuilder {
     transformClassCommon(clazz)
   }
 
+  private def transformHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    clazz.methods.foreach { method =>
+      genFunction(clazz, method)
+    }
+  }
+
   private def transformInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
     // gen itable type
@@ -389,7 +396,9 @@ class WasmBuilder {
       // Receiver type for non-constructor methods needs to be Object type because params are invariant
       // Otherwise, vtable can't be a subtype of the supertype's subtype
       // Constructor can use the exact type because it won't be registered to vtables.
-      if (method.flags.namespace.isConstructor)
+      if (clazz.kind == ClassKind.HijackedClass)
+        transformType(IRTypes.BoxedClassToPrimType(clazz.name.name))
+      else if (method.flags.namespace.isConstructor)
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
       else
         WasmRefNullType(WasmHeapType.ObjectType),

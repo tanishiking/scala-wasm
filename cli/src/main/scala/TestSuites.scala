@@ -5,6 +5,7 @@ object TestSuites {
   val suites = List(
     TestSuite("testsuite.core.simple.Simple", "simple"),
     TestSuite("testsuite.core.add.Add", "add"),
-    TestSuite("testsuite.core.asinstanceof.AsInstanceOfTest", "asInstanceOf")
+    TestSuite("testsuite.core.asinstanceof.AsInstanceOfTest", "asInstanceOf"),
+    TestSuite("testsuite.core.hijackedclassesmono.HijackedClassesMonoTest", "hijackedClassesMono")
   )
 }

@@ -25,10 +25,10 @@ object Preprocessor {
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     clazz.kind match {
-      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface =>
+      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface | ClassKind.HijackedClass =>
         collectMethods(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass | ClassKind.NativeJSModuleClass |
-          ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.HijackedClass =>
+          ClassKind.AbstractJSType | ClassKind.NativeJSClass =>
         ???
     }
   }

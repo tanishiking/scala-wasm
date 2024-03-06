@@ -73,10 +73,9 @@ object Compiler {
 
   private val ExcludedClasses: Set[ir.Names.ClassName] = {
     import ir.Names._
-    HijackedClasses ++ // hijacked classes
-      Set(
-        ClassClass // java.lang.Class
-      )
+    Set(
+      ClassClass // java.lang.Class
+    )
   }
 
   private def showLinkedClass(clazz: LinkedClass): Unit = {
