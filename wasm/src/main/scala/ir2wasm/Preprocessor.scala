@@ -17,10 +17,8 @@ object Preprocessor {
     for (clazz <- classes)
       preprocess(clazz)
 
-    for (clazz <- classes) {
-      if (clazz.className != IRNames.ObjectClass)
-        collectAbstractMethodCalls(clazz)
-    }
+    for (clazz <- classes)
+      collectAbstractMethodCalls(clazz)
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -34,12 +32,9 @@ object Preprocessor {
   }
 
   private def collectMethods(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    val infos =
-      if (clazz.name.name == IRNames.ObjectClass) Nil
-      else
-        clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
-          makeWasmFunctionInfo(clazz, method)
-        }
+    val infos = clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
+      makeWasmFunctionInfo(clazz, method)
+    }
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(

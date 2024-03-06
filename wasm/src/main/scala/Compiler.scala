@@ -49,15 +49,14 @@ object Compiler {
     } yield {
       val onlyModule = moduleSet.modules.head
 
-      val filteredClasses = onlyModule.classDefs.filter { c =>
-        !ExcludedClasses.contains(c.className)
-      }
+      // Sort for stability
+      val sortedClasses = onlyModule.classDefs.sortBy(_.className)
 
-      filteredClasses.sortBy(_.className).foreach(showLinkedClass(_))
+      sortedClasses.foreach(showLinkedClass(_))
 
-      Preprocessor.preprocess(filteredClasses)(context)
+      Preprocessor.preprocess(sortedClasses)(context)
       println("preprocessed")
-      filteredClasses.foreach { clazz =>
+      sortedClasses.foreach { clazz =>
         builder.transformClassDef(clazz)
       }
       onlyModule.topLevelExports.foreach { tle =>
@@ -69,13 +68,6 @@ object Compiler {
       val binaryOutput = new converters.WasmBinaryWriter(module).write()
       FS.writeFileSync(s"./target/$outputName.wasm", binaryOutput.toTypedArray)
     }
-  }
-
-  private val ExcludedClasses: Set[ir.Names.ClassName] = {
-    import ir.Names._
-    Set(
-      ClassClass // java.lang.Class
-    )
   }
 
   private def showLinkedClass(clazz: LinkedClass): Unit = {

@@ -69,15 +69,10 @@ class WasmBuilder {
     )
     ctx.addGCType(structType)
 
-    // Do not generate methods in Object for now
-    if (clazz.name.name == IRNames.ObjectClass)
-      clazz.methods.filter(_.name.name == IRNames.NoArgConstructorName).foreach { method =>
-        genFunction(clazz, method)
-      }
-    else
-      clazz.methods.foreach { method =>
-        genFunction(clazz, method)
-      }
+    // implementation of methods
+    clazz.methods.foreach { method =>
+      genFunction(clazz, method)
+    }
 
     structType
   }
