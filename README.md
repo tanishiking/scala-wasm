@@ -1,5 +1,7 @@
 ## Experimental Scala.js linker backend for WasmGC
 
+[![CI](https://github.com/tanishiking/scala-wasm/actions/workflows/ci.yml/badge.svg)](https://github.com/tanishiking/scala-wasm/actions/workflows/ci.yml)
+
 ### Usage
 
 - `sample/run` to compile `sample/src/main/scala/Sample.scala`.
