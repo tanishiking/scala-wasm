@@ -35,8 +35,9 @@ object TypeTransformer {
       t: IRTypes.Type
   )(implicit ctx: ReadOnlyWasmContext): List[Types.WasmType] =
     t match {
-      case IRTypes.NoType => Nil
-      case _              => List(transformType(t))
+      case IRTypes.NoType                                                      => Nil
+      case IRTypes.ClassType(className) if className == IRNames.BoxedUnitClass => Nil
+      case _ => List(transformType(t))
     }
   def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
     t match {
