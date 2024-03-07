@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22-nightly'
+      - name: npm install
+        run: npm install
+      - name: Tests
+        run: sbt tests/test
+      - name: Run the Sample
+        run: sbt sample/run
