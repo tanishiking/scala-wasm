@@ -361,7 +361,7 @@ class WasmBuilder {
     }
     params.foreach(fctx.locals.define)
 
-    val expr = WasmExpressionBuilder.transformBody(newBody)
+    val expr = WasmExpressionBuilder.transformBody(newBody, resultType)
     val func = WasmFunction(
       Names.WasmFunctionName(methodName),
       functionType,
@@ -415,7 +415,7 @@ class WasmBuilder {
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
     // val prefix =
     //   if (method.flags.namespace.isConstructor) builder.objectCreationPrefix(clazz, method) else Nil
-    val expr = WasmExpressionBuilder.transformBody(body)
+    val expr = WasmExpressionBuilder.transformBody(body, method.resultType)
 
     val func = WasmFunction(
       Names.WasmFunctionName(clazz.name.name, method.name.name),

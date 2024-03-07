@@ -18,19 +18,19 @@ import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 
 object WasmExpressionBuilder {
-  def transformBody(tree: IRTrees.Tree)(
+  def transformBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(
     implicit ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext
   ): WasmExpr = {
     val builder = new WasmExpressionBuilder(ctx, fctx)
-    WasmExpr(builder.genBody(tree))
+    WasmExpr(builder.genBody(tree, resultType))
   }
 }
 
 private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext) {
   private val instrs = mutable.ListBuffer.empty[WasmInstr]
 
-  def genBody(tree: IRTrees.Tree): List[WasmInstr] = {
-    genTree(tree)
+  def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): List[WasmInstr] = {
+    genTree(tree, expectedType)
     instrs.toList
   }
 
@@ -64,36 +64,34 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
   //   // )
   // }
 
-  def genTrees(trees: List[IRTrees.Tree]): Unit =
-    trees.foreach(genTree(_))
+  def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit =
+    trees.lazyZip(expectedTypes).foreach(genTree(_, _))
 
-  def genTree(tree: IRTrees.Tree): Unit = {
-    tree match {
-      case t: IRTrees.Literal    => genLiteral(t)
-      case t: IRTrees.UnaryOp    => genUnaryOp(t)
-      case t: IRTrees.BinaryOp   => genBinaryOp(t)
-      case t: IRTrees.VarRef     => genVarRef(t)
-      case t: IRTrees.LoadModule => genLoadModule(t)
-      case t: IRTrees.StoreModule =>
-        genStoreModule(t)
-      case t: IRTrees.This => // push receiver to the stack
-        instrs += LOCAL_GET(LocalIdx(fctx.receiver.name))
-      case t: IRTrees.ApplyStatic => ???
-      case t: IRTrees.ApplyStatically =>
-        genApplyStatically(t)
-      case t: IRTrees.Apply              => genApply(t)
-      case t: IRTrees.ApplyDynamicImport => ???
-      case t: IRTrees.AsInstanceOf       => genAsInstanceOf(t)
-      case t: IRTrees.Block              => genBlock(t)
-      case t: IRTrees.Labeled            => genLabeled(t)
-      case t: IRTrees.Return             => genReturn(t)
-      case t: IRTrees.Select             => genSelect(t)
-      case t: IRTrees.Assign             => genAssign(t)
-      case t: IRTrees.VarDef             => genVarDef(t)
-      case t: IRTrees.New                => genNew(t)
-      case t: IRTrees.If                 => genIf(t)
-      case t: IRTrees.While              => genWhile(t)
-      case t: IRTrees.Skip               => ()
+  def genTreeAuto(tree: IRTrees.Tree): Unit =
+    genTree(tree, tree.tpe)
+
+  def genTree(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit = {
+    val generatedType: IRTypes.Type = tree match {
+      case t: IRTrees.Literal         => genLiteral(t)
+      case t: IRTrees.UnaryOp         => genUnaryOp(t)
+      case t: IRTrees.BinaryOp        => genBinaryOp(t)
+      case t: IRTrees.VarRef          => genVarRef(t)
+      case t: IRTrees.LoadModule      => genLoadModule(t)
+      case t: IRTrees.StoreModule     => genStoreModule(t)
+      case t: IRTrees.This            => genThis(t)
+      case t: IRTrees.ApplyStatically => genApplyStatically(t)
+      case t: IRTrees.Apply           => genApply(t)
+      case t: IRTrees.AsInstanceOf    => genAsInstanceOf(t)
+      case t: IRTrees.Block           => genBlock(t, expectedType)
+      case t: IRTrees.Labeled         => genLabeled(t, expectedType)
+      case t: IRTrees.Return          => genReturn(t)
+      case t: IRTrees.Select          => genSelect(t)
+      case t: IRTrees.Assign          => genAssign(t)
+      case t: IRTrees.VarDef          => genVarDef(t)
+      case t: IRTrees.New             => genNew(t)
+      case t: IRTrees.If              => genIf(t, expectedType)
+      case t: IRTrees.While           => genWhile(t)
+      case t: IRTrees.Skip            => IRTypes.NoType
       case _ =>
         println(tree)
         ???
@@ -151,30 +149,33 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       // case IRTrees.IdentityHashCode(pos) =>
     }
 
+    genAdapt(generatedType, expectedType)
   }
 
-  private def genAssign(t: IRTrees.Assign): Unit = {
+  private def genAdapt(generatedType: IRTypes.Type, expectedType: IRTypes.Type): Unit = {
+    (generatedType, expectedType) match {
+      case _ if generatedType == expectedType =>
+        ()
+      case (IRTypes.NothingType, _) =>
+        ()
+      case (_, IRTypes.NoType) =>
+        instrs += DROP
+      case _ =>
+        ()
+    }
+  }
+
+  private def genAssign(t: IRTrees.Assign): IRTypes.Type = {
     t.lhs match {
       case sel: IRTrees.Select =>
         val className = WasmStructTypeName(sel.className)
         val fieldName = WasmFieldName(sel.field.name)
         val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
 
-        genTree(sel.qualifier)
+        // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
+        genTreeAuto(sel.qualifier)
 
-        // cast if required
-        sel.qualifier match {
-          case _: IRTrees.This =>
-            // requires cast if the qualifier is `this`
-            // because receiver type is Object in wasm
-            instrs += REF_CAST(
-              HeapType(Types.WasmHeapType.Type(WasmStructTypeName(sel.className)))
-            )
-          case _ =>
-            ()
-        }
-
-        genTree(t.rhs)
+        genTree(t.rhs, t.lhs.tpe)
         instrs += STRUCT_SET(TypeIdx(className), idx)
 
       case sel: IRTrees.SelectStatic => // OK?
@@ -184,7 +185,7 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         instrs += GLOBAL_GET(
           GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
         )
-        genTree(t.rhs)
+        genTree(t.rhs, t.lhs.tpe)
         instrs += STRUCT_SET(TypeIdx(className), idx)
 
       case assign: IRTrees.ArraySelect     => ??? // array.set
@@ -195,18 +196,27 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       case assign: IRTrees.JSGlobalRef     => ???
 
       case ref: IRTrees.VarRef =>
-        genTree(t.rhs)
+        genTree(t.rhs, t.lhs.tpe)
         instrs += LOCAL_SET(LocalIdx(Names.WasmLocalName.fromIR(ref.ident.name)))
     }
+
+    IRTypes.NoType
   }
 
-  private def genApply(t: IRTrees.Apply): Unit = {
+  private def genApply(t: IRTrees.Apply): IRTypes.Type = {
     val receiverClassName = t.receiver.tpe match {
       case ClassType(className)   => className
       case prim: IRTypes.PrimType => IRTypes.PrimTypeToBoxedClass(prim)
       case _                      => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
+
+    def genReceiverArgsReceiver(): Unit = {
+      assert(!IRNames.HijackedClasses.contains(receiverClassName))
+      genTreeAuto(t.receiver)
+      genArgs(t.args, t.method.name)
+      genTreeAuto(t.receiver) // TODO Reuse the receiver computed above
+    }
 
     if (receiverClassInfo.isInterface) { // interface dispatch
       val itables = ctx.calculateClassItables(clazz = receiverClassName)
@@ -228,9 +238,7 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
       //   }
 
-      genTree(t.receiver)
-      genTrees(t.args)
-      genTree(t.receiver) // TODO Reuse the receiver computed above
+      genReceiverArgsReceiver()
       instrs += STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
@@ -251,14 +259,13 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       instrs += CALL_REF(
         TypeIdx(method.toWasmFunctionType()(ctx).name)
       )
+      if (t.tpe == IRTypes.NothingType)
+        instrs += UNREACHABLE
     } else if (receiverClassInfo.kind == ClassKind.HijackedClass) {
       // statically resolved call
-      val info = receiverClassInfo.getMethodInfo(t.method.name)
-      genTree(t.receiver)
-      if (receiverClassName == IRNames.BoxedStringClass && t.receiver.tpe == ClassType(IRNames.BoxedStringClass))
-        instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string)))
-      genTrees(t.args)
-      instrs += CALL(FuncIdx(info.name))
+      genApplyStatically(
+        IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(t.pos)
+      )
     } else { // virtual dispatch
       val (methodIdx, info) = ctx
         .calculateVtable(receiverClassName)
@@ -270,9 +277,7 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       // struct.get $classType 0 ;; get vtable
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
-      genTree(t.receiver)
-      genTrees(t.args)
-      genTree(t.receiver) // TODO Reuse the receiver computed above
+      genReceiverArgsReceiver()
       instrs += REF_CAST(
         HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
       )
@@ -287,79 +292,110 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
       )
+      if (t.tpe == IRTypes.NothingType)
+        instrs += UNREACHABLE
+    }
+
+    t.tpe
+  }
+
+  private def genApplyStatically(t: IRTrees.ApplyStatically): IRTypes.Type = {
+    IRTypes.BoxedClassToPrimType.get(t.className) match {
+      case None =>
+        genTree(t.receiver, IRTypes.ClassType(t.className))
+
+      case Some(primReceiverType) =>
+        genTreeAuto(t.receiver)
+        genUnbox(t.receiver.tpe, primReceiverType)
+    }
+
+    genArgs(t.args, t.method.name)
+    val funcName = Names.WasmFunctionName(t.className, t.method.name)
+    instrs += CALL(FuncIdx(funcName))
+    if (t.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
+    t.tpe
+  }
+
+  private def genUnbox(fromType: IRTypes.Type, primType: IRTypes.PrimType): Unit = {
+    if (fromType != primType && fromType != IRTypes.NothingType) {
+      primType match {
+        case IRTypes.StringType =>
+          instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string)))
+        case _ =>
+          println(s"unbox($fromType, $primType)")
+          ???
+      }
     }
   }
 
-  private def genApplyStatically(t: IRTrees.ApplyStatically): Unit = {
-    genTree(t.receiver)
-    genTrees(t.args)
-    val funcName = Names.WasmFunctionName(t.className, t.method.name)
-    instrs += CALL(FuncIdx(funcName))
+  private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
+    for ((arg, paramTypeRef) <- args.lazyZip(methodName.paramTypeRefs)) {
+      val paramType = ctx.inferTypeFromTypeRef(paramTypeRef)
+      genTree(arg, paramType)
+    }
   }
 
-  private def genLiteral(l: IRTrees.Literal): Unit = l match {
-    case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) I32(1) else I32(0))
-    case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(I32(v))
-    case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(I32(v))
-    case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(I32(v))
-    case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(I32(v))
-    case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(I64(v))
-    case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(F32(v))
-    case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(F64(v))
+  private def genLiteral(l: IRTrees.Literal): IRTypes.Type = {
+    l match {
+      case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) I32(1) else I32(0))
+      case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(I32(v))
+      case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(I32(v))
+      case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(I32(v))
+      case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(I32(v))
+      case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(I64(v))
+      case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(F32(v))
+      case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(F64(v))
 
-    case v: IRTrees.Undefined =>
-      instrs += WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName))
-    case v: IRTrees.Null => ???
+      case v: IRTrees.Undefined =>
+        instrs += WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName))
+      case v: IRTrees.Null => ???
 
-    case v: IRTrees.StringLiteral =>
-      // TODO We should allocate literal strings once and for all as globals
-      val str = v.value
-      str.foreach(c => instrs += WasmInstr.I32_CONST(I32(c.toInt)))
-      instrs += WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length()))
-      instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
+      case v: IRTrees.StringLiteral =>
+        // TODO We should allocate literal strings once and for all as globals
+        val str = v.value
+        str.foreach(c => instrs += WasmInstr.I32_CONST(I32(c.toInt)))
+        instrs += WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length()))
+        instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
 
-    case v: IRTrees.ClassOf => ???
+      case v: IRTrees.ClassOf => ???
+    }
+
+    l.tpe
   }
 
-  private def genSelect(sel: IRTrees.Select): Unit = {
+  private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
     val className = WasmStructTypeName(sel.className)
     val fieldName = WasmFieldName(sel.field.name)
     val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
 
-    genTree(sel.qualifier)
-
-    // cast if required
-    sel.qualifier match {
-      case _: IRTrees.This =>
-        // requires cast if the qualifier is `this`
-        // because receiver type is Object in wasm
-        instrs += REF_CAST(
-          HeapType(Types.WasmHeapType.Type(WasmStructTypeName(sel.className)))
-        )
-      case _ =>
-        ()
-    }
+    // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
+    genTreeAuto(sel.qualifier)
 
     instrs += STRUCT_GET(TypeIdx(className), idx)
+    sel.tpe
   }
 
-  private def genStoreModule(t: IRTrees.StoreModule): Unit = {
+  private def genStoreModule(t: IRTrees.StoreModule): IRTypes.Type = {
     val name = WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
-    genTree(t.value)
+    genTree(t.value, IRTypes.ClassType(t.className))
     instrs += GLOBAL_SET(GlobalIdx(name))
+    IRTypes.NoType
   }
 
   /** Push module class instance to the stack.
     *
     * see: WasmBuilder.genLoadModuleFunc
     */
-  private def genLoadModule(t: IRTrees.LoadModule): Unit =
+  private def genLoadModule(t: IRTrees.LoadModule): IRTypes.Type = {
     instrs += CALL(FuncIdx(Names.WasmFunctionName.loadModule(t.className)))
+    t.tpe
+  }
 
-  private def genUnaryOp(unary: IRTrees.UnaryOp): Unit = {
+  private def genUnaryOp(unary: IRTrees.UnaryOp): IRTypes.Type = {
     import IRTrees.UnaryOp._
 
-    genTree(unary.lhs)
+    genTreeAuto(unary.lhs)
 
     (unary.op: @switch) match {
       case Boolean_! =>
@@ -406,19 +442,24 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)) // get the array
         instrs += ARRAY_LEN
     }
+
+    unary.tpe
   }
 
-  private def genBinaryOp(binary: IRTrees.BinaryOp): Unit = {
+  private def genBinaryOp(binary: IRTrees.BinaryOp): IRTypes.Type = {
     import IRTrees.BinaryOp
 
-    def genLongShiftOp(shiftInstr: WasmInstr): Unit = {
-      genTree(binary.lhs)
-      genTree(binary.rhs)
+    def genLongShiftOp(shiftInstr: WasmInstr): IRTypes.Type = {
+      genTree(binary.lhs, IRTypes.LongType)
+      genTree(binary.rhs, IRTypes.IntType)
       instrs += I64_EXTEND_I32_S
       instrs += shiftInstr
+      IRTypes.LongType
     }
 
     binary.op match {
+      case BinaryOp.=== | BinaryOp.!== => genEq(binary)
+
       case BinaryOp.String_+ => genStringConcat(binary.lhs, binary.rhs)
 
       case BinaryOp.Long_<<  => genLongShiftOp(I64_SHL)
@@ -427,23 +468,28 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
 
       // New in 1.11
       case BinaryOp.String_charAt =>
-        genTree(binary.lhs) // push the string
+        genTree(binary.lhs, IRTypes.StringType) // push the string
         instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)) // get the array
-        genTree(binary.rhs) // push the index
+        genTree(binary.rhs, IRTypes.IntType) // push the index
         instrs += ARRAY_GET_U(TypeIdx(WasmArrayTypeName.stringData)) // access the element of the array
+        IRTypes.CharType
 
       case _ => genElementaryBinaryOp(binary)
     }
   }
 
-  private def genElementaryBinaryOp(binary: IRTrees.BinaryOp): Unit = {
-    import IRTrees.BinaryOp
-    genTree(binary.lhs)
-    genTree(binary.rhs)
-    val operation = binary.op match {
-      case BinaryOp.=== => ???
-      case BinaryOp.!== => ???
+  private def genEq(binary: IRTrees.BinaryOp): IRTypes.Type = {
+    println(binary)
+    ???
 
+    IRTypes.BooleanType
+  }
+
+  private def genElementaryBinaryOp(binary: IRTrees.BinaryOp): IRTypes.Type = {
+    import IRTrees.BinaryOp
+    genTreeAuto(binary.lhs)
+    genTreeAuto(binary.rhs)
+    val operation = binary.op match {
       case BinaryOp.Boolean_== => I32_EQ
       case BinaryOp.Boolean_!= => I32_NE
       case BinaryOp.Boolean_|  => I32_OR
@@ -512,13 +558,14 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       case BinaryOp.Double_>= => F64_GE
     }
     instrs += operation
+    binary.tpe
   }
 
-  private def genStringConcat(lhs: IRTrees.Tree, rhs: IRTrees.Tree): Unit = {
+  private def genStringConcat(lhs: IRTrees.Tree, rhs: IRTrees.Tree): IRTypes.Type = {
     val wasmStringType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.string))
 
     def genToString(tree: IRTrees.Tree): Unit = {
-      genTree(tree)
+      genTreeAuto(tree)
       tree.tpe match {
         case IRTypes.StringType =>
           () // no-op
@@ -564,17 +611,19 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         // TODO: genToString(lhs) ::: genToString(rhs) :: callHelperConcat() :: Nil
         ???
     }
+
+    IRTypes.StringType
   }
 
-  private def genAsInstanceOf(tree: IRTrees.AsInstanceOf): Unit = {
-    genTree(tree.expr)
+  private def genAsInstanceOf(tree: IRTrees.AsInstanceOf): IRTypes.Type = {
+    genTreeAuto(tree.expr)
 
     val sourceTpe = tree.expr.tpe
     val targetTpe = tree.tpe
 
     if (IRTypes.isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
       // Common case where no cast is necessary
-      ()
+      sourceTpe
     } else {
       println(tree)
       ???
@@ -584,17 +633,38 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
   private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
     ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
-  private def genVarRef(r: IRTrees.VarRef): Unit = {
+  private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
     val name = WasmLocalName.fromIR(r.ident.name)
     instrs += LOCAL_GET(LocalIdx(name))
+    r.tpe
   }
 
-  private def genVarDef(r: IRTrees.VarDef): Unit = {
+  private def genThis(t: IRTrees.This): IRTypes.Type = {
+    instrs += LOCAL_GET(LocalIdx(fctx.receiver.name))
+
+    /* If the receiver is a Class/ModuleClass, its wasm type will be declared
+     * as j.l.Object, and therefore we must cast it down.
+     */
+    t.tpe match {
+      case IRTypes.ClassType(className) =>
+        val info = ctx.getClassInfo(className)
+        if (info.kind.isClass) {
+          instrs += REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName(className)))
+          )
+        }
+      case _ =>
+        ()
+    }
+
+    t.tpe
+  }
+
+  private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
     r.vtpe match {
       // val _: Unit = rhs
       case ClassType(className) if className == IRNames.BoxedUnitClass =>
-        genTree(r.rhs)
-        instrs += DROP
+        genTree(r.rhs, IRTypes.NoType)
 
       case _ =>
         val local = WasmLocal(
@@ -604,22 +674,25 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         )
         fctx.locals.define(local)
 
-        genTree(r.rhs)
+        genTree(r.rhs, r.vtpe)
         instrs += LOCAL_SET(LocalIdx(local.name))
     }
+
+    IRTypes.NoType
   }
 
-  private def genIf(t: IRTrees.If): Unit = {
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
-    genTree(t.cond)
+  private def genIf(t: IRTrees.If, expectedType: IRTypes.Type): IRTypes.Type = {
+    val ty = TypeTransformer.transformType(expectedType)(ctx)
+    genTree(t.cond, IRTypes.BooleanType)
     instrs += IF(BlockType.ValueType(ty))
-    genTree(t.thenp)
+    genTree(t.thenp, expectedType)
     instrs += ELSE
-    genTree(t.elsep)
+    genTree(t.elsep, expectedType)
     instrs += END
+    expectedType
   }
 
-  private def genWhile(t: IRTrees.While): Unit = {
+  private def genWhile(t: IRTrees.While): IRTypes.Type = {
     val label = fctx.genLabel()
     val noResultType = BlockType.ValueType(Types.WasmNoType)
 
@@ -632,10 +705,11 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         // end
         // unreachable
         instrs += LOOP(noResultType, Some(label))
-        genTree(t.body)
+        genTree(t.body, IRTypes.NoType)
         instrs += BR(label)
         instrs += END
         instrs += UNREACHABLE
+        IRTypes.NothingType
 
       case _ =>
         // loop $label
@@ -647,35 +721,42 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         // end
 
         instrs += LOOP(noResultType, Some(label))
-        genTree(t.cond)
+        genTree(t.cond, IRTypes.BooleanType)
         instrs += IF(noResultType)
-        genTree(t.body)
+        genTree(t.body, IRTypes.NoType)
         instrs += BR(label)
         instrs += END // IF
         instrs += END // LOOP
+        IRTypes.NoType
     }
   }
 
-  private def genBlock(t: IRTrees.Block): Unit =
-    t.stats.foreach(genTree)
+  private def genBlock(t: IRTrees.Block, expectedType: IRTypes.Type): IRTypes.Type = {
+    for (stat <- t.stats.init)
+      genTree(stat, IRTypes.NoType)
+    genTree(t.stats.last, expectedType)
+    expectedType
+  }
 
-  private def genLabeled(t: IRTrees.Labeled): Unit = {
-    val label = fctx.getLabelFor(t.label.name)
+  private def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
+    val label = fctx.registerLabel(t.label.name, expectedType)
     val ty = TypeTransformer.transformType(t.tpe)(ctx)
 
     instrs += BLOCK(BlockType.ValueType(ty), Some(label))
-    genTree(t.body)
+    genTree(t.body, expectedType)
     instrs += END
+    expectedType
   }
 
-  private def genReturn(t: IRTrees.Return): Unit = {
-    val label = fctx.getLabelFor(t.label.name)
+  private def genReturn(t: IRTrees.Return): IRTypes.Type = {
+    val (label, expectedType) = fctx.getLabelFor(t.label.name)
 
-    genTree(t.expr)
+    genTree(t.expr, expectedType)
     instrs += BR(label)
+    IRTypes.NothingType
   }
 
-  private def genNew(n: IRTrees.New): Unit = {
+  private def genNew(n: IRTrees.New): IRTypes.Type = {
     val localInstance = WasmLocal(
       fctx.genSyntheticLocalName(),
       TypeTransformer.transformType(n.tpe)(ctx),
@@ -687,8 +768,9 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
     // LOCAL_TEE(LocalIdx(localInstance.name))
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
     instrs += LOCAL_TEE(LocalIdx(localInstance.name))
-    genTrees(n.args)
+    genArgs(n.args, n.ctor.name)
     instrs += CALL(FuncIdx(WasmFunctionName(n.className, n.ctor.name)))
     instrs += LOCAL_GET(LocalIdx(localInstance.name))
+    n.tpe
   }
 }
