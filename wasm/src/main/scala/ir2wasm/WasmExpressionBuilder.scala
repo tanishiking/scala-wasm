@@ -661,22 +661,15 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
   }
 
   private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
-    r.vtpe match {
-      // val _: Unit = rhs
-      case ClassType(className) if className == IRNames.BoxedUnitClass =>
-        genTree(r.rhs, IRTypes.NoType)
+    val local = WasmLocal(
+      WasmLocalName.fromIR(r.name.name),
+      TypeTransformer.transformType(r.vtpe)(ctx),
+      isParameter = false
+    )
+    fctx.locals.define(local)
 
-      case _ =>
-        val local = WasmLocal(
-          WasmLocalName.fromIR(r.name.name),
-          TypeTransformer.transformType(r.vtpe)(ctx),
-          isParameter = false
-        )
-        fctx.locals.define(local)
-
-        genTree(r.rhs, r.vtpe)
-        instrs += LOCAL_SET(LocalIdx(local.name))
-    }
+    genTree(r.rhs, r.vtpe)
+    instrs += LOCAL_SET(LocalIdx(local.name))
 
     IRTypes.NoType
   }

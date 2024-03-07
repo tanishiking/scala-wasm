@@ -35,9 +35,8 @@ object TypeTransformer {
       t: IRTypes.Type
   )(implicit ctx: ReadOnlyWasmContext): List[Types.WasmType] =
     t match {
-      case IRTypes.NoType                                                      => Nil
-      case IRTypes.ClassType(className) if className == IRNames.BoxedUnitClass => Nil
-      case _ => List(transformType(t))
+      case IRTypes.NoType => Nil
+      case _              => List(transformType(t))
     }
   def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
     t match {
@@ -63,6 +62,10 @@ object TypeTransformer {
           case IRNames.BoxedStringClass =>
             Types.WasmRefNullType(
               Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
+            )
+          case IRNames.BoxedUnitClass =>
+            Types.WasmRefNullType(
+              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
             )
           case _ =>
             if (ctx.getClassInfo(clazz.className).isInterface)
