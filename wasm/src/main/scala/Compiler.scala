@@ -23,10 +23,8 @@ object Compiler {
   def compileIRFiles(
       irFiles: Seq[IRFile],
       moduleInitializers: List[ModuleInitializer],
-      // outputDir: String,
       outputName: String
   )(implicit ec: ExecutionContext): Future[Unit] = {
-
     val module = new WasmModule
     val builder = new WasmBuilder()
     implicit val context: WasmContext = new WasmContext(module)

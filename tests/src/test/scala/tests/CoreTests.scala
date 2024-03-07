@@ -14,7 +14,6 @@ class CoreTests extends munit.FunSuite {
       wasmModule.toFuture.map { module =>
         val testFunction =
           module.instance.exports
-            .asInstanceOf[js.Dynamic]
             .selectDynamic(suite.methodName)
             .asInstanceOf[js.Function0[Int]]
         assert(testFunction() == 1)
