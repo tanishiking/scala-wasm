@@ -64,6 +64,8 @@ object WasmInstr {
   case object I64_EXTEND8_S extends WasmInstr("i64.extend8_s", 0xc2)
   case object I64_EXTEND16_S extends WasmInstr("i64.extend16_s", 0xc3)
   case object I64_EXTEND32_S extends WasmInstr("i64.extend32_s", 0xc4)
+  case object I32_TRUNC_SAT_F64_S extends WasmInstr("i32.trunc_sat_f64_s", 0xfc_02)
+  case object I64_TRUNC_SAT_F64_S extends WasmInstr("i64.trunc_sat_f64_s", 0xfc_06)
 
   // Binary operations
   case object I32_EQ extends WasmInstr("i32.eq", 0x46)

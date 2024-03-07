@@ -1,4 +1,4 @@
-package ir2wasm
+package wasm.ir2wasm
 
 import wasm.wasm4s._
 
