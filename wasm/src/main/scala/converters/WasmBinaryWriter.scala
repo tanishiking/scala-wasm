@@ -26,8 +26,13 @@ final class WasmBinaryWriter(module: WasmModule) {
   private val typeIdxValues: Map[WasmTypeName, Int] =
     allTypeDefinitions.map(_.name).zipWithIndex.toMap
 
-  private val funcIdxValues: Map[WasmFunctionName, Int] =
-    module.definedFunctions.map(_.name).zipWithIndex.toMap
+  private val funcIdxValues: Map[WasmFunctionName, Int] = {
+    val importedFunctionNames = module.imports.collect {
+      case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
+    }
+    val allNames = importedFunctionNames ::: module.definedFunctions.map(_.name)
+    allNames.zipWithIndex.toMap
+  }
 
   private val globalIdxValues: Map[WasmGlobalName, Int] =
     module.globals.map(_.name).zipWithIndex.toMap
@@ -58,6 +63,7 @@ final class WasmBinaryWriter(module: WasmModule) {
     fullOutput.byte(0)
 
     writeSection(fullOutput, SectionType)(writeTypeSection(_))
+    writeSection(fullOutput, SectionImport)(writeImportSection(_))
     writeSection(fullOutput, SectionFunction)(writeFunctionSection(_))
     writeSection(fullOutput, SectionGlobal)(writeGlobalSection(_))
     writeSection(fullOutput, SectionExport)(writeExportSection(_))
@@ -95,6 +101,19 @@ final class WasmBinaryWriter(module: WasmModule) {
           buf.byte(0x60) // func
           writeResultType(buf, params)
           writeResultType(buf, results)
+      }
+    }
+  }
+
+  private def writeImportSection(buf: Buffer): Unit = {
+    buf.vec(module.imports) { imprt =>
+      buf.name(imprt.module)
+      buf.name(imprt.name)
+
+      imprt.desc match {
+        case WasmImportDesc.Func(id, typ) =>
+          buf.byte(0x00) // func
+          writeTypeIdx(buf, typ.name)
       }
     }
   }

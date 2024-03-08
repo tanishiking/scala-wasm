@@ -1,6 +1,7 @@
 package wasm
 package ir2wasm
 
+import org.scalajs.ir.ClassKind
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Names => IRNames}
@@ -68,8 +69,11 @@ object TypeTransformer {
               Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
             )
           case _ =>
-            if (ctx.getClassInfo(clazz.className).isInterface)
+            val info = ctx.getClassInfo(clazz.className)
+            if (info.isInterface)
               Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+            else if (info.kind == ClassKind.HijackedClass)
+              Types.WasmAnyRef
             else
               Types.WasmRefType(
                 Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))

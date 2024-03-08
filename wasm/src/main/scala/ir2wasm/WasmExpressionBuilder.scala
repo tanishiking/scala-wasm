@@ -85,6 +85,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.This            => genThis(t)
       case t: IRTrees.ApplyStatically => genApplyStatically(t)
       case t: IRTrees.Apply           => genApply(t)
+      case t: IRTrees.IsInstanceOf    => genIsInstanceOf(t)
       case t: IRTrees.AsInstanceOf    => genAsInstanceOf(t)
       case t: IRTrees.Block           => genBlock(t, expectedType)
       case t: IRTrees.Labeled         => genLabeled(t, expectedType)
@@ -164,6 +165,21 @@ private class WasmExpressionBuilder private (
         ()
       case (_, IRTypes.NoType) =>
         instrs += DROP
+      case (primType: IRTypes.PrimType, _) =>
+        // box
+        primType match {
+          case IRTypes.UndefType =>
+            ()
+          case IRTypes.IntType =>
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.boxInt))
+          case IRTypes.StringType =>
+            ()
+          case IRTypes.NullType =>
+            ()
+          case _ =>
+            println(s"adapt($primType, $expectedType)")
+            ???
+        }
       case _ =>
         ()
     }
@@ -311,8 +327,7 @@ private class WasmExpressionBuilder private (
         genTree(t.receiver, IRTypes.ClassType(t.className))
 
       case Some(primReceiverType) =>
-        genTreeAuto(t.receiver)
-        genUnbox(t.receiver.tpe, primReceiverType)
+        genTreeAuto(IRTrees.AsInstanceOf(t.receiver, primReceiverType)(t.pos))
     }
 
     genArgs(t.args, t.method.name)
@@ -321,18 +336,6 @@ private class WasmExpressionBuilder private (
     if (t.tpe == IRTypes.NothingType)
       instrs += UNREACHABLE
     t.tpe
-  }
-
-  private def genUnbox(fromType: IRTypes.Type, primType: IRTypes.PrimType): Unit = {
-    if (fromType != primType && fromType != IRTypes.NothingType) {
-      primType match {
-        case IRTypes.StringType =>
-          instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string)))
-        case _ =>
-          println(s"unbox($fromType, $primType)")
-          ???
-      }
-    }
   }
 
   private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
@@ -355,7 +358,8 @@ private class WasmExpressionBuilder private (
 
       case v: IRTrees.Undefined =>
         instrs += WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName))
-      case v: IRTrees.Null => ???
+      case v: IRTrees.Null =>
+        instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
         // TODO We should allocate literal strings once and for all as globals
@@ -629,18 +633,134 @@ private class WasmExpressionBuilder private (
     IRTypes.StringType
   }
 
-  private def genAsInstanceOf(tree: IRTrees.AsInstanceOf): IRTypes.Type = {
-    genTreeAuto(tree.expr)
+  private def genIsInstanceOf(tree: IRTrees.IsInstanceOf): IRTypes.Type = {
+    genTree(tree.expr, IRTypes.AnyType)
 
+    def genIsPrimType(testType: IRTypes.PrimType): Unit = {
+      testType match {
+        case IRTypes.UndefType =>
+          instrs += REF_TEST(
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
+          )
+        case IRTypes.IntType =>
+          instrs += CALL(FuncIdx(WasmFunctionName.testInt))
+        case IRTypes.StringType =>
+          instrs += REF_TEST(
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
+          )
+        case _ =>
+          println(tree)
+          ???
+      }
+    }
+
+    tree.testType match {
+      case testType: IRTypes.PrimType =>
+        genIsPrimType(testType)
+
+      case IRTypes.AnyType | IRTypes.ClassType(IRNames.ObjectClass) =>
+        instrs += REF_IS_NULL
+        instrs += I32_CONST(I32(1))
+        instrs += I32_XOR
+
+      case IRTypes.ClassType(testClassName) =>
+        IRTypes.BoxedClassToPrimType.get(testClassName) match {
+          case Some(primType) =>
+            genIsPrimType(primType)
+          case None =>
+            val info = ctx.getClassInfo(testClassName)
+            if (info.isInterface) {
+              // TODO: run-time type test for interface
+              println(tree)
+              ???
+            } else {
+              instrs += REF_TEST(
+                HeapType(Types.WasmHeapType.Type(WasmStructTypeName(testClassName)))
+              )
+            }
+        }
+
+      case IRTypes.ArrayType(_) =>
+        println(tree)
+        ???
+
+      case testType: IRTypes.RecordType =>
+        throw new AssertionError(s"Illegal type in IsInstanceOf: $testType")
+    }
+
+    IRTypes.BooleanType
+  }
+
+  private def genAsInstanceOf(tree: IRTrees.AsInstanceOf): IRTypes.Type = {
     val sourceTpe = tree.expr.tpe
     val targetTpe = tree.tpe
 
     if (IRTypes.isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
       // Common case where no cast is necessary
+      genTreeAuto(tree.expr)
       sourceTpe
     } else {
-      println(tree)
-      ???
+      genTree(tree.expr, IRTypes.AnyType)
+
+      def genAsPrimType(targetTpe: IRTypes.PrimType): Unit = {
+        // TODO We could do something better for things like double.asInstanceOf[int]
+        targetTpe match {
+          case IRTypes.UndefType =>
+            instrs += REF_CAST(
+              HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
+            )
+          case IRTypes.IntType =>
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxInt))
+          case IRTypes.StringType =>
+            instrs += REF_CAST(
+              HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
+            )
+          case _ =>
+            println(tree)
+            ???
+        }
+      }
+
+      targetTpe match {
+        case targetTpe: IRTypes.PrimType =>
+          genAsPrimType(targetTpe)
+
+        case IRTypes.AnyType | IRTypes.ClassType(IRNames.ObjectClass) =>
+          ()
+
+        case IRTypes.ClassType(targetClassName) =>
+          val info = ctx.getClassInfo(targetClassName)
+          if (info.kind.isClass) {
+            instrs += REF_CAST_NULL(
+              HeapType(Types.WasmHeapType.Type(WasmStructTypeName(targetClassName)))
+            )
+          } else if (info.kind == ClassKind.HijackedClass) {
+            IRTypes.BoxedClassToPrimType(targetClassName) match {
+              case IRTypes.UndefType =>
+                instrs += REF_CAST_NULL(
+                  HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
+                )
+              case IRTypes.IntType =>
+                instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxIntOrNull))
+              case IRTypes.StringType =>
+                instrs += REF_CAST_NULL(
+                  HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
+                )
+              case _ =>
+                println(tree)
+                ???
+            }
+          }
+
+        case IRTypes.ArrayType(_) =>
+          println(tree)
+          ???
+
+        case targetTpe: IRTypes.RecordType =>
+          throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
+      }
+
+      targetTpe
     }
   }
 

@@ -141,6 +141,17 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
     classInfo.put(name, info)
 
+  private def addHelperImport(name: WasmFunctionName, params: List[WasmType], results: List[WasmType]): Unit = {
+    val sig = WasmFunctionSignature(params, results)
+    val typ = WasmFunctionType(addFunctionType(sig), sig)
+    module.addImport(WasmImport(name.className, name.methodName, WasmImportDesc.Func(name, typ)))
+  }
+
+  addHelperImport(WasmFunctionName.boxInt, List(WasmInt32), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.unboxInt, List(WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.unboxIntOrNull, List(WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.testInt, List(WasmAnyRef), List(WasmInt32))
+
   addGlobal(
     WasmGlobal(
       WasmGlobalName.WasmUndefName,

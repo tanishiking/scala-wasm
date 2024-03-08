@@ -102,6 +102,14 @@ object Names {
       new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
+
+    private def helper(name: String): WasmFunctionName =
+      new WasmFunctionName("__scalaJSHelpers", name)
+
+    val boxInt = helper("bI")
+    val unboxInt = helper("uI")
+    val unboxIntOrNull = helper("uIN")
+    val testInt = helper("tI")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)

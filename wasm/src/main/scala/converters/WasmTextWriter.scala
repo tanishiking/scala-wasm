@@ -1,10 +1,9 @@
 package wasm
 package converters
 
-import wasm4s._
-import wasm4s.Names._
-import ir2wasm.WasmBuilder
-import wasm.wasm4s.Types.WasmHeapType
+import wasm.wasm4s._
+import wasm.wasm4s.Names._
+import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr._
 
 class WasmTextWriter {
@@ -26,6 +25,7 @@ class WasmTextWriter {
             module.arrayTypes.foreach(writeGCTypeDefinition)
           }
         )
+        module.imports.foreach(writeImport)
         module.definedFunctions.foreach(writeFunction)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
@@ -106,6 +106,28 @@ class WasmTextWriter {
         )
       }
     )
+
+  private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
+    b.newLineList("import", {
+      b.appendElement(s"\"${i.module}\"")
+      b.appendElement(s"\"${i.name}\"")
+
+      i.desc match {
+        case WasmImportDesc.Func(id, typ) =>
+          b.sameLineList(
+            "func", {
+              b.appendElement(id.show)
+              writeSig(typ.params, typ.results)
+            }
+          )
+      }
+    })
+  }
+
+  private def writeSig(params: List[WasmType], results: List[WasmType])(implicit b: WatBuilder): Unit = {
+    params.foreach(typ => b.sameLineListOne("param", typ.show))
+    results.foreach(typ => b.sameLineListOne("result", typ.show))
+  }
 
   private def writeFunction(f: WasmFunction)(implicit b: WatBuilder): Unit = {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {

@@ -20,7 +20,14 @@ object WasmExport {
       extends WasmExport[WasmFunction](name, field, 0x0, "func")
   class Global(name: String, field: WasmGlobal)
       extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+}
 
+final case class WasmImport(module: String, name: String, desc: WasmImportDesc)
+
+sealed abstract class WasmImportDesc
+
+object WasmImportDesc {
+  final case class Func(id: WasmFunctionName, typ: WasmFunctionType) extends WasmImportDesc
 }
 
 /** @see
@@ -131,7 +138,7 @@ class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
     private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
-    // val importedFunctions: List[WasmFunction.Imported] = Nil,
+    private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer(),
     // val importedMemories: List[WasmMemory] = Nil,
     // val importedTables: List[WasmTable] = Nil,
     // val importedGlobals: List[WasmGlobal] = Nil,
@@ -147,6 +154,7 @@ class WasmModule(
     // val data: List[WasmData] = Nil,
     // val dataCount: Boolean = true
 ) {
+  def addImport(imprt: WasmImport): Unit = _imports.addOne(imprt)
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
@@ -156,6 +164,7 @@ class WasmModule(
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
   def arrayTypes = List(WasmArrayType.itables, WasmArrayType.stringData)
+  def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
