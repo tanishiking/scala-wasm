@@ -14,7 +14,6 @@ object Names {
         case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
         case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName   => "g_itable"
-        case WasmGlobalName.WasmUndefName             => "undef"
         case _: WasmFunctionName                      => "fun"
         case _: WasmFieldName                         => "field"
         case _: WasmExportName                        => "export"
@@ -53,8 +52,6 @@ object Names {
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
-    object WasmUndefName extends WasmGlobalName("undef")
-
     final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmModuleInstanceName {
@@ -108,10 +105,13 @@ object Names {
 
     val is = helper("is")
 
-    val boxInt = helper("bI")
-    val unboxInt = helper("uI")
-    val unboxIntOrNull = helper("uIN")
-    val testInt = helper("tI")
+    val undef = helper("undef")
+    val isUndef = helper("isUndef")
+
+    def box(primRef: IRTypes.PrimRef): WasmFunctionName = helper("b" + primRef.charCode)
+    def unbox(primRef: IRTypes.PrimRef): WasmFunctionName = helper("u" + primRef.charCode)
+    def unboxOrNull(primRef: IRTypes.PrimRef): WasmFunctionName = helper("uN" + primRef.charCode)
+    def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
 
     val emptyString = helper("emptyString")
     val stringLength = helper("stringLength")
@@ -149,7 +149,6 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
-      val undef = new WasmStructTypeName("undef")
     }
 
     /** Array type's name */

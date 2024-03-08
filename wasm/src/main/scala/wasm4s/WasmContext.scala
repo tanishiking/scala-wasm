@@ -149,10 +149,23 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
 
   addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
 
-  addHelperImport(WasmFunctionName.boxInt, List(WasmInt32), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.unboxInt, List(WasmAnyRef), List(WasmInt32))
-  addHelperImport(WasmFunctionName.unboxIntOrNull, List(WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.testInt, List(WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.undef, List(), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.isUndef, List(WasmAnyRef), List(WasmInt32))
+
+  locally {
+    import IRTypes._
+    for (primRef <- List(BooleanRef, ByteRef, ShortRef, IntRef, FloatRef, DoubleRef)) {
+      val wasmType = primRef match {
+        case FloatRef  => WasmFloat32
+        case DoubleRef => WasmFloat64
+        case _         => WasmInt32
+      }
+      addHelperImport(WasmFunctionName.box(primRef), List(wasmType), List(WasmAnyRef))
+      addHelperImport(WasmFunctionName.unbox(primRef), List(WasmAnyRef), List(wasmType))
+      addHelperImport(WasmFunctionName.unboxOrNull(primRef), List(WasmAnyRef), List(WasmAnyRef))
+      addHelperImport(WasmFunctionName.typeTest(primRef), List(WasmAnyRef), List(WasmInt32))
+    }
+  }
 
   addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
@@ -164,17 +177,6 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringConcat, List(WasmRefType.any, WasmRefType.any), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
-
-  addGlobal(
-    WasmGlobal(
-      WasmGlobalName.WasmUndefName,
-      TypeTransformer.transformType(IRTypes.UndefType)(this),
-      WasmExpr(
-        List(WasmInstr.STRUCT_NEW(WasmImmediate.TypeIdx(WasmTypeName.WasmStructTypeName.undef)))
-      ),
-      isMutable = false
-    )
-  )
 }
 
 object WasmContext {

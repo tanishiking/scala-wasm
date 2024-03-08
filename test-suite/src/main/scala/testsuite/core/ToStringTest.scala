@@ -19,7 +19,7 @@ object ToStringTest {
       testDouble(1.4, "1.4") &&
       testString("foo", "foo") &&
       testString(null, "null") &&
-      //testUndef((), "undefined") && // TODO does not work yet
+      testUndef((), "undefined") &&
       testConcat(1, "foo", "1foo") &&
       testConcat(2, null, "2null")
   }

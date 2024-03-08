@@ -7,10 +7,22 @@ object HijackedClassesUpcastTest {
 
   @JSExportTopLevel("hijackedClassesUpcast")
   def test(): Boolean = {
-    testInteger(5) &&
+    testBoolean(true) &&
+      testInteger(5) &&
       testIntegerNull(null) &&
       testString("foo") &&
       testStringNull(null)
+  }
+
+  def testBoolean(x: Boolean): Boolean = {
+    val x1 = identity(x)
+    x1 && {
+      val x2: Any = x1
+      x2 match {
+        case x3: Boolean => x3
+        case _           => false
+      }
+    }
   }
 
   def testInteger(x: Int): Boolean = {

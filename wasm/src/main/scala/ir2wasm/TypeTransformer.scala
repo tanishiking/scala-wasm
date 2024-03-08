@@ -60,10 +60,6 @@ object TypeTransformer {
         ???
       case clazz @ IRTypes.ClassType(className) =>
         className match {
-          case IRNames.BoxedUnitClass =>
-            Types.WasmRefNullType(
-              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
-            )
           case _ =>
             val info = ctx.getClassInfo(clazz.className)
             if (info.isInterface)
@@ -76,12 +72,8 @@ object TypeTransformer {
               )
         }
       case IRTypes.RecordType(fields) => ???
-      case IRTypes.StringType =>
+      case IRTypes.StringType | IRTypes.UndefType =>
         Types.WasmRefType.any
-      case IRTypes.UndefType =>
-        Types.WasmRefType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
-        )
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 

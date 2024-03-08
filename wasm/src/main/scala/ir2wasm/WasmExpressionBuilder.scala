@@ -25,12 +25,26 @@ object WasmExpressionBuilder {
     val builder = new WasmExpressionBuilder(ctx, fctx)
     WasmExpr(builder.genBody(tree, resultType))
   }
+
+  private object PrimTypeWithBoxUnbox {
+    def unapply(primType: IRTypes.PrimTypeWithRef): Option[IRTypes.PrimTypeWithRef] = {
+      primType match {
+        case IRTypes.BooleanType | IRTypes.ByteType | IRTypes.ShortType |
+            IRTypes.IntType | IRTypes.FloatType | IRTypes.DoubleType =>
+          Some(primType)
+        case _ =>
+          None
+      }
+    }
+  }
 }
 
 private class WasmExpressionBuilder private (
     ctx: FunctionTypeWriterWasmContext,
     fctx: WasmFunctionContext
 ) {
+  import WasmExpressionBuilder._
+
   private val instrs = mutable.ListBuffer.empty[WasmInstr]
 
   def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): List[WasmInstr] = {
@@ -168,14 +182,17 @@ private class WasmExpressionBuilder private (
       case (primType: IRTypes.PrimType, _) =>
         // box
         primType match {
-          case IRTypes.UndefType =>
+          case IRTypes.UndefType | IRTypes.StringType | IRTypes.NullType =>
             ()
-          case IRTypes.IntType =>
-            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.boxInt))
-          case IRTypes.StringType =>
-            ()
-          case IRTypes.NullType =>
-            ()
+          case PrimTypeWithBoxUnbox(primType) =>
+            /* Calls a `bX` helper. Most of them are of the form
+             *   bX: (x) => x
+             * at the JavaScript level, but with a primType->anyref Wasm type.
+             * For example, for `IntType`, `bI` has type `i32 -> anyref`. This
+             * asks the JS host to turn a primitive `i32` into its generic
+             * representation, which we can store in an `anyref`.
+             */
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.box(primType.primRef)))
           case _ =>
             println(s"adapt($primType, $expectedType)")
             ???
@@ -357,7 +374,7 @@ private class WasmExpressionBuilder private (
       case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(F64(v))
 
       case v: IRTrees.Undefined =>
-        instrs += WasmInstr.GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmUndefName))
+        instrs += CALL(FuncIdx(WasmFunctionName.undef))
       case v: IRTrees.Null =>
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
@@ -649,11 +666,14 @@ private class WasmExpressionBuilder private (
     def genIsPrimType(testType: IRTypes.PrimType): Unit = {
       testType match {
         case IRTypes.UndefType =>
-          instrs += REF_TEST(
-            HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
-          )
-        case IRTypes.IntType =>
-          instrs += CALL(FuncIdx(WasmFunctionName.testInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.isUndef))
+        case PrimTypeWithBoxUnbox(testType) =>
+          /* Calls the appromriate `tX` JS helper. It dynamically tests whether
+           * the value fits in the given primitive type, according to
+           * https://www.scala-js.org/doc/semantics.html
+           * All the `tX` helpers have Wasm type `anyref -> i32` (interpreted as `boolean`).
+           */
+          instrs += CALL(FuncIdx(WasmFunctionName.typeTest(testType.primRef)))
         case IRTypes.StringType =>
           instrs += CALL(FuncIdx(WasmFunctionName.isString))
         case _ =>
@@ -714,11 +734,10 @@ private class WasmExpressionBuilder private (
         // TODO We could do something better for things like double.asInstanceOf[int]
         targetTpe match {
           case IRTypes.UndefType =>
-            instrs += REF_CAST(
-              HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
-            )
-          case IRTypes.IntType =>
-            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxInt))
+            instrs += DROP
+            genLiteral(IRTrees.Undefined()(tree.pos))
+          case PrimTypeWithBoxUnbox(targetTpe) =>
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unbox(targetTpe.primRef)))
           case IRTypes.StringType =>
             instrs += REF_CAST(HeapType(Types.WasmHeapType.Simple.Any))
           case _ =>
@@ -742,14 +761,10 @@ private class WasmExpressionBuilder private (
             )
           } else if (info.kind == ClassKind.HijackedClass) {
             IRTypes.BoxedClassToPrimType(targetClassName) match {
-              case IRTypes.UndefType =>
-                instrs += REF_CAST_NULL(
-                  HeapType(Types.WasmHeapType.Type(WasmStructTypeName.undef))
-                )
-              case IRTypes.IntType =>
-                instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxIntOrNull))
-              case IRTypes.StringType =>
+              case IRTypes.UndefType | IRTypes.StringType =>
                 ()
+              case PrimTypeWithBoxUnbox(primType) =>
+                instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxOrNull(primType.primRef)))
               case _ =>
                 println(tree)
                 ???

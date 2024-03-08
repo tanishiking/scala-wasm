@@ -79,13 +79,6 @@ case class WasmStructType(
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
-object WasmStructType {
-  val undef: WasmStructType = WasmStructType(
-    WasmTypeName.WasmStructTypeName.undef,
-    Nil,
-    None
-  )
-}
 
 case class WasmArrayType(
     name: WasmTypeName,
@@ -150,8 +143,6 @@ class WasmModule(
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
-
-  addRecGroupType(WasmStructType.undef)
 }
 
 object WasmModule {
