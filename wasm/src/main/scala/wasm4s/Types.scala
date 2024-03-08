@@ -44,6 +44,10 @@ object Types {
   case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", 0x64) {
     override def show: String = s"(ref ${heapType.show})"
   }
+  object WasmRefType {
+    /** Non-null `anyref`. */
+    val any: WasmRefType = WasmRefType(WasmHeapType.Simple.Any)
+  }
 
   sealed trait WasmHeapType {
     def show: String

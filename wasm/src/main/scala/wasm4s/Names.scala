@@ -112,6 +112,17 @@ object Names {
     val unboxInt = helper("uI")
     val unboxIntOrNull = helper("uIN")
     val testInt = helper("tI")
+
+    val emptyString = helper("emptyString")
+    val stringLength = helper("stringLength")
+    val stringCharAt = helper("stringCharAt")
+    val jsValueToString = helper("jsValueToString")
+    val booleanToString = helper("booleanToString")
+    val charToString = helper("charToString")
+    val intToString = helper("intToString")
+    val doubleToString = helper("doubleToString")
+    val stringConcat = helper("stringConcat")
+    val isString = helper("isString")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
@@ -126,7 +137,6 @@ object Names {
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
-    val stringData = new WasmFieldName("string_data")
   }
 
   // GC types ====
@@ -139,7 +149,6 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
-      val string = new WasmStructTypeName("string")
       val undef = new WasmStructTypeName("undef")
     }
 
@@ -153,7 +162,6 @@ object Names {
         new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
       }
       val itables = new WasmArrayTypeName("itable")
-      val stringData = new WasmArrayTypeName("string_data")
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)

@@ -10,6 +10,7 @@ object TestSuites {
     TestSuite("testsuite.core.interfacecall.InterfaceCall", "interfaceCall"),
     TestSuite("testsuite.core.asinstanceof.AsInstanceOfTest", "asInstanceOf"),
     TestSuite("testsuite.core.hijackedclassesmono.HijackedClassesMonoTest", "hijackedClassesMono"),
-    TestSuite("testsuite.core.hijackedclassesupcast.HijackedClassesUpcastTest", "hijackedClassesUpcast")
+    TestSuite("testsuite.core.hijackedclassesupcast.HijackedClassesUpcastTest", "hijackedClassesUpcast"),
+    TestSuite("testsuite.core.tostring.ToStringTest", "toStringConversions")
   )
 }

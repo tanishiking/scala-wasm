@@ -154,6 +154,17 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.unboxIntOrNull, List(WasmAnyRef), List(WasmAnyRef))
   addHelperImport(WasmFunctionName.testInt, List(WasmAnyRef), List(WasmInt32))
 
+  addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(WasmFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
+  addHelperImport(WasmFunctionName.jsValueToString, List(WasmAnyRef), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.stringConcat, List(WasmRefType.any, WasmRefType.any), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
+
   addGlobal(
     WasmGlobal(
       WasmGlobalName.WasmUndefName,

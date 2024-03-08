@@ -60,10 +60,6 @@ object TypeTransformer {
         ???
       case clazz @ IRTypes.ClassType(className) =>
         className match {
-          case IRNames.BoxedStringClass =>
-            Types.WasmRefNullType(
-              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
-            )
           case IRNames.BoxedUnitClass =>
             Types.WasmRefNullType(
               Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
@@ -81,9 +77,7 @@ object TypeTransformer {
         }
       case IRTypes.RecordType(fields) => ???
       case IRTypes.StringType =>
-        Types.WasmRefType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
-        )
+        Types.WasmRefType.any
       case IRTypes.UndefType =>
         Types.WasmRefType(
           Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)

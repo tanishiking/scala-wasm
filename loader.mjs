@@ -11,6 +11,18 @@ const scalaJSHelpers = {
   uIN: (x) => (x !== null) ? (x | 0) : null,
   // Test whethere an any is an int (type test)
   tI: (x) => typeof x === 'number' && Object.is(x | 0, x),
+
+  // Strings
+  emptyString: () => "",
+  stringLength: (s) => s.length,
+  stringCharAt: (s, i) => s.charCodeAt(i),
+  jsValueToString: (x) => "" + x,
+  booleanToString: (b) => b ? "true" : "false",
+  charToString: (c) => String.fromCharCode(c),
+  intToString: (i) => "" + i,
+  doubleToString: (d) => "" + d,
+  stringConcat: (x, y) => ("" + x) + y, // the added "" is for the case where x === y === null
+  isString: (x) => typeof x === 'string',
 }
 
 export async function load(wasmFileName) {

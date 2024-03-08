@@ -363,13 +363,14 @@ private class WasmExpressionBuilder private (
 
       case v: IRTrees.StringLiteral =>
         // TODO We should allocate literal strings once and for all as globals
+        // This is absolutely atrocious at the moment
         val str = v.value
-        str.foreach(c => instrs += WasmInstr.I32_CONST(I32(c.toInt)))
-        instrs += WasmInstr.ARRAY_NEW_FIXED(
-          TypeIdx(WasmTypeName.WasmArrayTypeName.stringData),
-          I32(str.length())
-        )
-        instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
+        instrs += CALL(FuncIdx(WasmFunctionName.emptyString))
+        for (c <- str) {
+          instrs += WasmInstr.I32_CONST(I32(c.toInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
+        }
 
       case v: IRTrees.ClassOf => ???
     }
@@ -452,8 +453,7 @@ private class WasmExpressionBuilder private (
 
       // String.length, introduced in 1.11
       case String_length =>
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)) // get the array
-        instrs += ARRAY_LEN
+        instrs += CALL(FuncIdx(WasmFunctionName.stringLength))
     }
 
     unary.tpe
@@ -482,11 +482,8 @@ private class WasmExpressionBuilder private (
       // New in 1.11
       case BinaryOp.String_charAt =>
         genTree(binary.lhs, IRTypes.StringType) // push the string
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)) // get the array
         genTree(binary.rhs, IRTypes.IntType) // push the index
-        instrs += ARRAY_GET_U(
-          TypeIdx(WasmArrayTypeName.stringData)
-        ) // access the element of the array
+        instrs += CALL(FuncIdx(WasmFunctionName.stringCharAt))
         IRTypes.CharType
 
       case _ => genElementaryBinaryOp(binary)
@@ -584,7 +581,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def genStringConcat(lhs: IRTrees.Tree, rhs: IRTrees.Tree): IRTypes.Type = {
-    val wasmStringType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.string))
+    val wasmStringType = Types.WasmRefType.any
 
     def genToString(tree: IRTrees.Tree): Unit = {
       genTreeAuto(tree)
@@ -593,36 +590,41 @@ private class WasmExpressionBuilder private (
           () // no-op
 
         case IRTypes.BooleanType =>
-          instrs += IF(BlockType.ValueType(wasmStringType))
-          genLiteral(IRTrees.StringLiteral("true")(tree.pos))
-          instrs += ELSE
-          genLiteral(IRTrees.StringLiteral("false")(tree.pos))
-          instrs += END
+          instrs += CALL(FuncIdx(WasmFunctionName.booleanToString))
 
         case IRTypes.CharType =>
-          instrs += WasmInstr.ARRAY_NEW_FIXED(
-            TypeIdx(WasmTypeName.WasmArrayTypeName.stringData),
-            I32(1)
-          )
-          instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
 
         case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>
-          // TODO Write a correct implementation
-          instrs += DROP
-          genLiteral(IRTrees.StringLiteral("0")(tree.pos))
+          instrs += CALL(FuncIdx(WasmFunctionName.intToString))
 
         case IRTypes.LongType =>
           // TODO Write a correct implementation
           instrs += DROP
           genLiteral(IRTrees.StringLiteral("0")(tree.pos))
 
-        case IRTypes.FloatType | IRTypes.DoubleType =>
-          // TODO Write a correct implementation
-          instrs += DROP
-          genLiteral(IRTrees.StringLiteral("0.0")(tree.pos))
+        case IRTypes.FloatType =>
+          instrs += F64_PROMOTE_F32
+          instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+
+        case IRTypes.DoubleType =>
+          instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+
+        case IRTypes.UndefType =>
+          instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+
+        case IRTypes.ClassType(className) =>
+          val info = ctx.getClassInfo(className)
+          if (info.kind == ClassKind.HijackedClass) {
+            instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+          } else {
+            println(tree)
+            ???
+          }
 
         case _ =>
           // TODO
+          println(tree)
           ???
       }
     }
@@ -633,8 +635,9 @@ private class WasmExpressionBuilder private (
         genToString(rhs)
 
       case _ =>
-        // TODO: genToString(lhs) ::: genToString(rhs) :: callHelperConcat() :: Nil
-        ???
+        genToString(lhs)
+        genToString(rhs)
+        instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
     }
 
     IRTypes.StringType
@@ -652,9 +655,7 @@ private class WasmExpressionBuilder private (
         case IRTypes.IntType =>
           instrs += CALL(FuncIdx(WasmFunctionName.testInt))
         case IRTypes.StringType =>
-          instrs += REF_TEST(
-            HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
-          )
+          instrs += CALL(FuncIdx(WasmFunctionName.isString))
         case _ =>
           println(tree)
           ???
@@ -719,9 +720,7 @@ private class WasmExpressionBuilder private (
           case IRTypes.IntType =>
             instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxInt))
           case IRTypes.StringType =>
-            instrs += REF_CAST(
-              HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
-            )
+            instrs += REF_CAST(HeapType(Types.WasmHeapType.Simple.Any))
           case _ =>
             println(tree)
             ???
@@ -750,9 +749,7 @@ private class WasmExpressionBuilder private (
               case IRTypes.IntType =>
                 instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxIntOrNull))
               case IRTypes.StringType =>
-                instrs += REF_CAST_NULL(
-                  HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))
-                )
+                ()
               case _ =>
                 println(tree)
                 ???
