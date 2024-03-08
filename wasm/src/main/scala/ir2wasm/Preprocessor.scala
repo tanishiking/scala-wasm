@@ -17,29 +17,24 @@ object Preprocessor {
     for (clazz <- classes)
       preprocess(clazz)
 
-    for (clazz <- classes) {
-      if (clazz.className != IRNames.ObjectClass)
-        collectAbstractMethodCalls(clazz)
-    }
+    for (clazz <- classes)
+      collectAbstractMethodCalls(clazz)
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     clazz.kind match {
-      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface =>
+      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface | ClassKind.HijackedClass =>
         collectMethods(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass | ClassKind.NativeJSModuleClass |
-          ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.HijackedClass =>
+          ClassKind.AbstractJSType | ClassKind.NativeJSClass =>
         ???
     }
   }
 
   private def collectMethods(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    val infos =
-      if (clazz.name.name == IRNames.ObjectClass) Nil
-      else
-        clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
-          makeWasmFunctionInfo(clazz, method)
-        }
+    val infos = clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
+      makeWasmFunctionInfo(clazz, method)
+    }
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(
@@ -48,7 +43,8 @@ object Preprocessor {
         infos,
         clazz.fields.collect { case f: IRTrees.FieldDef => Names.WasmFieldName(f.name.name) },
         clazz.superClass.map(_.name),
-        clazz.interfaces.map(_.name)
+        clazz.interfaces.map(_.name),
+        clazz.ancestors
       )
     )
   }

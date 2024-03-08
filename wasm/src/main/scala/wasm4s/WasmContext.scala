@@ -129,7 +129,8 @@ object WasmContext {
       private var _methods: List[WasmFunctionInfo],
       private val fields: List[WasmFieldName],
       val superClass: Option[IRNames.ClassName],
-      val interfaces: List[IRNames.ClassName]
+      val interfaces: List[IRNames.ClassName],
+      val ancestors: List[IRNames.ClassName]
   ) {
 
     def isInterface = kind == ClassKind.Interface
@@ -142,6 +143,12 @@ object WasmContext {
         val argTypes = methodName.paramTypeRefs.map(ctx.inferTypeFromTypeRef(_))
         val resultType = ctx.inferTypeFromTypeRef(methodName.resultTypeRef)
         _methods = _methods :+ WasmFunctionInfo(wasmName, argTypes, resultType, isAbstract = true)
+      }
+    }
+
+    def getMethodInfo(methodName: IRNames.MethodName): WasmFunctionInfo = {
+      methods.find(_.name.methodName == methodName.nameString).getOrElse {
+        throw new IllegalArgumentException(s"Cannot find method ${methodName.nameString} in class ${name.nameString}")
       }
     }
 

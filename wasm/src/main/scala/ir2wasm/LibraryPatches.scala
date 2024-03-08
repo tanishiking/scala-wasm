@@ -65,6 +65,15 @@ object LibraryPatches {
 
   private val MethodPatches: Map[ClassName, List[MethodDef]] = {
     Map(
+      ObjectClass -> List(
+        // TODO Remove this patch when we support getClass() and full string concatenation
+        MethodDef(
+          EMF, m("toString", Nil, T), NON,
+          Nil, ClassType(BoxedStringClass),
+          Some(StringLiteral("[object]"))
+        )(EOH, NOV)
+      ),
+
       BoxedCharacterClass.withSuffix("$") -> List(
         MethodDef(
           EMF, m("toString", List(C), T), NON,

@@ -63,6 +63,7 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         transformApplyStatically(t)
       case t: IRTrees.Apply              => transformApply(t)
       case t: IRTrees.ApplyDynamicImport => ???
+      case t: IRTrees.AsInstanceOf       => transformAsInstanceOf(t)
       case t: IRTrees.Block              => transformBlock(t)
       case t: IRTrees.Labeled            => transformLabeled(t)
       case t: IRTrees.Return             => transformReturn(t)
@@ -180,8 +181,9 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
     val wasmArgs = t.args.flatMap(transformTree)
 
     val receiverClassName = t.receiver.tpe match {
-      case ClassType(className) => className
-      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+      case ClassType(className)   => className
+      case prim: IRTypes.PrimType => IRTypes.PrimTypeToBoxedClass(prim)
+      case _                      => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
@@ -227,6 +229,18 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
           CALL_REF(
             TypeIdx(method.toWasmFunctionType()(ctx).name)
           )
+        )
+    } else if (receiverClassInfo.kind == ClassKind.HijackedClass) {
+      // statically resolved call
+      val info = receiverClassInfo.getMethodInfo(t.method.name)
+      val castIfNeeded =
+        if (receiverClassName == IRNames.BoxedStringClass && t.receiver.tpe == ClassType(IRNames.BoxedStringClass))
+          List(REF_CAST(HeapType(Types.WasmHeapType.Type(WasmStructTypeName.string))))
+        else
+          Nil
+      pushReceiver ++ castIfNeeded ++ wasmArgs ++
+        List(
+          CALL(FuncIdx(info.name))
         )
     } else { // virtual dispatch
       val (methodIdx, info) = ctx
@@ -401,6 +415,17 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Long_>>> => longShiftOp(I64_SHR_U)
       case BinaryOp.Long_>>  => longShiftOp(I64_SHR_S)
 
+      // New in 1.11
+      case BinaryOp.String_charAt =>
+        transformTree(binary.lhs) ++ // push the string
+          List(
+            STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)), // get the array
+          ) ++
+          transformTree(binary.rhs) ++ // push the index
+          List(
+            ARRAY_GET_U(TypeIdx(WasmArrayTypeName.stringData)) // access the element of the array
+          )
+
       case _ => transformElementaryBinaryOp(binary)
     }
   }
@@ -479,9 +504,6 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
       case BinaryOp.Double_<= => F64_LE
       case BinaryOp.Double_>  => F64_GT
       case BinaryOp.Double_>= => F64_GE
-
-      // // New in 1.11
-      case BinaryOp.String_charAt => ??? // TODO
     }
     lhsInstrs ++ rhsInstrs :+ operation
   }
@@ -538,6 +560,24 @@ class WasmExpressionBuilder(ctx: FunctionTypeWriterWasmContext, fctx: WasmFuncti
         ???
     }
   }
+
+  private def transformAsInstanceOf(tree: IRTrees.AsInstanceOf): List[WasmInstr] = {
+    val exprInstrs = transformTree(tree.expr)
+
+    val sourceTpe = tree.expr.tpe
+    val targetTpe = tree.tpe
+
+    if (IRTypes.isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
+      // Common case where no cast is necessary
+      exprInstrs
+    } else {
+      println(tree)
+      ???
+    }
+  }
+
+  private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
+    ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
   private def transformVarRef(r: IRTrees.VarRef): LOCAL_GET = {
     val name = WasmLocalName.fromIR(r.ident.name)
