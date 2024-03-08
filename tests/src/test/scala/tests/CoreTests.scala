@@ -7,13 +7,9 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 class CoreTests extends munit.FunSuite {
   cli.TestSuites.suites.map { suite =>
     test(suite.className) {
-      val file = s"./target/${suite.className}.wasm"
-      val wasmBuffer = FS.readFileSync(file)
-      val wasmModule =
-        js.Dynamic.global.WebAssembly.instantiate(wasmBuffer).asInstanceOf[js.Promise[js.Dynamic]]
-      wasmModule.toFuture.map { module =>
+      CoreTests.load(s"./target/${suite.className}.wasm").toFuture.map { exports =>
         val testFunction =
-          module.instance.exports
+          exports
             .selectDynamic(suite.methodName)
             .asInstanceOf[js.Function0[Int]]
         assert(testFunction() == 1)
@@ -23,7 +19,7 @@ class CoreTests extends munit.FunSuite {
 
 }
 
-private object FS {
-  @js.native @JSImport("fs")
-  def readFileSync(file: String): js.typedarray.Uint8Array = js.native
+object CoreTests {
+  @js.native @JSImport("../../../../loader.mjs")
+  def load(wasmFile: String): js.Promise[js.Dynamic] = js.native
 }
