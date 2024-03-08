@@ -147,6 +147,8 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
     module.addImport(WasmImport(name.className, name.methodName, WasmImportDesc.Func(name, typ)))
   }
 
+  addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
+
   addHelperImport(WasmFunctionName.boxInt, List(WasmInt32), List(WasmAnyRef))
   addHelperImport(WasmFunctionName.unboxInt, List(WasmAnyRef), List(WasmInt32))
   addHelperImport(WasmFunctionName.unboxIntOrNull, List(WasmAnyRef), List(WasmAnyRef))

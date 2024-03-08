@@ -29,7 +29,7 @@ object HijackedClassesUpcastTest {
       !x.isInstanceOf[java.lang.Integer] &&
       (x.asInstanceOf[Int] == 0) && {
         val x2 = x.asInstanceOf[java.lang.Integer]
-        true // TODO test that it is null
+        x2 == null
       }
   }
 
@@ -47,7 +47,7 @@ object HijackedClassesUpcastTest {
   def testStringNull(x: Any): Boolean = {
     !x.isInstanceOf[String] && {
       val x2 = x.asInstanceOf[String]
-      true // TODO test that it is null
+      x2 == null
     }
   }
 

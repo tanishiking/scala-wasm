@@ -106,6 +106,8 @@ object Names {
     private def helper(name: String): WasmFunctionName =
       new WasmFunctionName("__scalaJSHelpers", name)
 
+    val is = helper("is")
+
     val boxInt = helper("bI")
     val unboxInt = helper("uI")
     val unboxIntOrNull = helper("uIN")

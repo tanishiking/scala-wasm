@@ -494,8 +494,15 @@ private class WasmExpressionBuilder private (
   }
 
   private def genEq(binary: IRTrees.BinaryOp): IRTypes.Type = {
-    println(binary)
-    ???
+    // TODO Optimize this when the operands have a better type than `any`
+    genTree(binary.lhs, IRTypes.AnyType)
+    genTree(binary.rhs, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.is))
+
+    if (binary.op == IRTrees.BinaryOp.!==) {
+      instrs += I32_CONST(I32(1))
+      instrs += I32_XOR
+    }
 
     IRTypes.BooleanType
   }

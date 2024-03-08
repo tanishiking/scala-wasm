@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 
 const scalaJSHelpers = {
+  // BinaryOp.===
+  is: Object.is,
   // Box int to java.lang.Integer (upcast)
   bI: (x) => x,
   // Unbox any to int (downcast)
