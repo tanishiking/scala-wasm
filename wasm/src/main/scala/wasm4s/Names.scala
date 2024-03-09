@@ -123,6 +123,8 @@ object Names {
     val doubleToString = helper("doubleToString")
     val stringConcat = helper("stringConcat")
     val isString = helper("isString")
+
+    val jsValueHashCode = helper("jsValueHashCode")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)

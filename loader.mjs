@@ -1,5 +1,18 @@
 import { readFileSync } from "node:fs";
 
+// Specified by java.lang.String.hashCode()
+function stringHashCode(s) {
+  var res = 0;
+  var mul = 1;
+  var i = (s.length - 1) | 0;
+  while ((i >= 0)) {
+    res = ((res + Math.imul(s.charCodeAt(i), mul)) | 0);
+    mul = Math.imul(31, mul);
+    i = (i - 1) | 0;
+  }
+  return res;
+}
+
 const scalaJSHelpers = {
   // BinaryOp.===
   is: Object.is,
@@ -51,6 +64,20 @@ const scalaJSHelpers = {
   doubleToString: (d) => "" + d,
   stringConcat: (x, y) => ("" + x) + y, // the added "" is for the case where x === y === null
   isString: (x) => typeof x === 'string',
+
+  // Hash code, because it is overridden in all hijacked classes
+  // Specified by the hashCode() method of the corresponding hijacked classes
+  jsValueHashCode: (x) => {
+    if (typeof x === 'number')
+      return x | 0; // TODO make this compliant for floats
+    if (typeof x === 'string')
+      return stringHashCode(x);
+    if (typeof x === 'boolean')
+      return x ? 1231 : 1237;
+    if (typeof x === 'undefined')
+      return 0;
+    return 42; // for any JS object
+  },
 }
 
 export async function load(wasmFileName) {

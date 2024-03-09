@@ -149,7 +149,7 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
 
   addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
 
-  addHelperImport(WasmFunctionName.undef, List(), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.undef, List(), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.isUndef, List(WasmAnyRef), List(WasmInt32))
 
   locally {
@@ -177,10 +177,27 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringConcat, List(WasmRefType.any, WasmRefType.any), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
+
+  addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
 }
 
 object WasmContext {
   private val classFieldOffset = 2 // vtable, itables
+
+  private val AncestorsOfHijackedClasses: Set[IRNames.ClassName] = {
+    // We hard-code this for now, but ideally we should derive it
+    IRNames.HijackedClasses ++
+      Set(
+        IRNames.ObjectClass,
+        IRNames.SerializableClass,
+        IRNames.ClassName("java.lang.CharSequence"),
+        IRNames.ClassName("java.lang.Comparable"),
+        IRNames.ClassName("java.lang.Number"),
+        IRNames.ClassName("java.lang.constant.Constable"),
+        IRNames.ClassName("java.lang.constant.ConstantDesc")
+      )
+  }
+
   final class WasmClassInfo(
       val name: IRNames.ClassName,
       val kind: ClassKind,
@@ -190,6 +207,7 @@ object WasmContext {
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName]
   ) {
+    def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
 
     def isInterface = kind == ClassKind.Interface
 
@@ -271,7 +289,7 @@ object WasmContext {
         .getOrElse(throw new Error(s"Function not found: $name"))
     def resolveWithIdx(name: WasmFunctionName): (Int, WasmFunctionInfo) = {
       val idx = functions.indexWhere(_.name.methodName == name.methodName)
-      if (idx < 0) throw new Error(s"Function not found: $name")
+      if (idx < 0) throw new Error(s"Function not found: $name among ${functions.map(_.name.methodName)}")
       else (idx, functions(idx))
     }
   }

@@ -10,7 +10,7 @@ import wasm4s._
 object TypeTransformer {
 
   val makeReceiverType: Types.WasmType =
-    Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+    Types.WasmRefType.any
 
   def transformFunctionType(
       // clazz: WasmContext.WasmClassInfo,
@@ -62,12 +62,12 @@ object TypeTransformer {
         className match {
           case _ =>
             val info = ctx.getClassInfo(clazz.className)
-            if (info.isInterface)
-              Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
-            else if (info.kind == ClassKind.HijackedClass)
+            if (info.isAncestorOfHijackedClass)
               Types.WasmAnyRef
+            else if (info.isInterface)
+              Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
             else
-              Types.WasmRefType(
+              Types.WasmRefNullType(
                 Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
               )
         }

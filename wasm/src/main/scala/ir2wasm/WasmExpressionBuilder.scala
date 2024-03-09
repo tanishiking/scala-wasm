@@ -16,6 +16,7 @@ import wasm4s.WasmInstr._
 import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
+import org.scalajs.ir.Position
 
 object WasmExpressionBuilder {
   def transformBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
@@ -25,6 +26,16 @@ object WasmExpressionBuilder {
     val builder = new WasmExpressionBuilder(ctx, fctx)
     WasmExpr(builder.genBody(tree, resultType))
   }
+
+  private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
+  private val BoxedStringRef = IRTypes.ClassRef(IRNames.BoxedStringClass)
+  private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
+  private val hashCodeMethodName = IRNames.MethodName("hashCode", Nil, IRTypes.IntRef)
+  private val equalsMethodName = IRNames.MethodName("equals", List(ObjectRef), IRTypes.BooleanRef)
+
+  private val CharSequenceClass = IRNames.ClassName("java.lang.CharSequence")
+  private val ComparableClass = IRNames.ClassName("java.lang.Comparable")
+  private val JLNumberClass = IRNames.ClassName("java.lang.Number")
 
   private object PrimTypeWithBoxUnbox {
     def unapply(primType: IRTypes.PrimTypeWithRef): Option[IRTypes.PrimTypeWithRef] = {
@@ -250,21 +261,99 @@ private class WasmExpressionBuilder private (
   }
 
   private def genApply(t: IRTrees.Apply): IRTypes.Type = {
+    t.receiver.tpe match {
+      case IRTypes.NothingType =>
+        genTree(t.receiver, IRTypes.NothingType)
+        // nothing else to do; this is unreachable
+        IRTypes.NothingType
+
+      case IRTypes.NullType =>
+        genTree(t.receiver, IRTypes.NullType)
+        instrs += UNREACHABLE // trap
+        IRTypes.NothingType
+
+      case prim: IRTypes.PrimType =>
+        // statically resolved call with non-null argument
+        val receiverClassName = IRTypes.PrimTypeToBoxedClass(prim)
+        genApplyStatically(
+          IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(t.pos)
+        )
+
+      case IRTypes.ClassType(className) if IRNames.HijackedClasses.contains(className) =>
+        // statically resolved call with maybe-null argument
+        genApplyStatically(
+          IRTrees.ApplyStatically(t.flags, t.receiver, className, t.method, t.args)(t.tpe)(t.pos)
+        )
+
+      case _ =>
+        genApplyNonPrim(t)
+    }
+  }
+
+  private def genApplyNonPrim(t: IRTrees.Apply): IRTypes.Type = {
+    implicit val pos: Position = t.pos
+
     val receiverClassName = t.receiver.tpe match {
       case ClassType(className)   => className
-      case prim: IRTypes.PrimType => IRTypes.PrimTypeToBoxedClass(prim)
+      case IRTypes.AnyType        => IRNames.ObjectClass
       case _                      => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
-    def genReceiverArgsReceiver(): Unit = {
-      assert(!IRNames.HijackedClasses.contains(receiverClassName))
-      genTreeAuto(t.receiver)
-      genArgs(t.args, t.method.name)
-      genTreeAuto(t.receiver) // TODO Reuse the receiver computed above
+    /* Similar to transformType(t.receiver.tpe), but:
+     * - it is non-null, and
+     * - ancestors of hijacked classes are not treated specially.
+     *
+     * This is used in the code paths where we have already ruled out `null`
+     * values and primitive values (that implement hijacked classes).
+     */
+    val heapTypeForDispatch: Types.WasmHeapType = {
+      if (receiverClassInfo.isInterface)
+        Types.WasmHeapType.ObjectType
+      else
+        Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(receiverClassName))
     }
 
-    if (receiverClassInfo.isInterface) { // interface dispatch
+    // A local for a copy of the receiver that we will use to resolve dispatch
+    val receiverLocalForDispatch: WasmLocalName = {
+      val name = fctx.genSyntheticLocalName()
+      val typ = Types.WasmRefType(heapTypeForDispatch)
+      fctx.locals.define(WasmLocal(name, typ, isParameter = false))
+      name
+    }
+
+    /* Gen loading of the receiver and check that it is non-null.
+     * After this codegen, the non-null receiver is on the stack.
+     */
+    def genReceiverNotNull(): Unit = {
+      genTreeAuto(t.receiver)
+      instrs += REF_AS_NOT_NULL
+    }
+
+    /* Generates a resolved call to a method of a hijacked class.
+     * Before this code gen, the stack must contain the receiver and the args.
+     * After this code gen, the stack contains the result.
+     */
+    def genHijackedClassCall(hijackedClass: IRNames.ClassName): Unit = {
+      val funcName = Names.WasmFunctionName(hijackedClass, t.method.name)
+      instrs += CALL(FuncIdx(funcName))
+    }
+
+    /* Generates a vtable- or itable-based dispatch.
+     * Before this code gen, the stack must contain the receiver and the args, and
+     * the receiver is also available in the local `receiverLocalForDispatch`.
+     * The two occurrences of the receiver must have the type for dispatch.
+     * After this code gen, the stack contains the result.
+     */
+    def genTableDispatch(): Unit = {
+      if (receiverClassInfo.isInterface)
+        genITableDispatch()
+      else
+        genVTableDispatch()
+    }
+
+    // Generates an itable-based dispatch.
+    def genITableDispatch(): Unit = {
       val itables = ctx.calculateClassItables(clazz = receiverClassName)
 
       val (itableIdx, methodIdx) = itables.resolveMethod(t.method.name)
@@ -284,7 +373,7 @@ private class WasmExpressionBuilder private (
       //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
       //   }
 
-      genReceiverArgsReceiver()
+      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
       instrs += STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
@@ -305,16 +394,10 @@ private class WasmExpressionBuilder private (
       instrs += CALL_REF(
         TypeIdx(method.toWasmFunctionType()(ctx).name)
       )
-      if (t.tpe == IRTypes.NothingType)
-        instrs += UNREACHABLE
-    } else if (receiverClassInfo.kind == ClassKind.HijackedClass) {
-      // statically resolved call
-      genApplyStatically(
-        IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(
-          t.pos
-        )
-      )
-    } else { // virtual dispatch
+    }
+
+    // Generates a vtable-based dispatch.
+    def genVTableDispatch(): Unit = {
       val (methodIdx, info) = ctx
         .calculateVtableType(receiverClassName)
         .resolveWithIdx(WasmFunctionName(receiverClassName, t.method.name))
@@ -325,7 +408,7 @@ private class WasmExpressionBuilder private (
       // struct.get $classType 0 ;; get vtable
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
-      genReceiverArgsReceiver()
+      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
       instrs += REF_CAST(
         HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
       )
@@ -340,28 +423,161 @@ private class WasmExpressionBuilder private (
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
       )
-      if (t.tpe == IRTypes.NothingType)
-        instrs += UNREACHABLE
     }
+
+    if (!receiverClassInfo.isAncestorOfHijackedClass) {
+      // Standard dispatch codegen
+      genReceiverNotNull()
+      instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+      genArgs(t.args, t.method.name)
+      genTableDispatch()
+    } else {
+      /* Hijacked class dispatch codegen
+       * The overall structure of the generated code is as follows:
+       *
+       * block resultType $done
+       *   block (ref any) $notOurObject
+       *     load non-null receiver and args and store into locals
+       *     reload copy of receiver
+       *     br_on_cast_fail (ref any) (ref $targetRealClass) $notOurObject
+       *     reload args
+       *     generate standard table-based dispatch
+       *     br $done
+       *   end $notOurObject
+       *   choose an implementation of a single hijacked class, or a JS helper
+       *   reload args
+       *   call the chosen implementation
+       * end $done
+       */
+
+      assert(receiverClassInfo.kind != ClassKind.HijackedClass, receiverClassName)
+
+      val resultTyp = TypeTransformer.transformResultType(t.tpe)(ctx)
+
+      val labelDone = fctx.genLabel()
+      instrs += BLOCK(BlockType.ValueType(resultTyp.headOption), Some(labelDone))
+
+      // First try the case where the value is one of our objects
+      val labelNotOurObject = fctx.genLabel()
+      instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelNotOurObject))
+
+      // Load receiver and arguments and store them in temporary variables
+      genReceiverNotNull()
+      val argsLocals = if (t.args.isEmpty) {
+        /* When there are no arguments, we can leave the receiver directly on
+         * the stack instead of going through a local. We will still need a
+         * local for the table-based dispatch, though.
+         */
+        Nil
+      } else {
+        val receiverLocal: WasmLocalName = fctx.genSyntheticLocalName()
+        fctx.locals.define(WasmLocal(receiverLocal, Types.WasmRefType.any, isParameter = false))
+
+        instrs += LOCAL_SET(LocalIdx(receiverLocal))
+        val argsLocals: List[WasmLocalName] = for ((arg, typeRef) <- t.args.zip(t.method.name.paramTypeRefs)) yield {
+          val typ = ctx.inferTypeFromTypeRef(typeRef)
+          genTree(arg, typ)
+          val localName = fctx.genSyntheticLocalName()
+          fctx.locals.define(WasmLocal(localName, TypeTransformer.transformType(typ)(ctx), isParameter = false))
+          instrs += LOCAL_SET(LocalIdx(localName))
+          localName
+        }
+        instrs += LOCAL_GET(LocalIdx(receiverLocal))
+        argsLocals
+      }
+
+      def pushArgs(): Unit =
+        argsLocals.foreach(argLocal => instrs += LOCAL_GET(LocalIdx(argLocal)))
+
+      instrs += BR_ON_CAST_FAIL(
+        CastFlags(false, false),
+        labelNotOurObject,
+        WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
+        WasmImmediate.HeapType(heapTypeForDispatch)
+      )
+      instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+      pushArgs()
+      genTableDispatch()
+      instrs += BR(labelDone)
+      instrs += END // BLOCK labelNotOurObject
+
+      // Now we have a value that is not one of our objects; the (ref any) is still on the stack
+
+      if (t.method.name == toStringMethodName) {
+        // By spec, toString() is special
+        assert(argsLocals.isEmpty)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+      } else if (receiverClassName == JLNumberClass) {
+        // the value must be a `number`, hence we can unbox to `double`
+        genUnbox(IRTypes.DoubleType)
+        pushArgs()
+        genHijackedClassCall(IRNames.BoxedDoubleClass)
+      } else if (receiverClassName == CharSequenceClass) {
+        // the value must be a `string`; it already has the right type
+        pushArgs()
+        genHijackedClassCall(IRNames.BoxedStringClass)
+      } else {
+        /* It must be a method of j.l.Object and it can be any value.
+         * hashCode() and equals() are overridden in all hijacked classes; we
+         * use dedicated JavaScript helpers for those.
+         * The other methods are never overridden and can be statically
+         * resolved to j.l.Object.
+         */
+        pushArgs()
+        t.method.name match {
+          case `hashCodeMethodName` =>
+            instrs += CALL(FuncIdx(WasmFunctionName.jsValueHashCode))
+          case `equalsMethodName` =>
+            instrs += CALL(FuncIdx(WasmFunctionName.is))
+          case _ =>
+            genHijackedClassCall(IRNames.ObjectClass)
+        }
+      }
+
+      instrs += END // BLOCK labelDone
+    }
+
+    if (t.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
 
     t.tpe
   }
 
   private def genApplyStatically(t: IRTrees.ApplyStatically): IRTypes.Type = {
-    IRTypes.BoxedClassToPrimType.get(t.className) match {
-      case None =>
-        genTree(t.receiver, IRTypes.ClassType(t.className))
+    t.receiver.tpe match {
+      case IRTypes.NothingType =>
+        genTree(t.receiver, IRTypes.NothingType)
+        // nothing else to do; this is unreachable
+        IRTypes.NothingType
 
-      case Some(primReceiverType) =>
-        genTreeAuto(IRTrees.AsInstanceOf(t.receiver, primReceiverType)(t.pos))
+      case IRTypes.NullType =>
+        genTree(t.receiver, IRTypes.NullType)
+        instrs += UNREACHABLE // trap
+        IRTypes.NothingType
+
+      case _ =>
+        IRTypes.BoxedClassToPrimType.get(t.className) match {
+          case None =>
+            genTree(t.receiver, IRTypes.ClassType(t.className))
+            instrs += REF_AS_NOT_NULL
+
+          case Some(primReceiverType) =>
+            if (t.receiver.tpe == primReceiverType) {
+              genTreeAuto(t.receiver)
+            } else {
+              genTree(t.receiver, IRTypes.AnyType)
+              instrs += REF_AS_NOT_NULL
+              genUnbox(primReceiverType)(t.pos)
+            }
+        }
+
+        genArgs(t.args, t.method.name)
+        val funcName = Names.WasmFunctionName(t.className, t.method.name)
+        instrs += CALL(FuncIdx(funcName))
+        if (t.tpe == IRTypes.NothingType)
+          instrs += UNREACHABLE
+        t.tpe
     }
-
-    genArgs(t.args, t.method.name)
-    val funcName = Names.WasmFunctionName(t.className, t.method.name)
-    instrs += CALL(FuncIdx(funcName))
-    if (t.tpe == IRTypes.NothingType)
-      instrs += UNREACHABLE
-    t.tpe
   }
 
   private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
@@ -747,29 +963,7 @@ private class WasmExpressionBuilder private (
 
       def genAsPrimType(targetTpe: IRTypes.PrimType): Unit = {
         // TODO We could do something better for things like double.asInstanceOf[int]
-        targetTpe match {
-          case IRTypes.UndefType =>
-            instrs += DROP
-            genLiteral(IRTrees.Undefined()(tree.pos))
-          case PrimTypeWithBoxUnbox(targetTpe) =>
-            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unbox(targetTpe.primRef)))
-          case IRTypes.StringType =>
-            instrs += REF_CAST(HeapType(Types.WasmHeapType.Simple.Any))
-          case IRTypes.CharType =>
-            // Extract the `value` field (the only field) out of the box class.
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
-            instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-            instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
-          case IRTypes.LongType =>
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
-            instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-            instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
-          case _ =>
-            println(tree)
-            ???
-        }
+        genUnbox(targetTpe)(tree.pos)
       }
 
       targetTpe match {
@@ -815,6 +1009,40 @@ private class WasmExpressionBuilder private (
     }
   }
 
+  /** Unbox the `anyref` on the stack to the target `PrimType`.
+   *
+   *  `targetTpe` must not be `NothingType`, `NullType` nor `NoType`.
+   *
+   *  The type left on the stack is non-nullable.
+   */
+  private def genUnbox(targetTpe: IRTypes.PrimType)(implicit pos: Position): Unit = {
+    targetTpe match {
+      case IRTypes.UndefType =>
+        instrs += DROP
+        genLiteral(IRTrees.Undefined())
+      case PrimTypeWithBoxUnbox(targetTpe) =>
+        instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unbox(targetTpe.primRef)))
+      case IRTypes.StringType =>
+        instrs += REF_AS_NOT_NULL
+      case IRTypes.CharType =>
+        // Extract the `value` field (the only field) out of the box class.
+        // TODO Handle null
+        val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+        instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
+      case IRTypes.LongType =>
+        // TODO Handle null
+        val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+        instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
+      case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
+        throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
+      case _ =>
+        println(s"genUnbox($targetTpe)")
+        ???
+    }
+  }
+
   private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
     ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
@@ -828,14 +1056,18 @@ private class WasmExpressionBuilder private (
     instrs += LOCAL_GET(LocalIdx(fctx.receiver.name))
 
     /* If the receiver is a Class/ModuleClass, its wasm type will be declared
-     * as j.l.Object, and therefore we must cast it down.
+     * as `(ref any)`, and therefore we must cast it down.
      */
     t.tpe match {
-      case IRTypes.ClassType(className) =>
+      case IRTypes.ClassType(className) if className != IRNames.ObjectClass =>
         val info = ctx.getClassInfo(className)
         if (info.kind.isClass) {
           instrs += REF_CAST(
             HeapType(Types.WasmHeapType.Type(WasmStructTypeName(className)))
+          )
+        } else if (info.isInterface) {
+          instrs += REF_CAST(
+            HeapType(Types.WasmHeapType.ObjectType)
           )
         }
       case _ =>

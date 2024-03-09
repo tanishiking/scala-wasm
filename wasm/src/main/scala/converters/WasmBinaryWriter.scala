@@ -266,6 +266,9 @@ final class WasmBinaryWriter(module: WasmModule) {
       case GlobalIdx(value)      => writeGlobalIdx(buf, value)
       case HeapType(value)       => writeHeapType(buf, value)
       case StructFieldIdx(value) => buf.u32(value)
+
+      case CastFlags(nullable1, nullable2) =>
+        buf.byte(((if (nullable1) 1 else 0) | (if (nullable2) 2 else 0)).toByte)
     }
   }
 }

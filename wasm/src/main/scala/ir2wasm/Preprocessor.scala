@@ -28,6 +28,7 @@ object Preprocessor {
         collectMethods(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass | ClassKind.NativeJSModuleClass |
           ClassKind.AbstractJSType | ClassKind.NativeJSClass =>
+        println(s"${clazz.kind} ${clazz.fullName}")
         ???
     }
   }

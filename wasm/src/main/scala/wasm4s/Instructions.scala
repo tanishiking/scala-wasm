@@ -290,6 +290,10 @@ object WasmInstr {
   case class REF_CAST(i: HeapType) extends WasmInstr("ref.cast", 0xfb_16, List(i))
   case class REF_CAST_NULL(i: HeapType) extends WasmInstr("ref.cast null", 0xfb_17, List(i))
 
+  case class BR_ON_CAST(castFlags: CastFlags, label: LabelIdx, from: HeapType, to: HeapType)
+      extends WasmInstr("br_on_cast", 0xFB_18, List(castFlags, label, from, to))
+  case class BR_ON_CAST_FAIL(castFlags: CastFlags, label: LabelIdx, from: HeapType, to: HeapType)
+      extends WasmInstr("br_on_cast_fail", 0xFB_19, List(castFlags, label, from, to))
 }
 
 abstract sealed trait WasmImmediate
@@ -332,4 +336,10 @@ object WasmImmediate {
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
   case class HeapType(val value: WasmHeapType) extends WasmImmediate
   case class StructFieldIdx(val value: Int) extends WasmImmediate
+
+  /** `castflags` for `br_on_cast` and `br_on_cast_fail`.
+   *
+   *  @see https://webassembly.github.io/gc/core/binary/instructions.html#control-instructions
+   */
+  case class CastFlags(nullable1: Boolean, nullable2: Boolean) extends WasmImmediate
 }

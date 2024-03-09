@@ -217,11 +217,20 @@ class WasmTextWriter {
       case WasmImmediate.BlockType.ValueType(optTy) =>
         optTy.fold("") { ty => s"(result ${ty.show})" }
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
+      case i: WasmImmediate.CastFlags =>
+        throw new UnsupportedOperationException(s"CastFlags $i must be handled directly in the instruction $instr")
       case _ =>
         println(i)
         ???
     }
     b.appendElement(str)
+  }
+
+  private def writeRefTypeImmediate(i: WasmImmediate.HeapType, nullable: Boolean)(implicit b: WatBuilder): Unit = {
+    if (nullable)
+      b.appendElement(s"(ref null ${i.value.show})")
+    else
+      b.appendElement(s"(ref ${i.value.show})")
   }
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
@@ -237,7 +246,25 @@ class WasmTextWriter {
       case _ =>
         ()
     }
-    instr.immediates.foreach { i => writeImmediate(i, instr) }
+
+    def writeBrOnCastImmediates(
+      castFlags: WasmImmediate.CastFlags, label: WasmImmediate.LabelIdx,
+      from: WasmImmediate.HeapType, to: WasmImmediate.HeapType
+    ): Unit = {
+      writeImmediate(label, instr)
+      writeRefTypeImmediate(from, castFlags.nullable1)
+      writeRefTypeImmediate(to, castFlags.nullable2)
+    }
+
+    instr match {
+      case BR_ON_CAST(castFlags, label, from, to) =>
+        writeBrOnCastImmediates(castFlags, label, from, to)
+      case BR_ON_CAST_FAIL(castFlags, label, from, to) =>
+        writeBrOnCastImmediates(castFlags, label, from, to)
+      case _ =>
+        instr.immediates.foreach { i => writeImmediate(i, instr) }
+    }
+
     instr match {
       case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
       case _                                                     => ()

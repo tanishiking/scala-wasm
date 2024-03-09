@@ -9,6 +9,7 @@ object TestSuites {
     TestSuite("testsuite.core.virtualdispatch.VirtualDispatch", "virtualDispatch"),
     TestSuite("testsuite.core.interfacecall.InterfaceCall", "interfaceCall"),
     TestSuite("testsuite.core.asinstanceof.AsInstanceOfTest", "asInstanceOf"),
+    TestSuite("testsuite.core.hijackedclassesdispatch.HijackedClassesDispatchTest", "hijackedClassesDispatch"),
     TestSuite("testsuite.core.hijackedclassesmono.HijackedClassesMonoTest", "hijackedClassesMono"),
     TestSuite("testsuite.core.hijackedclassesupcast.HijackedClassesUpcastTest", "hijackedClassesUpcast"),
     TestSuite("testsuite.core.tostring.ToStringTest", "toStringConversions")
