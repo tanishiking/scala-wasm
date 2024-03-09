@@ -11,7 +11,8 @@ object HijackedClassesUpcastTest {
       testInteger(5) &&
       testIntegerNull(null) &&
       testString("foo") &&
-      testStringNull(null)
+      testStringNull(null) &&
+      testCharacter('A')
   }
 
   def testBoolean(x: Boolean): Boolean = {
@@ -60,6 +61,17 @@ object HijackedClassesUpcastTest {
     !x.isInstanceOf[String] && {
       val x2 = x.asInstanceOf[String]
       x2 == null
+    }
+  }
+
+  def testCharacter(x: Char): Boolean = {
+    val x1 = identity(x)
+    x1 == 'A' && {
+      val x2: Any = x1
+      x2 match {
+        case x3: Char => (x3 + 1).toChar == 'B'
+        case _        => false
+      }
     }
   }
 

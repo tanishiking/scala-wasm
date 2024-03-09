@@ -35,7 +35,20 @@ object Compiler {
       .withOptimizer(false)
     val linkerFrontend = LinkerFrontendImpl(config)
 
-    val symbolRequirements = SymbolRequirement.factory("none").none()
+    /* The symbol requirements of our back-end.
+     * The symbol requirements tell the LinkerFrontend that we need these
+     * symbols to always be reachable, even if no "user-land" IR requires them.
+     * They are roots for the reachability analysis, together with module
+     * initializers and top-level exports.
+     * If we don't do this, the linker frontend will dead-code eliminate our
+     * box classes.
+     */
+    val factory = SymbolRequirement.factory("wasm")
+    val symbolRequirements = factory.multiple(
+      factory.instantiateClass(SpecialNames.CharBoxClass, SpecialNames.CharBoxCtor),
+      factory.instantiateClass(SpecialNames.LongBoxClass, SpecialNames.LongBoxCtor)
+    )
+
     val logger = new ScalaConsoleLogger(Level.Info)
 
     for {
