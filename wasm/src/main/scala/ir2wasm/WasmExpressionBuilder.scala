@@ -90,27 +90,28 @@ private class WasmExpressionBuilder private (
 
   def genTree(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit = {
     val generatedType: IRTypes.Type = tree match {
-      case t: IRTrees.Literal         => genLiteral(t)
-      case t: IRTrees.UnaryOp         => genUnaryOp(t)
-      case t: IRTrees.BinaryOp        => genBinaryOp(t)
-      case t: IRTrees.VarRef          => genVarRef(t)
-      case t: IRTrees.LoadModule      => genLoadModule(t)
-      case t: IRTrees.StoreModule     => genStoreModule(t)
-      case t: IRTrees.This            => genThis(t)
-      case t: IRTrees.ApplyStatically => genApplyStatically(t)
-      case t: IRTrees.Apply           => genApply(t)
-      case t: IRTrees.IsInstanceOf    => genIsInstanceOf(t)
-      case t: IRTrees.AsInstanceOf    => genAsInstanceOf(t)
-      case t: IRTrees.Block           => genBlock(t, expectedType)
-      case t: IRTrees.Labeled         => genLabeled(t, expectedType)
-      case t: IRTrees.Return          => genReturn(t)
-      case t: IRTrees.Select          => genSelect(t)
-      case t: IRTrees.Assign          => genAssign(t)
-      case t: IRTrees.VarDef          => genVarDef(t)
-      case t: IRTrees.New             => genNew(t)
-      case t: IRTrees.If              => genIf(t, expectedType)
-      case t: IRTrees.While           => genWhile(t)
-      case t: IRTrees.Skip            => IRTypes.NoType
+      case t: IRTrees.Literal          => genLiteral(t)
+      case t: IRTrees.UnaryOp          => genUnaryOp(t)
+      case t: IRTrees.BinaryOp         => genBinaryOp(t)
+      case t: IRTrees.VarRef           => genVarRef(t)
+      case t: IRTrees.LoadModule       => genLoadModule(t)
+      case t: IRTrees.StoreModule      => genStoreModule(t)
+      case t: IRTrees.This             => genThis(t)
+      case t: IRTrees.ApplyStatically  => genApplyStatically(t)
+      case t: IRTrees.Apply            => genApply(t)
+      case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
+      case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
+      case t: IRTrees.Block            => genBlock(t, expectedType)
+      case t: IRTrees.Labeled          => genLabeled(t, expectedType)
+      case t: IRTrees.Return           => genReturn(t)
+      case t: IRTrees.Select           => genSelect(t)
+      case t: IRTrees.Assign           => genAssign(t)
+      case t: IRTrees.VarDef           => genVarDef(t)
+      case t: IRTrees.New              => genNew(t)
+      case t: IRTrees.If               => genIf(t, expectedType)
+      case t: IRTrees.While            => genWhile(t)
+      case t: IRTrees.Skip             => IRTypes.NoType
+      case t: IRTrees.IdentityHashCode => genIdentityHashCode(t)
       case _ =>
         println(tree)
         ???
@@ -918,5 +919,17 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(WasmFunctionName(n.className, n.ctor.name)))
     instrs += LOCAL_GET(LocalIdx(localInstance.name))
     n.tpe
+  }
+
+  private def genIdentityHashCode(tree: IRTrees.IdentityHashCode): IRTypes.Type = {
+    /* TODO We should allocate ID hash codes and store them. We will probably
+     * have to store them as an additional field in all objects, together with
+     * the vtable and itable pointers.
+     */
+    genTree(tree.expr, IRTypes.AnyType)
+    instrs += DROP
+    instrs += I32_CONST(I32(42))
+
+    IRTypes.IntType
   }
 }
