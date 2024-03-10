@@ -29,6 +29,7 @@ class WasmTextWriter {
         module.definedFunctions.foreach(writeFunction)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
+        module.startFunction.foreach(writeStart)
       }
     )
     // context.gcTypes
@@ -193,6 +194,14 @@ class WasmTextWriter {
       }
     }
   )
+
+  private def writeStart(startFunction: WasmFunctionName)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "start", {
+        b.appendElement(startFunction.show)
+      }
+    )
+  }
 
   private def writeImmediate(i: WasmImmediate, instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     val str = i match {

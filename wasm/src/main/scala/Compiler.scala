@@ -75,6 +75,9 @@ object Compiler {
       onlyModule.topLevelExports.foreach { tle =>
         builder.transformTopLevelExport(tle)
       }
+
+      context.complete()
+
       val textOutput = new converters.WasmTextWriter().write(module)
       FS.writeFileSync(s"./target/$outputName.wat", textOutput.getBytes().toTypedArray)
 

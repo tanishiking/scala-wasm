@@ -107,6 +107,11 @@ trait ReadOnlyWasmContext {
 
 trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
+  protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
+
+  private var nextConstantStringIndex: Int = 1
+
+  protected def addGlobal(g: WasmGlobal): Unit
 
   def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
     functionSignatures.get(sig) match {
@@ -120,10 +125,37 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
       case Some(value) => WasmFunctionTypeName(value)
     }
   }
+
+  def addConstantStringGlobal(str: String): WasmGlobalName = {
+    constantStringGlobals.get(str) match {
+      case Some(globalName) =>
+        globalName
+
+      case None =>
+        val globalName = WasmGlobalName.WasmGlobalConstantStringName(nextConstantStringIndex)
+        constantStringGlobals(str) = globalName
+
+        /* We need an initial value of type (ref any), which is also a constant
+         * expression. It is not that easy to come up with such a value that
+         * does not need to reference other things right away.
+         * We use an `ref.i31 (i32.const 0)` as a trick.
+         * The real value will be filled in during initialization of the module
+         * in the Start section.
+         */
+        val initValue = WasmExpr(List(WasmInstr.I32_CONST(WasmImmediate.I32(0)), WasmInstr.REF_I31))
+
+        addGlobal(WasmGlobal(globalName, Types.WasmRefType.any, initValue, isMutable = true))
+        nextConstantStringIndex += 1
+        globalName
+    }
+  }
 }
 
 class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
   import WasmContext._
+
+  private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
+
   def addExport(exprt: WasmExport[_]): Unit = module.addExport(exprt)
   def addFunction(fun: WasmFunction): Unit = {
     module.addFunction(fun)
@@ -180,6 +212,36 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
+
+  def addStartInstructions(instrs: List[WasmInstr]): Unit =
+    _startInstructions ++= instrs
+
+  def complete(): Unit = {
+    val instrs = _startInstructions
+
+    for ((str, globalName) <- constantStringGlobals) {
+      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.emptyString))
+      for (c <- str) {
+        instrs += WasmInstr.I32_CONST(WasmImmediate.I32(c.toInt))
+        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.charToString))
+        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringConcat))
+      }
+      instrs += WasmInstr.GLOBAL_SET(WasmImmediate.GlobalIdx(globalName))
+    }
+
+    if (_startInstructions.nonEmpty) {
+      val sig = WasmFunctionSignature(Nil, Nil)
+      val funTypeName = addFunctionType(sig)
+      val startFunction = WasmFunction(
+        WasmFunctionName.start,
+        WasmFunctionType(funTypeName, sig),
+        Nil,
+        WasmExpr(_startInstructions.toList)
+      )
+      addFunction(startFunction)
+      module.setStartFunction(WasmFunctionName.start)
+    }
+  }
 }
 
 object WasmContext {

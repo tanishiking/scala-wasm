@@ -10,18 +10,19 @@ object Names {
   sealed abstract class WasmName(private[wasm4s] val name: String) {
     def show: String = {
       val suffix = this match {
-        case _: WasmLocalName                         => "local"
-        case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
-        case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
-        case _: WasmGlobalName.WasmGlobalITableName   => "g_itable"
-        case _: WasmFunctionName                      => "fun"
-        case _: WasmFieldName                         => "field"
-        case _: WasmExportName                        => "export"
-        case _: WasmTypeName.WasmFunctionTypeName     => "ty"
-        case _: WasmTypeName.WasmStructTypeName       => "struct"
-        case _: WasmTypeName.WasmArrayTypeName        => "arr"
-        case _: WasmTypeName.WasmVTableTypeName       => "vtable"
-        case _: WasmTypeName.WasmITableTypeName       => "itable"
+        case _: WasmLocalName                               => "local"
+        case _: WasmGlobalName.WasmModuleInstanceName       => "g_instance"
+        case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
+        case _: WasmGlobalName.WasmGlobalITableName         => "g_itable"
+        case _: WasmGlobalName.WasmGlobalConstantStringName => "str_const"
+        case _: WasmFunctionName                            => "fun"
+        case _: WasmFieldName                               => "field"
+        case _: WasmExportName                              => "export"
+        case _: WasmTypeName.WasmFunctionTypeName           => "ty"
+        case _: WasmTypeName.WasmStructTypeName             => "struct"
+        case _: WasmTypeName.WasmArrayTypeName              => "arr"
+        case _: WasmTypeName.WasmVTableTypeName             => "vtable"
+        case _: WasmTypeName.WasmITableTypeName             => "itable"
       }
       s"$$${WasmName.sanitizeWatIdentifier(this.name)}___$suffix"
     }
@@ -77,6 +78,13 @@ object Names {
         name.nameString
       )
     }
+
+    final case class WasmGlobalConstantStringName private (override private[wasm4s] val name: String)
+        extends WasmGlobalName(name)
+    object WasmGlobalConstantStringName {
+      def apply(index: Int): WasmGlobalConstantStringName =
+        new WasmGlobalConstantStringName(s"conststring___$index")
+    }
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -99,6 +107,8 @@ object Names {
       new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
+
+    val start = new WasmFunctionName("start", "start")
 
     private def helper(name: String): WasmFunctionName =
       new WasmFunctionName("__scalaJSHelpers", name)

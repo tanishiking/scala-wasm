@@ -616,15 +616,8 @@ private class WasmExpressionBuilder private (
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
-        // TODO We should allocate literal strings once and for all as globals
-        // This is absolutely atrocious at the moment
-        val str = v.value
-        instrs += CALL(FuncIdx(WasmFunctionName.emptyString))
-        for (c <- str) {
-          instrs += WasmInstr.I32_CONST(I32(c.toInt))
-          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
-        }
+        val globalName = ctx.addConstantStringGlobal(v.value)
+        instrs += GLOBAL_GET(GlobalIdx(globalName))
 
       case v: IRTrees.ClassOf => ???
     }

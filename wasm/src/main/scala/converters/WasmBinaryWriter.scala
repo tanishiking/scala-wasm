@@ -67,6 +67,8 @@ final class WasmBinaryWriter(module: WasmModule) {
     writeSection(fullOutput, SectionFunction)(writeFunctionSection(_))
     writeSection(fullOutput, SectionGlobal)(writeGlobalSection(_))
     writeSection(fullOutput, SectionExport)(writeExportSection(_))
+    if (module.startFunction.isDefined)
+      writeSection(fullOutput, SectionStart)(writeStartSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
 
     fullOutput.result()
@@ -144,6 +146,10 @@ final class WasmBinaryWriter(module: WasmModule) {
           writeGlobalIdx(buf, exp.field.name)
       }
     }
+  }
+
+  private def writeStartSection(buf: Buffer): Unit = {
+    writeFuncIdx(buf, module.startFunction.get)
   }
 
   private def writeCodeSection(buf: Buffer): Unit = {

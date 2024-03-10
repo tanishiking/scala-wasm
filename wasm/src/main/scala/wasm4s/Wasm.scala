@@ -122,7 +122,8 @@ class WasmModule(
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
-    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer()
+    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
+    private var _startFunction: Option[WasmFunctionName] = None
     // val elements: List[WasmElement] = Nil,
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,
@@ -135,6 +136,7 @@ class WasmModule(
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
   def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
+  def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
@@ -143,6 +145,7 @@ class WasmModule(
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
+  def startFunction: Option[WasmFunctionName] = _startFunction
 }
 
 object WasmModule {
