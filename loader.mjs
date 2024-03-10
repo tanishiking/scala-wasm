@@ -61,6 +61,7 @@ const scalaJSHelpers = {
   booleanToString: (b) => b ? "true" : "false",
   charToString: (c) => String.fromCharCode(c),
   intToString: (i) => "" + i,
+  longToString: (l) => "" + l, // l must be a bigint here
   doubleToString: (d) => "" + d,
   stringConcat: (x, y) => ("" + x) + y, // the added "" is for the case where x === y === null
   isString: (x) => typeof x === 'string',

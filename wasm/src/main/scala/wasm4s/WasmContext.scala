@@ -174,6 +174,7 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringConcat, List(WasmRefType.any, WasmRefType.any), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))

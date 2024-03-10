@@ -339,98 +339,12 @@ private class WasmExpressionBuilder private (
       instrs += CALL(FuncIdx(funcName))
     }
 
-    /* Generates a vtable- or itable-based dispatch.
-     * Before this code gen, the stack must contain the receiver and the args, and
-     * the receiver is also available in the local `receiverLocalForDispatch`.
-     * The two occurrences of the receiver must have the type for dispatch.
-     * After this code gen, the stack contains the result.
-     */
-    def genTableDispatch(): Unit = {
-      if (receiverClassInfo.isInterface)
-        genITableDispatch()
-      else
-        genVTableDispatch()
-    }
-
-    // Generates an itable-based dispatch.
-    def genITableDispatch(): Unit = {
-      val itables = ctx.calculateClassItables(clazz = receiverClassName)
-
-      val (itableIdx, methodIdx) = itables.resolveMethod(t.method.name)
-      val targetClass = itables.itables(itableIdx)
-      val method = targetClass.methods(
-        methodIdx
-      ) // should be safe since resolveMethod should return valid value
-
-      // val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
-      // if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
-      // val method = info.methods(methodIdx)
-
-      // val rttReceiverClassName =
-      //   TypeTransformer.transformType(t.receiver.tpe)(ctx) match {
-      //     case Types.WasmRefNullType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_))) => name
-      //     case Types.WasmRefType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_)))     => name
-      //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
-      //   }
-
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
-      instrs += STRUCT_GET(
-        // receiver type should be upcasted into `Object` if it's interface
-        // by TypeTransformer#transformType
-        TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
-        StructFieldIdx(1)
-      )
-      instrs += I32_CONST(I32(itableIdx))
-      instrs += ARRAY_GET(
-        TypeIdx(WasmArrayType.itables.name)
-      )
-      instrs += REF_CAST(
-        HeapType(Types.WasmHeapType.Type(WasmITableTypeName(targetClass.name)))
-      )
-      instrs += STRUCT_GET(
-        TypeIdx(WasmITableTypeName(targetClass.name)),
-        StructFieldIdx(methodIdx)
-      )
-      instrs += CALL_REF(
-        TypeIdx(method.toWasmFunctionType()(ctx).name)
-      )
-    }
-
-    // Generates a vtable-based dispatch.
-    def genVTableDispatch(): Unit = {
-      val (methodIdx, info) = ctx
-        .calculateVtableType(receiverClassName)
-        .resolveWithIdx(WasmFunctionName(receiverClassName, t.method.name))
-
-      // // push args to the stacks
-      // local.get $this ;; for accessing funcref
-      // local.get $this ;; for accessing vtable
-      // struct.get $classType 0 ;; get vtable
-      // struct.get $vtableType $methodIdx ;; get funcref
-      // call.ref (type $funcType) ;; call funcref
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
-      instrs += REF_CAST(
-        HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
-      )
-      instrs += STRUCT_GET(
-        TypeIdx(WasmStructTypeName(receiverClassName)),
-        StructFieldIdx(0)
-      )
-      instrs += STRUCT_GET(
-        TypeIdx(WasmVTableTypeName(receiverClassName)),
-        StructFieldIdx(methodIdx)
-      )
-      instrs += CALL_REF(
-        TypeIdx(info.toWasmFunctionType()(ctx).name)
-      )
-    }
-
     if (!receiverClassInfo.isAncestorOfHijackedClass) {
       // Standard dispatch codegen
       genReceiverNotNull()
       instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
       genArgs(t.args, t.method.name)
-      genTableDispatch()
+      genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
     } else {
       /* Hijacked class dispatch codegen
        * The overall structure of the generated code is as follows:
@@ -497,7 +411,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
       pushArgs()
-      genTableDispatch()
+      genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
       instrs += BR(labelDone)
       instrs += END // BLOCK labelNotOurObject
 
@@ -541,6 +455,104 @@ private class WasmExpressionBuilder private (
       instrs += UNREACHABLE
 
     t.tpe
+  }
+
+  /** Generates a vtable- or itable-based dispatch.
+   *
+   *  Before this code gen, the stack must contain the receiver and the args of
+   *  the target method. In addition, the receiver must be available in the
+   *  local `receiverLocalForDispatch`. The two occurrences of the receiver
+   *  must have the type for dispatch.
+   *
+   *  After this code gen, the stack contains the result. If the result type is
+   *  `NothingType`, `genTableDispatch` leaves the stack in an arbitrary state.
+   *  It is up to the caller to insert an `unreachable` instruction when
+   *  appropriate.
+   */
+  def genTableDispatch(
+    receiverClassInfo: WasmContext.WasmClassInfo,
+    methodName: IRNames.MethodName,
+    receiverLocalForDispatch: WasmLocalName
+  ): Unit = {
+    // Generates an itable-based dispatch.
+    def genITableDispatch(): Unit = {
+      val itables = ctx.calculateClassItables(clazz = receiverClassInfo.name)
+
+      val (itableIdx, methodIdx) = itables.resolveMethod(methodName)
+      val targetClass = itables.itables(itableIdx)
+      val method = targetClass.methods(
+        methodIdx
+      ) // should be safe since resolveMethod should return valid value
+
+      // val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
+      // if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
+      // val method = info.methods(methodIdx)
+
+      // val rttReceiverClassName =
+      //   TypeTransformer.transformType(t.receiver.tpe)(ctx) match {
+      //     case Types.WasmRefNullType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_))) => name
+      //     case Types.WasmRefType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_)))     => name
+      //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+      //   }
+
+      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += STRUCT_GET(
+        // receiver type should be upcasted into `Object` if it's interface
+        // by TypeTransformer#transformType
+        TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
+        StructFieldIdx(1)
+      )
+      instrs += I32_CONST(I32(itableIdx))
+      instrs += ARRAY_GET(
+        TypeIdx(WasmArrayType.itables.name)
+      )
+      instrs += REF_CAST(
+        HeapType(Types.WasmHeapType.Type(WasmITableTypeName(targetClass.name)))
+      )
+      instrs += STRUCT_GET(
+        TypeIdx(WasmITableTypeName(targetClass.name)),
+        StructFieldIdx(methodIdx)
+      )
+      instrs += CALL_REF(
+        TypeIdx(method.toWasmFunctionType()(ctx).name)
+      )
+    }
+
+    // Generates a vtable-based dispatch.
+    def genVTableDispatch(): Unit = {
+      val receiverClassName = receiverClassInfo.name
+
+      val (methodIdx, info) = ctx
+        .calculateVtableType(receiverClassName)
+        .resolveWithIdx(WasmFunctionName(receiverClassName, methodName))
+
+      // // push args to the stacks
+      // local.get $this ;; for accessing funcref
+      // local.get $this ;; for accessing vtable
+      // struct.get $classType 0 ;; get vtable
+      // struct.get $vtableType $methodIdx ;; get funcref
+      // call.ref (type $funcType) ;; call funcref
+      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += REF_CAST(
+        HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
+      )
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName(receiverClassName)),
+        StructFieldIdx(0)
+      )
+      instrs += STRUCT_GET(
+        TypeIdx(WasmVTableTypeName(receiverClassName)),
+        StructFieldIdx(methodIdx)
+      )
+      instrs += CALL_REF(
+        TypeIdx(info.toWasmFunctionType()(ctx).name)
+      )
+    }
+
+    if (receiverClassInfo.isInterface)
+      genITableDispatch()
+    else
+      genVTableDispatch()
   }
 
   private def genApplyStatically(t: IRTrees.ApplyStatically): IRTypes.Type = {
@@ -826,48 +838,147 @@ private class WasmExpressionBuilder private (
     val wasmStringType = Types.WasmRefType.any
 
     def genToString(tree: IRTrees.Tree): Unit = {
-      genTreeAuto(tree)
-      tree.tpe match {
-        case IRTypes.StringType =>
-          () // no-op
+      def genWithDispatch(isAncestorOfHijackedClass: Boolean): Unit = {
+        /* Somewhat duplicated from genApplyNonPrim, but specialized for
+         * `toString`, and where the handling of `null` is different.
+         *
+         * We need to return the `"null"` string in two special cases:
+         * - if the value itself is `null`, or
+         * - if the value's `toString(): String` method returns `null`!
+         */
 
-        case IRTypes.BooleanType =>
-          instrs += CALL(FuncIdx(WasmFunctionName.booleanToString))
+        // A local for a copy of the receiver that we will use to resolve dispatch
+        val receiverLocalForDispatch: WasmLocalName = {
+          val name = fctx.genSyntheticLocalName()
+          val typ = Types.WasmRefType(Types.WasmHeapType.ObjectType)
+          fctx.locals.define(WasmLocal(name, typ, isParameter = false))
+          name
+        }
 
-        case IRTypes.CharType =>
-          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+        val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
 
-        case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>
-          instrs += CALL(FuncIdx(WasmFunctionName.intToString))
+        if (!isAncestorOfHijackedClass) {
+          /* Standard dispatch codegen, with dedicated null handling.
+           *
+           * The overall structure of the generated code is as follows:
+           *
+           * block (ref any) $done
+           *   block $isNull
+           *     load receiver as (ref null java.lang.Object)
+           *     br_on_null $isNull
+           *     generate standard table-based dispatch
+           *     br_on_non_null $done
+           *   end $isNull
+           *   gen "null"
+           * end $done
+           */
 
-        case IRTypes.LongType =>
-          // TODO Write a correct implementation
-          instrs += DROP
-          genLiteral(IRTrees.StringLiteral("0")(tree.pos))
+          val labelDone = fctx.genLabel()
+          instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelDone))
 
-        case IRTypes.FloatType =>
-          instrs += F64_PROMOTE_F32
-          instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+          val labelIsNull = fctx.genLabel()
+          instrs += BLOCK(BlockType.ValueType(), Some(labelIsNull))
 
-        case IRTypes.DoubleType =>
-          instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+          genTreeAuto(tree)
+          instrs += BR_ON_NULL(labelIsNull)
+          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+          genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
+          instrs += BR_ON_NON_NULL(labelDone)
 
-        case IRTypes.UndefType =>
+          instrs += END // block $isNull
+
+          genLiteral(IRTrees.StringLiteral("null")(tree.pos))
+
+          instrs += END // block $done
+        } else {
+          /* Dispatch where the receiver can be a JS value.
+           *
+           * The overall structure of the generated code is as follows:
+           *
+           * block (ref any) $done
+           *   block anyref $notOurObject
+           *     load receiver
+           *     br_on_cast_fail anyref (ref $java.lang.Object) $notOurObject
+           *     generate standard table-based dispatch
+           *     br_on_non_null $done
+           *     ref.null any
+           *   end $notOurObject
+           *   call the JS helper, also handles `null`
+           * end $done
+           */
+
+          val labelDone = fctx.genLabel()
+          instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelDone))
+
+          // First try the case where the value is one of our objects
+          val labelNotOurObject = fctx.genLabel()
+          instrs += BLOCK(BlockType.ValueType(Types.WasmAnyRef), Some(labelNotOurObject))
+
+          // Load receiver
+          genTreeAuto(tree)
+
+          instrs += BR_ON_CAST_FAIL(
+            CastFlags(true, false),
+            labelNotOurObject,
+            WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
+            WasmImmediate.HeapType(Types.WasmHeapType.ObjectType)
+          )
+          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+          genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
+          instrs += BR_ON_NON_NULL(labelDone)
+          instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Any))
+          instrs += END // BLOCK labelNotOurObject
+
+          // Now we have a value that is not one of our objects; the anyref is still on the stack
           instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
 
-        case IRTypes.ClassType(className) =>
-          val info = ctx.getClassInfo(className)
-          if (info.kind == ClassKind.HijackedClass) {
-            instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
-          } else {
-            println(tree)
-            ???
+          instrs += END // BLOCK labelDone
+        }
+      }
+
+      tree.tpe match {
+        case primType: IRTypes.PrimType =>
+          genTreeAuto(tree)
+          primType match {
+            case IRTypes.StringType =>
+              () // no-op
+            case IRTypes.BooleanType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.booleanToString))
+            case IRTypes.CharType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+            case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.intToString))
+            case IRTypes.LongType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.longToString))
+            case IRTypes.FloatType =>
+              instrs += F64_PROMOTE_F32
+              instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+            case IRTypes.DoubleType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.doubleToString))
+            case IRTypes.NullType | IRTypes.UndefType =>
+              instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+            case IRTypes.NothingType =>
+              () // unreachable
+            case IRTypes.NoType =>
+              throw new AssertionError(s"Found expression of type void in String_+ at ${tree.pos}: $tree")
           }
 
-        case _ =>
-          // TODO
-          println(tree)
-          ???
+        case IRTypes.ClassType(IRNames.BoxedStringClass) =>
+          // Common case for which we want to avoid the hijacked class dispatch
+          genTreeAuto(tree)
+          instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString)) // for `null`
+
+        case IRTypes.ClassType(className) =>
+          genWithDispatch(ctx.getClassInfo(className).isAncestorOfHijackedClass)
+
+        case IRTypes.AnyType =>
+          genWithDispatch(isAncestorOfHijackedClass = true)
+
+        case IRTypes.ArrayType(_) =>
+          genWithDispatch(isAncestorOfHijackedClass = false)
+
+        case tpe: IRTypes.RecordType =>
+          throw new AssertionError(s"Invalid type $tpe for String_+ at ${tree.pos}: $tree")
       }
     }
 

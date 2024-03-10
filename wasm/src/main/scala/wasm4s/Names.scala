@@ -120,6 +120,7 @@ object Names {
     val booleanToString = helper("booleanToString")
     val charToString = helper("charToString")
     val intToString = helper("intToString")
+    val longToString = helper("longToString")
     val doubleToString = helper("doubleToString")
     val stringConcat = helper("stringConcat")
     val isString = helper("isString")
