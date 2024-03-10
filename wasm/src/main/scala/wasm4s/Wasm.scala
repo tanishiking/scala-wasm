@@ -134,7 +134,7 @@ class WasmModule(
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
-  def addExport(export: WasmExport[_]) = _exports.addOne(export)
+  def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
@@ -158,8 +158,8 @@ object WasmModule {
       } else {
         val found = noPreds.map { _._1 }.toSet
         val updated = hasPreds.map {
-          case (k, Some(v)) => // should be safe because hasPreds has no None
-            (k, if (found.contains(v)) None else Some(v))
+          case (k, v) =>
+            (k, v.filter(!found.contains(_)))
         }
         tsort(updated, done ++ found)
       }

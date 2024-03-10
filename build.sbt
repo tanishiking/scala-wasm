@@ -2,6 +2,16 @@ import org.scalajs.linker.interface.OutputPatterns
 
 val scalaV = "2.13.12"
 
+inThisBuild(Def.settings(
+  scalacOptions ++= Seq(
+    "-encoding",
+    "utf-8",
+    "-feature",
+    "-deprecation",
+    "-Xfatal-warnings",
+  )
+))
+
 lazy val cli = project
   .in(file("cli"))
   .enablePlugins(ScalaJSPlugin)

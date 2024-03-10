@@ -32,9 +32,9 @@ class WasmBuilder {
     }
   }
 
-  def transformTopLevelExport(export: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
+  def transformTopLevelExport(topLevelExport: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
     implicit val fctx = WasmFunctionContext()
-    export.tree match {
+    topLevelExport.tree match {
       case d: IRTrees.TopLevelFieldExportDef   => ???
       case d: IRTrees.TopLevelJSClassExportDef => ???
       case d: IRTrees.TopLevelMethodExportDef  => transformToplevelMethodExportDef(d)
@@ -383,11 +383,11 @@ class WasmBuilder {
     )
     ctx.addFunction(func)
 
-    val export = new WasmExport.Function(
+    val exprt = new WasmExport.Function(
       methodName.value,
       func
     )
-    ctx.addExport(export)
+    ctx.addExport(exprt)
   }
 
   private def genFunction(

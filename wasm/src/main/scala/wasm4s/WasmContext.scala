@@ -124,7 +124,7 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
 
 class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
   import WasmContext._
-  def addExport(export: WasmExport[_]): Unit = module.addExport(export)
+  def addExport(exprt: WasmExport[_]): Unit = module.addExport(exprt)
   def addFunction(fun: WasmFunction): Unit = {
     module.addFunction(fun)
     functions.define(fun)
