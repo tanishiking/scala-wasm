@@ -213,6 +213,33 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
 
   addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
 
+  addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsGlobalRefSet, List(WasmRefType.any, WasmAnyRef), Nil)
+  addHelperImport(WasmFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.jsNewArray, Nil, List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsArrayPush, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsArraySpreadPush, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsNewObject, Nil, List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsObjectPush, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsSelect, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsSelectSet, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), Nil)
+  addHelperImport(WasmFunctionName.jsNew, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsFunctionApply, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsMethodApply, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsDelete, List(WasmAnyRef, WasmAnyRef), Nil)
+  addHelperImport(WasmFunctionName.jsIsTruthy, List(WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(WasmAnyRef))
+
+  for ((op, name) <- WasmFunctionName.jsUnaryOps)
+    addHelperImport(name, List(WasmAnyRef), List(WasmAnyRef))
+
+  for ((op, name) <- WasmFunctionName.jsBinaryOps) {
+    val resultType =
+      if (op == IRTrees.JSBinaryOp.=== || op == IRTrees.JSBinaryOp.!==) WasmInt32
+      else WasmAnyRef
+    addHelperImport(name, List(WasmAnyRef, WasmAnyRef), List(resultType))
+  }
+
   def addStartInstructions(instrs: List[WasmInstr]): Unit =
     _startInstructions ++= instrs
 
@@ -268,7 +295,9 @@ object WasmContext {
       private val fields: List[WasmFieldName],
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
-      val ancestors: List[IRNames.ClassName]
+      val ancestors: List[IRNames.ClassName],
+      val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
+      val jsNativeMembers: Map[IRNames.MethodName, IRTrees.JSNativeLoadSpec]
   ) {
     def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
 

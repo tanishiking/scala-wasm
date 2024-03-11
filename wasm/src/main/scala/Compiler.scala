@@ -7,9 +7,8 @@ import org.scalajs.ir
 import org.scalajs.ir.Trees._
 import org.scalajs.ir.Types._
 
-import org.scalajs.linker.frontend.LinkerFrontendImpl
-import org.scalajs.linker.interface.{IRFile, ModuleInitializer}
-import org.scalajs.linker.standard.{LinkedClass, SymbolRequirement}
+import org.scalajs.linker.interface._
+import org.scalajs.linker.standard._
 
 import org.scalajs.logging.{Level, ScalaConsoleLogger}
 
@@ -30,10 +29,12 @@ object Compiler {
     implicit val context: WasmContext = new WasmContext(module)
     println("compiling...  ")
 
-    val config = LinkerFrontendImpl
-      .Config()
+    val config = StandardConfig()
+      .withESFeatures(_.withESVersion(ESVersion.ES2016)) // to be able to link `**`
+      .withSemantics(_.optimized) // because that's the only thing we actually support at the moment
       .withOptimizer(false)
-    val linkerFrontend = LinkerFrontendImpl(config)
+
+    val linkerFrontend = StandardLinkerFrontend(config)
 
     /* The symbol requirements of our back-end.
      * The symbol requirements tell the LinkerFrontend that we need these

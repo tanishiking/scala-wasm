@@ -22,21 +22,10 @@ object Preprocessor {
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    clazz.kind match {
-      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface |
-          ClassKind.HijackedClass =>
-        collectMethods(clazz)
-      case ClassKind.JSClass | ClassKind.JSModuleClass | ClassKind.NativeJSModuleClass |
-          ClassKind.AbstractJSType | ClassKind.NativeJSClass =>
-        println(s"${clazz.kind} ${clazz.fullName}")
-        ???
-    }
-  }
-
-  private def collectMethods(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val infos = clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
       makeWasmFunctionInfo(clazz, method)
     }
+
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(
@@ -46,7 +35,9 @@ object Preprocessor {
         clazz.fields.collect { case f: IRTrees.FieldDef => Names.WasmFieldName(f.name.name) },
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
-        clazz.ancestors
+        clazz.ancestors,
+        clazz.jsNativeLoadSpec,
+        clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
       )
     )
   }

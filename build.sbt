@@ -1,3 +1,4 @@
+import org.scalajs.linker.interface.ESVersion
 import org.scalajs.linker.interface.OutputPatterns
 
 val scalaV = "2.13.12"
@@ -9,7 +10,10 @@ inThisBuild(Def.settings(
     "-feature",
     "-deprecation",
     "-Xfatal-warnings",
-  )
+  ),
+  scalaJSLinkerConfig ~= {
+    _.withESFeatures(_.withESVersion(ESVersion.ES2016))
+  },
 ))
 
 lazy val cli = project

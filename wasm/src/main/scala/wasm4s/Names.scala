@@ -136,6 +136,60 @@ object Names {
     val isString = helper("isString")
 
     val jsValueHashCode = helper("jsValueHashCode")
+
+    val jsGlobalRefGet = helper("jsGlobalRefGet")
+    val jsGlobalRefSet = helper("jsGlobalRefSet")
+    val jsGlobalRefTypeof = helper("jsGlobalRefTypeof")
+    val jsNewArray = helper("jsNewArray")
+    val jsArrayPush = helper("jsArrayPush")
+    val jsArraySpreadPush = helper("jsArraySpreadPush")
+    val jsNewObject = helper("jsNewObject")
+    val jsObjectPush = helper("jsObjectPush")
+    val jsSelect = helper("jsSelect")
+    val jsSelectSet = helper("jsSelectSet")
+    val jsNew = helper("jsNew")
+    val jsFunctionApply = helper("jsFunctionApply")
+    val jsMethodApply = helper("jsMethodApply")
+    val jsDelete = helper("jsDelete")
+    val jsIsTruthy = helper("jsIsTruthy")
+    val jsLinkingInfo = helper("jsLinkingInfo")
+
+    val jsUnaryOps: Map[IRTrees.JSUnaryOp.Code, WasmFunctionName] = {
+      import IRTrees.JSUnaryOp
+      Map(
+        JSUnaryOp.+ -> helper("jsUnaryPlus"),
+        JSUnaryOp.- -> helper("jsUnaryMinus"),
+        JSUnaryOp.~ -> helper("jsUnaryTilde"),
+        JSUnaryOp.! -> helper("jsUnaryBang"),
+        JSUnaryOp.typeof -> helper("jsUnaryTypeof")
+      )
+    }
+
+    val jsBinaryOps: Map[IRTrees.JSBinaryOp.Code, WasmFunctionName] = {
+      import IRTrees.JSBinaryOp
+      Map(
+        JSBinaryOp.=== -> helper("jsStrictEquals"),
+        JSBinaryOp.!== -> helper("jsNotStrictEquals"),
+        JSBinaryOp.+ -> helper("jsPlus"),
+        JSBinaryOp.- -> helper("jsMinus"),
+        JSBinaryOp.* -> helper("jsTimes"),
+        JSBinaryOp./ -> helper("jsDivide"),
+        JSBinaryOp.% -> helper("jsModulus"),
+        JSBinaryOp.| -> helper("jsBinaryOr"),
+        JSBinaryOp.& -> helper("jsBinaryAnd"),
+        JSBinaryOp.^ -> helper("jsBinaryXor"),
+        JSBinaryOp.<< -> helper("jsShiftLeft"),
+        JSBinaryOp.>> -> helper("jsArithmeticShiftRight"),
+        JSBinaryOp.>>> -> helper("jsLogicalShiftRight"),
+        JSBinaryOp.< -> helper("jsLessThan"),
+        JSBinaryOp.<= -> helper("jsLessEqual"),
+        JSBinaryOp.> -> helper("jsGreaterThan"),
+        JSBinaryOp.>= -> helper("jsGreaterEqual"),
+        JSBinaryOp.in -> helper("jsIn"),
+        JSBinaryOp.instanceof -> helper("jsInstanceof"),
+        JSBinaryOp.** -> helper("jsExponent")
+      )
+    }
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
