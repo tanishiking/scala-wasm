@@ -3,6 +3,7 @@ package wasm.wasm4s
 import scala.collection.mutable
 
 import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.{Types => IRTypes}
 
 import Names.WasmLocalName
 
@@ -13,7 +14,8 @@ class WasmFunctionContext private (private val _receiver: Option[WasmLocal]) {
   val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
   def receiver = _receiver.getOrElse(throw new Error("Can access to the receiver in this context."))
 
-  private val registeredLabels = mutable.AnyRefMap.empty[IRNames.LabelName, WasmImmediate.LabelIdx]
+  private val registeredLabels =
+    mutable.AnyRefMap.empty[IRNames.LabelName, (WasmImmediate.LabelIdx, IRTypes.Type)]
 
   def genLabel(): WasmImmediate.LabelIdx = {
     val label = WasmImmediate.LabelIdx(labelIdx)
@@ -21,8 +23,17 @@ class WasmFunctionContext private (private val _receiver: Option[WasmLocal]) {
     label
   }
 
-  def getLabelFor(irLabelName: IRNames.LabelName): WasmImmediate.LabelIdx =
-    registeredLabels.getOrElseUpdate(irLabelName, genLabel())
+  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): WasmImmediate.LabelIdx = {
+    val label = genLabel()
+    registeredLabels(irLabelName) = (label, expectedType)
+    label
+  }
+
+  def getLabelFor(irLabelName: IRNames.LabelName): (WasmImmediate.LabelIdx, IRTypes.Type) = {
+    registeredLabels.getOrElse(irLabelName, {
+      throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
+    })
+  }
 
   def genSyntheticLocalName(): WasmLocalName = {
     val name = WasmLocalName.synthetic(cnt)
