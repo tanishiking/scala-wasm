@@ -23,7 +23,8 @@ object Preprocessor {
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     clazz.kind match {
-      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface | ClassKind.HijackedClass =>
+      case ClassKind.ModuleClass | ClassKind.Class | ClassKind.Interface |
+          ClassKind.HijackedClass =>
         collectMethods(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass | ClassKind.NativeJSModuleClass |
           ClassKind.AbstractJSType | ClassKind.NativeJSClass =>
@@ -61,6 +62,26 @@ object Preprocessor {
     )
   }
 
+  /** Collect WasmFunctionInfo based on the abstract method call
+    *
+    * ```
+    * class A extends B:
+    *   def a = 1
+    *
+    * class B extends C:
+    *   def b: Int = 1
+    *   override def c: Int = 1
+    *
+    * abstract class C:
+    *   def c: Int
+    * ```
+    *
+    * why we need this? - The problem is that the frontend linker gets rid of abstract method
+    * entirely.
+    *
+    * It keeps B.c because it's concrete and used. But because `C.c` isn't there at all anymore, if
+    * we have val `x: C` and we call `x.c`, we don't find the method at all.
+    */
   private def collectAbstractMethodCalls(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     object traverser extends Traversers.Traverser {
       import IRTrees._

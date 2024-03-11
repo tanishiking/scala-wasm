@@ -42,24 +42,69 @@ class WasmBuilder {
     }
   }
 
+  /** @return
+    *   Optionally returns the generated struct type for this class. If the given LinkedClass is an
+    *   abstract class, returns None
+    */
   private def transformClassCommon(
       clazz: LinkedClass
   )(implicit ctx: WasmContext): WasmStructType = {
-    val (vtableType, vtableName) = genVTable(clazz)
+    // gen functions
+    clazz.methods.foreach { method =>
+      genFunction(clazz, method)
+    }
+    val className = clazz.name.name
+
+    // generate vtable type, this should be done for both abstract and concrete classes
+    val vtable = ctx.calculateVtableType(className)
+    val vtableType = genVTableType(clazz, vtable.functions)
+    ctx.addGCType(vtableType)
+
+    val isAbstractClass = {
+      // If number of declared functions doesn't match number of defined functions, it must be a AbstractClass
+      // TODO: better way to check if it's abstract class
+      val definedFunctions = ctx.calculateGlobalVTable(className)
+      val declaredFunctions = vtable.functions
+      declaredFunctions.length != definedFunctions.length
+    }
+
+    // we should't generate global vtable for abstract class because
+    // - Can't generate Global vtable because we can't fill the slot for abstract methods
+    // - We won't access vtable for abstract classes since we can't instantiate abstract classes, there's no point generating
+    //
+    // However, I couldn't find a way to test if the LinkedClass is abstract
+    // "clazz.methods.exists(m => m.body.isEmpty)" doesn't work because abstract methods are removed at linker optimization
+    // the WasmFunctionInfo of the abstract methods will be added specially in Preprocessor
+    val (gVtable, gItable) = if (!isAbstractClass) {
+      // Generate global vtable
+      val functions = ctx.calculateGlobalVTable(className)
+      val vtableInit = functions.map { method =>
+        WasmInstr.REF_FUNC(method.name)
+      } :+ WasmInstr.STRUCT_NEW(vtableType.name)
+      val vtableName = Names.WasmGlobalName.WasmGlobalVTableName(clazz.name.name)
+      val globalVTable =
+        WasmGlobal(
+          vtableName,
+          WasmRefNullType(WasmHeapType.Type(vtableType.name)),
+          WasmExpr(vtableInit),
+          isMutable = false
+        )
+      ctx.addGlobal(globalVTable)
+
+      // Generate class itable
+      val globalClassITable = calculateClassITable(clazz)
+      globalClassITable.foreach(ctx.addGlobal)
+
+      (Some(globalVTable), globalClassITable)
+    } else (None, None)
+
+    // Declare the strcut type for the class
+    genStructNewDefault(clazz, gVtable, gItable)
     val vtableField = WasmStructField(
       Names.WasmFieldName.vtable,
       WasmRefNullType(WasmHeapType.Type(vtableType.name)),
       isMutable = false
     )
-    calculateClassITable(clazz) match {
-      case None =>
-        genStructNewDefault(clazz, vtableName, None)
-      case Some(globalITable) =>
-        ctx.addGlobal(globalITable)
-        genStructNewDefault(clazz, vtableName, Some(globalITable))
-    }
-
-    // type definition
     val fields = clazz.fields.map(transformField)
     val structType = WasmStructType(
       Names.WasmTypeName.WasmStructTypeName(clazz.name.name),
@@ -67,13 +112,25 @@ class WasmBuilder {
       clazz.superClass.map(s => Names.WasmTypeName.WasmStructTypeName(s.name))
     )
     ctx.addGCType(structType)
-
-    // implementation of methods
-    clazz.methods.foreach { method =>
-      genFunction(clazz, method)
-    }
-
     structType
+  }
+
+  private def genVTableType(clazz: LinkedClass, functions: List[WasmFunctionInfo])(implicit
+      ctx: WasmContext
+  ): WasmStructType = {
+    val vtableFields =
+      functions.map { method =>
+        WasmStructField(
+          Names.WasmFieldName(method.name),
+          WasmRefNullType(WasmHeapType.Func(method.toWasmFunctionType().name)),
+          isMutable = false
+        )
+      }
+    WasmStructType(
+      Names.WasmTypeName.WasmVTableTypeName(clazz.name.name),
+      vtableFields,
+      clazz.superClass.map(s => Names.WasmTypeName.WasmVTableTypeName(s.name))
+    )
   }
 
   private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -118,10 +175,18 @@ class WasmBuilder {
 
   private def genStructNewDefault(
       clazz: LinkedClass,
-      vtable: WasmGlobalName.WasmGlobalVTableName,
+      vtable: Option[WasmGlobal],
       itable: Option[WasmGlobal]
   )(implicit ctx: WasmContext): Unit = {
-    val getVTable = GLOBAL_GET(WasmImmediate.GlobalIdx(vtable))
+    val getVTable = vtable match {
+      case None =>
+        REF_NULL(
+          WasmImmediate.HeapType(
+            WasmHeapType.Type(WasmTypeName.WasmVTableTypeName(clazz.name.name))
+          )
+        )
+      case Some(v) => GLOBAL_GET(WasmImmediate.GlobalIdx(v.name))
+    }
     val getITable = itable match {
       case None => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Type(WasmArrayType.itables.name)))
       case Some(i) => GLOBAL_GET(WasmImmediate.GlobalIdx(i.name))
@@ -156,21 +221,7 @@ class WasmBuilder {
   )(implicit ctx: ReadOnlyWasmContext): Option[WasmGlobal] = {
     val classItables = ctx.calculateClassItables(clazz.name.name)
     if (!classItables.isEmpty) {
-      // val classITableTypeName = WasmTypeName.WasmITableTypeName(clazz.name.name)
-      // val classITableType = WasmStructType(
-      //   classITableTypeName,
-      //   interfaceInfos.map { info =>
-      //     val itableTypeName = WasmTypeName.WasmITableTypeName(info.name)
-      //     WasmStructField(
-      //       Names.WasmFieldName(itableTypeName),
-      //       WasmRefType(WasmHeapType.Type(itableTypeName)),
-      //       isMutable = false
-      //     )
-      //   },
-      //   None
-      // )
-
-      val vtable = ctx.calculateVtable(clazz.name.name)
+      val vtable = ctx.calculateVtableType(clazz.name.name)
 
       val itablesInit: List[WasmInstr] = classItables.itables.flatMap { iface =>
         iface.methods.map { method =>
@@ -192,44 +243,6 @@ class WasmBuilder {
       )
       Some(globalITable)
     } else None
-  }
-
-  private def genVTable(
-      clazz: LinkedClass
-  )(implicit ctx: WasmContext): (WasmStructType, WasmGlobalName.WasmGlobalVTableName) = {
-    val className = clazz.name.name
-    def genVTableType(vtable: WasmVTable): WasmStructType = {
-      val vtableFields =
-        vtable.functions.map { method =>
-          WasmStructField(
-            Names.WasmFieldName(method.name),
-            WasmRefNullType(WasmHeapType.Func(method.toWasmFunctionType().name)),
-            isMutable = false
-          )
-        }
-      WasmStructType(
-        Names.WasmTypeName.WasmVTableTypeName.fromIR(clazz.name.name),
-        vtableFields,
-        clazz.superClass.map(s => Names.WasmTypeName.WasmVTableTypeName.fromIR(s.name))
-      )
-    }
-
-    val vtableName = Names.WasmGlobalName.WasmGlobalVTableName(clazz.name.name)
-
-    val vtable = ctx.calculateVtable(className)
-    val vtableType = genVTableType(vtable)
-    ctx.addGCType(vtableType)
-
-    val globalVTable =
-      WasmGlobal(
-        vtableName,
-        WasmRefNullType(WasmHeapType.Type(vtableType.name)),
-        WasmExpr(vtable.toVTableEntries(vtableType.name)),
-        isMutable = false
-      )
-    ctx.addGlobal(globalVTable)
-
-    (vtableType, vtableName)
   }
 
   private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
