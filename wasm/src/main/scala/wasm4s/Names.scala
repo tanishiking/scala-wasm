@@ -156,7 +156,7 @@ object Names {
     final case class WasmVTableTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmVTableTypeName {
-      def fromIR(ir: IRNames.ClassName) = new WasmVTableTypeName(ir.nameString)
+      def apply(ir: IRNames.ClassName) = new WasmVTableTypeName(ir.nameString)
     }
 
     final case class WasmITableTypeName private (override private[wasm4s] val name: String)

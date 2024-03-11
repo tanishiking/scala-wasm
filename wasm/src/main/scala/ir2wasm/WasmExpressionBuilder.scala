@@ -18,15 +18,19 @@ import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 
 object WasmExpressionBuilder {
-  def transformBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(
-    implicit ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext
+  def transformBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
+      ctx: FunctionTypeWriterWasmContext,
+      fctx: WasmFunctionContext
   ): WasmExpr = {
     val builder = new WasmExpressionBuilder(ctx, fctx)
     WasmExpr(builder.genBody(tree, resultType))
   }
 }
 
-private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext, fctx: WasmFunctionContext) {
+private class WasmExpressionBuilder private (
+    ctx: FunctionTypeWriterWasmContext,
+    fctx: WasmFunctionContext
+) {
   private val instrs = mutable.ListBuffer.empty[WasmInstr]
 
   def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): List[WasmInstr] = {
@@ -264,11 +268,13 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
     } else if (receiverClassInfo.kind == ClassKind.HijackedClass) {
       // statically resolved call
       genApplyStatically(
-        IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(t.pos)
+        IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(
+          t.pos
+        )
       )
     } else { // virtual dispatch
       val (methodIdx, info) = ctx
-        .calculateVtable(receiverClassName)
+        .calculateVtableType(receiverClassName)
         .resolveWithIdx(WasmFunctionName(receiverClassName, t.method.name))
 
       // // push args to the stacks
@@ -286,7 +292,7 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         StructFieldIdx(0)
       )
       instrs += STRUCT_GET(
-        TypeIdx(WasmVTableTypeName.fromIR(receiverClassName)),
+        TypeIdx(WasmVTableTypeName(receiverClassName)),
         StructFieldIdx(methodIdx)
       )
       instrs += CALL_REF(
@@ -355,7 +361,10 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         // TODO We should allocate literal strings once and for all as globals
         val str = v.value
         str.foreach(c => instrs += WasmInstr.I32_CONST(I32(c.toInt)))
-        instrs += WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(str.length()))
+        instrs += WasmInstr.ARRAY_NEW_FIXED(
+          TypeIdx(WasmTypeName.WasmArrayTypeName.stringData),
+          I32(str.length())
+        )
         instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
 
       case v: IRTrees.ClassOf => ???
@@ -471,7 +480,9 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
         genTree(binary.lhs, IRTypes.StringType) // push the string
         instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.string), StructFieldIdx(0)) // get the array
         genTree(binary.rhs, IRTypes.IntType) // push the index
-        instrs += ARRAY_GET_U(TypeIdx(WasmArrayTypeName.stringData)) // access the element of the array
+        instrs += ARRAY_GET_U(
+          TypeIdx(WasmArrayTypeName.stringData)
+        ) // access the element of the array
         IRTypes.CharType
 
       case _ => genElementaryBinaryOp(binary)
@@ -513,14 +524,14 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
       case BinaryOp.Int_>   => I32_GT_S
       case BinaryOp.Int_>=  => I32_GE_S
 
-      case BinaryOp.Long_+   => I64_ADD
-      case BinaryOp.Long_-   => I64_SUB
-      case BinaryOp.Long_*   => I64_MUL
-      case BinaryOp.Long_/   => I64_DIV_S
-      case BinaryOp.Long_%   => I64_REM_S
-      case BinaryOp.Long_|   => I64_OR
-      case BinaryOp.Long_&   => I64_AND
-      case BinaryOp.Long_^   => I64_XOR
+      case BinaryOp.Long_+ => I64_ADD
+      case BinaryOp.Long_- => I64_SUB
+      case BinaryOp.Long_* => I64_MUL
+      case BinaryOp.Long_/ => I64_DIV_S
+      case BinaryOp.Long_% => I64_REM_S
+      case BinaryOp.Long_| => I64_OR
+      case BinaryOp.Long_& => I64_AND
+      case BinaryOp.Long_^ => I64_XOR
 
       case BinaryOp.Long_== => I64_EQ
       case BinaryOp.Long_!= => I64_NE
@@ -578,7 +589,10 @@ private class WasmExpressionBuilder private (ctx: FunctionTypeWriterWasmContext,
           instrs += END
 
         case IRTypes.CharType =>
-          instrs += WasmInstr.ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.stringData), I32(1))
+          instrs += WasmInstr.ARRAY_NEW_FIXED(
+            TypeIdx(WasmTypeName.WasmArrayTypeName.stringData),
+            I32(1)
+          )
           instrs += WasmInstr.STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.string))
 
         case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>

@@ -76,7 +76,11 @@ object WasmStructType {
   val string: WasmStructType = WasmStructType(
     WasmTypeName.WasmStructTypeName.string,
     List(
-      WasmStructField(WasmFieldName.stringData, WasmRefType(WasmHeapType.Type(WasmArrayTypeName.stringData)), false)
+      WasmStructField(
+        WasmFieldName.stringData,
+        WasmRefType(WasmHeapType.Type(WasmArrayTypeName.stringData)),
+        false
+      )
     ),
     None
   )
@@ -93,6 +97,7 @@ case class WasmArrayType(
     field: WasmStructField
 ) extends WasmGCTypeDefinition
 object WasmArrayType {
+
   /** array (ref struct) */
   val itables = WasmArrayType(
     WasmArrayTypeName.itables,
@@ -112,11 +117,11 @@ case class WasmStructField(
     isMutable: Boolean
 )
 object WasmStructField {
-    val itables = WasmStructField(
-        WasmFieldName.itables,
-        WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name)),
-        isMutable = false
-    )
+  val itables = WasmStructField(
+    WasmFieldName.itables,
+    WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name)),
+    isMutable = false
+  )
 }
 
 /** @see
