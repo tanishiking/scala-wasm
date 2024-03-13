@@ -1,6 +1,7 @@
 package wasm
 package ir2wasm
 
+import org.scalajs.ir.ClassKind
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Names => IRNames}
@@ -9,7 +10,7 @@ import wasm4s._
 object TypeTransformer {
 
   val makeReceiverType: Types.WasmType =
-    Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+    Types.WasmRefType.any
 
   def transformFunctionType(
       // clazz: WasmContext.WasmClassInfo,
@@ -59,31 +60,20 @@ object TypeTransformer {
         ???
       case clazz @ IRTypes.ClassType(className) =>
         className match {
-          case IRNames.BoxedStringClass =>
-            Types.WasmRefNullType(
-              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
-            )
-          case IRNames.BoxedUnitClass =>
-            Types.WasmRefNullType(
-              Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
-            )
           case _ =>
-            if (ctx.getClassInfo(clazz.className).isInterface)
+            val info = ctx.getClassInfo(clazz.className)
+            if (info.isAncestorOfHijackedClass)
+              Types.WasmAnyRef
+            else if (info.isInterface)
               Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
             else
-              Types.WasmRefType(
+              Types.WasmRefNullType(
                 Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
               )
         }
       case IRTypes.RecordType(fields) => ???
-      case IRTypes.StringType =>
-        Types.WasmRefType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.string)
-        )
-      case IRTypes.UndefType =>
-        Types.WasmRefType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.undef)
-        )
+      case IRTypes.StringType | IRTypes.UndefType =>
+        Types.WasmRefType.any
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 

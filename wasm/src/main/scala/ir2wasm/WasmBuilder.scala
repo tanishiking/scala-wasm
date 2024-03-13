@@ -32,9 +32,9 @@ class WasmBuilder {
     }
   }
 
-  def transformTopLevelExport(export: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
+  def transformTopLevelExport(topLevelExport: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
     implicit val fctx = WasmFunctionContext()
-    export.tree match {
+    topLevelExport.tree match {
       case d: IRTrees.TopLevelFieldExportDef   => ???
       case d: IRTrees.TopLevelJSClassExportDef => ???
       case d: IRTrees.TopLevelMethodExportDef  => transformToplevelMethodExportDef(d)
@@ -383,11 +383,11 @@ class WasmBuilder {
     )
     ctx.addFunction(func)
 
-    val export = new WasmExport.Function(
+    val exprt = new WasmExport.Function(
       methodName.value,
       func
     )
-    ctx.addExport(export)
+    ctx.addExport(exprt)
   }
 
   private def genFunction(
@@ -396,7 +396,7 @@ class WasmBuilder {
   )(implicit ctx: WasmContext): WasmFunction = {
     val receiver = WasmLocal(
       Names.WasmLocalName.receiver,
-      // Receiver type for non-constructor methods needs to be Object type because params are invariant
+      // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
       // Otherwise, vtable can't be a subtype of the supertype's subtype
       // Constructor can use the exact type because it won't be registered to vtables.
       if (clazz.kind == ClassKind.HijackedClass)
@@ -404,7 +404,7 @@ class WasmBuilder {
       else if (method.flags.namespace.isConstructor)
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
       else
-        WasmRefNullType(WasmHeapType.ObjectType),
+        WasmRefType.any,
       isParameter = true
     )
     val paramTys = receiver.typ +:

@@ -1,4 +1,16 @@
+import org.scalajs.linker.interface.OutputPatterns
+
 val scalaV = "2.13.12"
+
+inThisBuild(Def.settings(
+  scalacOptions ++= Seq(
+    "-encoding",
+    "utf-8",
+    "-feature",
+    "-deprecation",
+    "-Xfatal-warnings",
+  )
+))
 
 lazy val cli = project
   .in(file("cli"))
@@ -86,7 +98,10 @@ lazy val tests = project
       "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1" % Test
     ),
     scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.CommonJSModule),
+      // Generate CoreTests as an ES module so that it can import the loader.mjs
+      // Give it an `.mjs` extension so that Node.js actually interprets it as an ES module
+      _.withModuleKind(ModuleKind.ESModule)
+        .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs")),
     },
     test := Def.sequential(
       (testSuite / Compile / run).toTask(""),

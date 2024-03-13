@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-const wasmBuffer = readFileSync("./target/output.wasm");
-const wasmModule = await WebAssembly.instantiate(wasmBuffer);
-const { test } = wasmModule.instance.exports;
+import { load } from "./loader.mjs";
+
+const { test } = await load("./target/output.wasm");
 const o = test();
 console.log(o);

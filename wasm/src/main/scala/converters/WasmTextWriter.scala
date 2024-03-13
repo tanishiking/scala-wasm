@@ -1,10 +1,9 @@
 package wasm
 package converters
 
-import wasm4s._
-import wasm4s.Names._
-import ir2wasm.WasmBuilder
-import wasm.wasm4s.Types.WasmHeapType
+import wasm.wasm4s._
+import wasm.wasm4s.Names._
+import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr._
 
 class WasmTextWriter {
@@ -26,6 +25,7 @@ class WasmTextWriter {
             module.arrayTypes.foreach(writeGCTypeDefinition)
           }
         )
+        module.imports.foreach(writeImport)
         module.definedFunctions.foreach(writeFunction)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
@@ -106,6 +106,28 @@ class WasmTextWriter {
         )
       }
     )
+
+  private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
+    b.newLineList("import", {
+      b.appendElement(s"\"${i.module}\"")
+      b.appendElement(s"\"${i.name}\"")
+
+      i.desc match {
+        case WasmImportDesc.Func(id, typ) =>
+          b.sameLineList(
+            "func", {
+              b.appendElement(id.show)
+              writeSig(typ.params, typ.results)
+            }
+          )
+      }
+    })
+  }
+
+  private def writeSig(params: List[WasmType], results: List[WasmType])(implicit b: WatBuilder): Unit = {
+    params.foreach(typ => b.sameLineListOne("param", typ.show))
+    results.foreach(typ => b.sameLineListOne("result", typ.show))
+  }
 
   private def writeFunction(f: WasmFunction)(implicit b: WatBuilder): Unit = {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
@@ -195,11 +217,20 @@ class WasmTextWriter {
       case WasmImmediate.BlockType.ValueType(optTy) =>
         optTy.fold("") { ty => s"(result ${ty.show})" }
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
+      case i: WasmImmediate.CastFlags =>
+        throw new UnsupportedOperationException(s"CastFlags $i must be handled directly in the instruction $instr")
       case _ =>
         println(i)
         ???
     }
     b.appendElement(str)
+  }
+
+  private def writeRefTypeImmediate(i: WasmImmediate.HeapType, nullable: Boolean)(implicit b: WatBuilder): Unit = {
+    if (nullable)
+      b.appendElement(s"(ref null ${i.value.show})")
+    else
+      b.appendElement(s"(ref ${i.value.show})")
   }
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
@@ -215,7 +246,25 @@ class WasmTextWriter {
       case _ =>
         ()
     }
-    instr.immediates.foreach { i => writeImmediate(i, instr) }
+
+    def writeBrOnCastImmediates(
+      castFlags: WasmImmediate.CastFlags, label: WasmImmediate.LabelIdx,
+      from: WasmImmediate.HeapType, to: WasmImmediate.HeapType
+    ): Unit = {
+      writeImmediate(label, instr)
+      writeRefTypeImmediate(from, castFlags.nullable1)
+      writeRefTypeImmediate(to, castFlags.nullable2)
+    }
+
+    instr match {
+      case BR_ON_CAST(castFlags, label, from, to) =>
+        writeBrOnCastImmediates(castFlags, label, from, to)
+      case BR_ON_CAST_FAIL(castFlags, label, from, to) =>
+        writeBrOnCastImmediates(castFlags, label, from, to)
+      case _ =>
+        instr.immediates.foreach { i => writeImmediate(i, instr) }
+    }
+
     instr match {
       case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
       case _                                                     => ()

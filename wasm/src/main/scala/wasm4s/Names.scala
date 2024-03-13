@@ -14,7 +14,6 @@ object Names {
         case _: WasmGlobalName.WasmModuleInstanceName => "g_instance"
         case _: WasmGlobalName.WasmGlobalVTableName   => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName   => "g_itable"
-        case WasmGlobalName.WasmUndefName             => "undef"
         case _: WasmFunctionName                      => "fun"
         case _: WasmFieldName                         => "field"
         case _: WasmExportName                        => "export"
@@ -53,8 +52,6 @@ object Names {
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
-    object WasmUndefName extends WasmGlobalName("undef")
-
     final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmModuleInstanceName {
@@ -102,6 +99,33 @@ object Names {
       new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
+
+    private def helper(name: String): WasmFunctionName =
+      new WasmFunctionName("__scalaJSHelpers", name)
+
+    val is = helper("is")
+
+    val undef = helper("undef")
+    val isUndef = helper("isUndef")
+
+    def box(primRef: IRTypes.PrimRef): WasmFunctionName = helper("b" + primRef.charCode)
+    def unbox(primRef: IRTypes.PrimRef): WasmFunctionName = helper("u" + primRef.charCode)
+    def unboxOrNull(primRef: IRTypes.PrimRef): WasmFunctionName = helper("uN" + primRef.charCode)
+    def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
+
+    val emptyString = helper("emptyString")
+    val stringLength = helper("stringLength")
+    val stringCharAt = helper("stringCharAt")
+    val jsValueToString = helper("jsValueToString")
+    val booleanToString = helper("booleanToString")
+    val charToString = helper("charToString")
+    val intToString = helper("intToString")
+    val longToString = helper("longToString")
+    val doubleToString = helper("doubleToString")
+    val stringConcat = helper("stringConcat")
+    val isString = helper("isString")
+
+    val jsValueHashCode = helper("jsValueHashCode")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
@@ -116,7 +140,6 @@ object Names {
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
-    val stringData = new WasmFieldName("string_data")
   }
 
   // GC types ====
@@ -129,8 +152,6 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
-      val string = new WasmStructTypeName("string")
-      val undef = new WasmStructTypeName("undef")
     }
 
     /** Array type's name */
@@ -143,7 +164,6 @@ object Names {
         new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
       }
       val itables = new WasmArrayTypeName("itable")
-      val stringData = new WasmArrayTypeName("string_data")
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)

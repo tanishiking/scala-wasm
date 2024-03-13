@@ -20,7 +20,14 @@ object WasmExport {
       extends WasmExport[WasmFunction](name, field, 0x0, "func")
   class Global(name: String, field: WasmGlobal)
       extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+}
 
+final case class WasmImport(module: String, name: String, desc: WasmImportDesc)
+
+sealed abstract class WasmImportDesc
+
+object WasmImportDesc {
+  final case class Func(id: WasmFunctionName, typ: WasmFunctionType) extends WasmImportDesc
 }
 
 /** @see
@@ -72,25 +79,6 @@ case class WasmStructType(
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
-object WasmStructType {
-  val string: WasmStructType = WasmStructType(
-    WasmTypeName.WasmStructTypeName.string,
-    List(
-      WasmStructField(
-        WasmFieldName.stringData,
-        WasmRefType(WasmHeapType.Type(WasmArrayTypeName.stringData)),
-        false
-      )
-    ),
-    None
-  )
-
-  val undef: WasmStructType = WasmStructType(
-    WasmTypeName.WasmStructTypeName.undef,
-    Nil,
-    None
-  )
-}
 
 case class WasmArrayType(
     name: WasmTypeName,
@@ -102,12 +90,6 @@ object WasmArrayType {
   val itables = WasmArrayType(
     WasmArrayTypeName.itables,
     WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
-  )
-
-  /** array i16 */
-  val stringData = WasmArrayType(
-    WasmArrayTypeName.stringData,
-    WasmStructField(WasmFieldName.stringData, WasmInt16, false)
   )
 }
 
@@ -131,7 +113,7 @@ class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
     private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
-    // val importedFunctions: List[WasmFunction.Imported] = Nil,
+    private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer(),
     // val importedMemories: List[WasmMemory] = Nil,
     // val importedTables: List[WasmTable] = Nil,
     // val importedGlobals: List[WasmGlobal] = Nil,
@@ -147,21 +129,20 @@ class WasmModule(
     // val data: List[WasmData] = Nil,
     // val dataCount: Boolean = true
 ) {
+  def addImport(imprt: WasmImport): Unit = _imports.addOne(imprt)
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
-  def addExport(export: WasmExport[_]) = _exports.addOne(export)
+  def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.stringData)
+  def arrayTypes = List(WasmArrayType.itables)
+  def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
-
-  addRecGroupType(WasmStructType.string)
-  addRecGroupType(WasmStructType.undef)
 }
 
 object WasmModule {
@@ -177,8 +158,8 @@ object WasmModule {
       } else {
         val found = noPreds.map { _._1 }.toSet
         val updated = hasPreds.map {
-          case (k, Some(v)) => // should be safe because hasPreds has no None
-            (k, if (found.contains(v)) None else Some(v))
+          case (k, v) =>
+            (k, v.filter(!found.contains(_)))
         }
         tsort(updated, done ++ found)
       }
