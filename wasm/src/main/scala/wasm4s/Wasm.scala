@@ -106,6 +106,18 @@ object WasmStructField {
   )
 }
 
+final case class WasmElement(typ: WasmType, init: List[WasmExpr], mode: WasmElement.Mode)
+
+object WasmElement {
+  sealed abstract class Mode
+
+  object Mode {
+    case object Passive extends Mode
+    // final case class Active(table: WasmImmediate.TableIdx, offset: WasmExpr) extends Mode
+    case object Declarative extends Mode
+  }
+}
+
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
   */
@@ -123,8 +135,8 @@ class WasmModule(
     // val memories: List[WasmMemory] = Nil,
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
     private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
-    private var _startFunction: Option[WasmFunctionName] = None
-    // val elements: List[WasmElement] = Nil,
+    private var _startFunction: Option[WasmFunctionName] = None,
+    private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,
     // val data: List[WasmData] = Nil,
@@ -137,6 +149,7 @@ class WasmModule(
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
   def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
+  def addElement(element: WasmElement): Unit = _elements.addOne(element)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
@@ -146,6 +159,7 @@ class WasmModule(
   def globals = _globals.toList
   def exports = _exports.toList
   def startFunction: Option[WasmFunctionName] = _startFunction
+  def elements: List[WasmElement] = _elements.toList
 }
 
 object WasmModule {

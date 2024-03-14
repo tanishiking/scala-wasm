@@ -115,6 +115,7 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
   private var nextConstantStringIndex: Int = 1
 
   protected def addGlobal(g: WasmGlobal): Unit
+  protected def addFuncDeclaration(name: WasmFunctionName): Unit
 
   def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
     functionSignatures.get(sig) match {
@@ -152,12 +153,18 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
         globalName
     }
   }
+
+  def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
+    addFuncDeclaration(name)
+    WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
+  }
 }
 
 class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
   import WasmContext._
 
   private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
+  private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] = new mutable.LinkedHashSet()
 
   def addExport(exprt: WasmExport[_]): Unit = module.addExport(exprt)
   def addFunction(fun: WasmFunction): Unit = {
@@ -172,6 +179,8 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
     module.addGlobal(g)
     globals.define(g)
   }
+  def addFuncDeclaration(name: WasmFunctionName): Unit =
+    _funcDeclarations += name
 
   def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
     classInfo.put(name, info)
@@ -305,6 +314,23 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
       )
       addFunction(startFunction)
       module.setStartFunction(WasmFunctionName.start)
+    }
+
+    // Aggregated Elements
+
+    if (_funcDeclarations.nonEmpty) {
+      /* Functions that are referred to with `ref.func` in the Code section
+       * must be declared ahead of time in one of the earlier sections
+       * (otherwise the module does not validate). It can be the Global section
+       * if they are meaningful there (which is why `ref.func` in the vtables
+       * work out of the box). In the absence of any other specific place, an
+       * Element section with the declarative mode is the recommended way to
+       * introduce these declarations.
+       */
+      val exprs = _funcDeclarations.toList.map { name =>
+        WasmExpr(List(WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))))
+      }
+      module.addElement(WasmElement(WasmFuncRef, exprs, WasmElement.Mode.Declarative))
     }
   }
 }

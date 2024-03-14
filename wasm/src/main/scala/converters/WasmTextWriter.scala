@@ -30,6 +30,7 @@ class WasmTextWriter {
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
         module.startFunction.foreach(writeStart)
+        module.elements.foreach(writeElement)
       }
     )
     // context.gcTypes
@@ -199,6 +200,24 @@ class WasmTextWriter {
     b.newLineList(
       "start", {
         b.appendElement(startFunction.show)
+      }
+    )
+  }
+
+  private def writeElement(element: WasmElement)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "elem", {
+        element.mode match {
+          case WasmElement.Mode.Passive     => ()
+          case WasmElement.Mode.Declarative => b.appendElement("declare")
+        }
+        b.appendElement(element.typ.show)
+        element.init.foreach { item =>
+          b.newLineList(
+            "item",
+            item.instr.foreach(writeInstr(_))
+          )
+        }
       }
     )
   }
