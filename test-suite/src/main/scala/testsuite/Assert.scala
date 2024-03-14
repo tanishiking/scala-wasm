@@ -14,4 +14,7 @@ package testsuite
 object Assert {
   def ok(cond: Boolean): Unit =
     if (!cond) null.toString() // Apply to Null should compile to unreachable
+
+  def assertSame(expected: Any, actual: Any): Unit =
+    ok(expected.asInstanceOf[AnyRef] eq actual.asInstanceOf[AnyRef])
 }

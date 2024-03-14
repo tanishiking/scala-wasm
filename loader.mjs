@@ -61,6 +61,9 @@ const scalaJSHelpers = {
   tF: (x) => typeof x === 'number' && (Math.fround(x) === x || x !== x),
   tD: (x) => typeof x === 'number',
 
+  // Closure
+  closure: (f, data) => f.bind(void 0, data),
+
   // Strings
   emptyString: () => "",
   stringLength: (s) => s.length,

@@ -63,9 +63,14 @@ object Names {
     final case class WasmGlobalVTableName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmGlobalVTableName {
-      def apply(name: IRNames.ClassName): WasmGlobalVTableName = new WasmGlobalVTableName(
-        name.nameString
-      )
+      def apply(name: IRNames.ClassName): WasmGlobalVTableName =
+        new WasmGlobalVTableName("L" + name.nameString)
+
+      def apply(typeRef: IRTypes.NonArrayTypeRef): WasmGlobalVTableName = typeRef match {
+        case typeRef: IRTypes.PrimRef    => new WasmGlobalVTableName(typeRef.charCode.toString())
+        case IRTypes.ClassRef(className) => apply(className)
+      }
+
       def apply(name: WasmTypeName): WasmGlobalVTableName = new WasmGlobalVTableName(
         name.name
       )
@@ -113,6 +118,8 @@ object Names {
     private def helper(name: String): WasmFunctionName =
       new WasmFunctionName("__scalaJSHelpers", name)
 
+    // JS helpers
+
     val is = helper("is")
 
     val undef = helper("undef")
@@ -122,6 +129,8 @@ object Names {
     def unbox(primRef: IRTypes.PrimRef): WasmFunctionName = helper("u" + primRef.charCode)
     def unboxOrNull(primRef: IRTypes.PrimRef): WasmFunctionName = helper("uN" + primRef.charCode)
     def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
+
+    val closure = helper("closure")
 
     val emptyString = helper("emptyString")
     val stringLength = helper("stringLength")
@@ -190,6 +199,14 @@ object Names {
         JSBinaryOp.** -> helper("jsExponent")
       )
     }
+
+    // Wasm internal helpers
+
+    val createStringFromData = helper("createStringFromData")
+    val typeDataName = helper("typeDataName")
+    val createClassOf = helper("createClassOf")
+    val arrayTypeData = helper("arrayTypeData")
+    val getComponentType = helper("getComponentType")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
@@ -204,6 +221,73 @@ object Names {
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
+    val u16Array = new WasmFieldName("u16Array")
+
+    // Fields of the typeData structs
+    object typeData {
+      /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
+       *
+       *  It is non-null for primitives and for classes. It is null for array types,
+       *  as array types compute their `name` from the `name` of their component type.
+       */
+      val nameData = new WasmFieldName("nameData")
+
+      /** The kind of type data, an `i32`.
+       *
+       *  - 0 for regular class
+       *  - 1 for primitive
+       *  - 2 for array
+       *  - 3 for interface
+       *  - 4 for JS type
+       */
+      val kind = new WasmFieldName("kind")
+
+      /** The typeData of a component of this array type, or `null` if this is not an array type.
+       *
+       *  For example:
+       *  - the `componentType` for class `Foo` is `null`,
+       *  - the `componentType` for the array type `Array[Foo]` is the `typeData` of `Foo`.
+       */
+      val componentType = new WasmFieldName("componentType")
+
+      /** The name as nullable string (`anyref`), lazily initialized from the nameData.
+       *
+       *  This field is initialized by the `typeDataName` helper.
+       *
+       *  The contents of this value is specified by `java.lang.Class.getName()`.
+       *  In particular, for array types, it obeys the following rules:
+       *
+       *  - `Array[prim]` where `prim` is a one of the primitive types with `charCode` `X` is `"[X"`,
+       *    for example, `"[I"` for `Array[Int]`.
+       *  - `Array[pack.Cls]` where `Cls` is a class is `"[Lpack.Cls;"`.
+       *  - `Array[nestedArray]` where `nestedArray` is an array type with name `nested` is `"[nested"`,
+       *    for example `"[[I"` for `Array[Array[Int]]` and `"[[Ljava.lang.String;"` for `Array[Array[String]]`.
+       */
+      val name = new WasmFieldName("name")
+
+      /** The `classOf` value, a nullable `java.lang.Class`, lazily initialized from this typeData.
+       *
+       *  This field is initialized by the `createClassOf` helper.
+       */
+      val classOfValue = new WasmFieldName("classOf")
+
+      /** The typeData of an array of this type, a nullable `typeData`, lazily initialized.
+       *
+       *  This field is initialized by the `arrayTypeData` helper.
+       *
+       *  For example, once initialized,
+       *  - in the `typeData` of class `Foo`, it contains the `typeData` of `Array[Foo]`,
+       *  - in the `typeData` of `Array[Int]`, it contains the `typeData` of `Array[Array[Int]]`.
+       */
+      val arrayOf = new WasmFieldName("arrayOf")
+
+      val nameDataIdx = WasmImmediate.StructFieldIdx(0)
+      val kindIdx = WasmImmediate.StructFieldIdx(1)
+      val componentTypeIdx = WasmImmediate.StructFieldIdx(2)
+      val nameIdx = WasmImmediate.StructFieldIdx(3)
+      val classOfIdx = WasmImmediate.StructFieldIdx(4)
+      val arrayOfIdx = WasmImmediate.StructFieldIdx(5)
+    }
   }
 
   // GC types ====
@@ -216,6 +300,8 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
+
+      val typeData = new WasmStructTypeName("typeData")
     }
 
     /** Array type's name */
@@ -228,6 +314,7 @@ object Names {
         new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
       }
       val itables = new WasmArrayTypeName("itable")
+      val u16Array = new WasmArrayTypeName("u16Array")
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)

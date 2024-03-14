@@ -79,6 +79,53 @@ case class WasmStructType(
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
+object WasmStructType {
+  /** Run-time type data of a `TypeRef`.
+   *  Support for `j.l.Class` methods and other reflective operations.
+   *
+   *  @see [[Names.WasmFieldName.typeData]], which contains documentation of
+   *    what is in each field.
+   */
+  val typeData: WasmStructType = WasmStructType(
+    WasmTypeName.WasmStructTypeName.typeData,
+    List(
+      WasmStructField(
+        WasmFieldName.typeData.nameData,
+        WasmRefNullType(WasmHeapType.Type(WasmArrayTypeName.u16Array)),
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.kind,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.componentType,
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.name,
+        WasmAnyRef,
+        isMutable = true
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.classOfValue,
+        WasmRefNullType(WasmHeapType.ClassType),
+        isMutable = true
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.arrayOf,
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        isMutable = true
+      )
+    ),
+    None
+  )
+
+  // The number of fields of typeData, after which we find the vtable entries
+  val typeDataFieldCount = typeData.fields.size
+}
 
 case class WasmArrayType(
     name: WasmTypeName,
@@ -90,6 +137,12 @@ object WasmArrayType {
   val itables = WasmArrayType(
     WasmArrayTypeName.itables,
     WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
+  )
+
+  /** array u16 */
+  val u16Array = WasmArrayType(
+    WasmArrayTypeName.u16Array,
+    WasmStructField(WasmFieldName.u16Array, WasmInt16, false)
   )
 }
 
@@ -153,7 +206,7 @@ class WasmModule(
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables)
+  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array)
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList

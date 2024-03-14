@@ -22,7 +22,37 @@ import _root_.wasm4s.Defaults
 class WasmBuilder {
   // val module = new WasmModule()
 
+  def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
+    val primRefsWithTypeData = List(
+      IRTypes.VoidRef,
+      IRTypes.BooleanRef,
+      IRTypes.CharRef,
+      IRTypes.ByteRef,
+      IRTypes.ShortRef,
+      IRTypes.IntRef,
+      IRTypes.LongRef,
+      IRTypes.FloatRef,
+      IRTypes.DoubleRef
+    )
+
+    for (primRef <- primRefsWithTypeData) {
+      val typeDataFieldValues = genTypeDataFieldValues(kind = 1, primRef)
+      val typeDataGlobal =
+        genTypeDataGlobal(primRef, WasmStructType.typeData, typeDataFieldValues, Nil)
+      ctx.addGlobal(typeDataGlobal)
+    }
+  }
+
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
+    if (!clazz.kind.isClass && clazz.hasRuntimeTypeInfo) {
+      // Gen typeData -- for classes, we do it as part of the vtable generation
+      val typeRef = IRTypes.ClassRef(clazz.className)
+      val typeDataFieldValues = genTypeDataFieldValues(clazz)
+      val typeDataGlobal =
+        genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)
+      ctx.addGlobal(typeDataGlobal)
+    }
+
     clazz.kind match {
       case ClassKind.ModuleClass   => transformModuleClass(clazz)
       case ClassKind.Class         => transformClass(clazz)
@@ -41,6 +71,64 @@ class WasmBuilder {
     }
   }
 
+  private def genTypeDataFieldValues(clazz: LinkedClass)(
+    implicit ctx: WasmContext
+  ): List[WasmInstr] = {
+    val kind = clazz.kind match {
+      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => 0
+      case ClassKind.Interface                                               => 3
+      case _                                                                 => 4
+    }
+
+    genTypeDataFieldValues(kind, IRTypes.ClassRef(clazz.className))
+  }
+
+  private def genTypeDataFieldValues(kind: Int, typeRef: IRTypes.NonArrayTypeRef)(
+    implicit ctx: WasmContext
+  ): List[WasmInstr] = {
+    import WasmImmediate._
+
+    val nameStr = typeRef match {
+      case typeRef: IRTypes.PrimRef    => typeRef.displayName
+      case IRTypes.ClassRef(className) => className.nameString
+    }
+
+    val nameDataValueItems = nameStr.toList.map(c => I32_CONST(I32(c.toInt)))
+    val nameDataValueArrayNew =
+      ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.u16Array), I32(nameDataValueItems.size))
+    val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
+
+    nameDataValue :::
+      List(
+        // kind
+        I32_CONST(I32(kind)),
+        // componentType - always `null` since this method is not used for array types
+        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData))),
+        // name - initially `null`; filled in by the `typeDataName` helper
+        REF_NULL(HeapType(WasmHeapType.Simple.Any)),
+        // the classOf instance - initially `null`; filled in by the `createClassOf` helper
+        REF_NULL(HeapType(WasmHeapType.ClassType)),
+        // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
+        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)))
+      )
+  }
+
+  private def genTypeDataGlobal(
+    typeRef: IRTypes.NonArrayTypeRef,
+    typeDataType: WasmStructType,
+    typeDataFieldValues: List[WasmInstr],
+    vtableElems: List[REF_FUNC]
+  )(implicit ctx: WasmContext): WasmGlobal = {
+    val instrs: List[WasmInstr] =
+      typeDataFieldValues ::: vtableElems ::: STRUCT_NEW(typeDataType.name) :: Nil
+    WasmGlobal(
+      WasmGlobalName.WasmGlobalVTableName(typeRef),
+      WasmRefType(WasmHeapType.Type(typeDataType.name)),
+      WasmExpr(instrs),
+      isMutable = false
+    )
+  }
+
   /** @return
     *   Optionally returns the generated struct type for this class. If the given LinkedClass is an
     *   abstract class, returns None
@@ -52,7 +140,9 @@ class WasmBuilder {
     clazz.methods.foreach { method =>
       genFunction(clazz, method)
     }
+
     val className = clazz.name.name
+    val typeRef = IRTypes.ClassRef(className)
 
     // generate vtable type, this should be done for both abstract and concrete classes
     val vtable = ctx.calculateVtableType(className)
@@ -74,31 +164,32 @@ class WasmBuilder {
     // However, I couldn't find a way to test if the LinkedClass is abstract
     // "clazz.methods.exists(m => m.body.isEmpty)" doesn't work because abstract methods are removed at linker optimization
     // the WasmFunctionInfo of the abstract methods will be added specially in Preprocessor
+    //
+    // When we don't generate a vtable, we still generate the typeData
+
+    val typeDataFieldValues = genTypeDataFieldValues(clazz)
+
     val (gVtable, gItable) = if (!isAbstractClass) {
-      // Generate global vtable
+      // Generate an actual vtable
       val functions = ctx.calculateGlobalVTable(className)
-      val vtableInit = functions.map { method =>
-        WasmInstr.REF_FUNC(method.name)
-      } :+ WasmInstr.STRUCT_NEW(vtableType.name)
-      val vtableName = Names.WasmGlobalName.WasmGlobalVTableName(clazz.name.name)
-      val globalVTable =
-        WasmGlobal(
-          vtableName,
-          WasmRefNullType(WasmHeapType.Type(vtableType.name)),
-          WasmExpr(vtableInit),
-          isMutable = false
-        )
+      val vtableElems = functions.map(method => WasmInstr.REF_FUNC(method.name))
+      val globalVTable = genTypeDataGlobal(typeRef, vtableType, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
 
       // Generate class itable
       val globalClassITable = calculateClassITable(clazz)
       globalClassITable.foreach(ctx.addGlobal)
 
-      (Some(globalVTable), globalClassITable)
-    } else (None, None)
+      (globalVTable, globalClassITable)
+    } else {
+      // Only generate typeData
+      val globalTypeData =
+        genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)
+      ctx.addGlobal(globalTypeData)
+      (globalTypeData, None)
+    }
 
-    // Declare the strcut type for the class
-    genStructNewDefault(clazz, gVtable, gItable)
+    // Declare the struct type for the class
     val vtableField = WasmStructField(
       Names.WasmFieldName.vtable,
       WasmRefNullType(WasmHeapType.Type(vtableType.name)),
@@ -111,6 +202,11 @@ class WasmBuilder {
       clazz.superClass.map(s => Names.WasmTypeName.WasmStructTypeName(s.name))
     )
     ctx.addGCType(structType)
+
+    // Define the `new` function, unless the class is abstract
+    if (!isAbstractClass)
+      genStructNewDefault(clazz, Some(gVtable), gItable)
+
     structType
   }
 
@@ -125,10 +221,14 @@ class WasmBuilder {
           isMutable = false
         )
       }
+    val superType = clazz.superClass match {
+      case None    => WasmTypeName.WasmStructTypeName.typeData
+      case Some(s) => WasmTypeName.WasmVTableTypeName(s.name)
+    }
     WasmStructType(
       Names.WasmTypeName.WasmVTableTypeName(clazz.name.name),
-      vtableFields,
-      clazz.superClass.map(s => Names.WasmTypeName.WasmVTableTypeName(s.name))
+      WasmStructType.typeData.fields ::: vtableFields,
+      Some(superType)
     )
   }
 

@@ -154,6 +154,11 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
     }
   }
 
+  def getConstantStringInstr(str: String): WasmInstr = {
+    val globalName = addConstantStringGlobal(str)
+    WasmInstr.GLOBAL_GET(WasmImmediate.GlobalIdx(globalName))
+  }
+
   def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
     addFuncDeclaration(name)
     WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
@@ -195,6 +200,8 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
     module.addImport(WasmImport(name.className, name.methodName, WasmImportDesc.Func(name, typ)))
   }
 
+  addGCType(WasmStructType.typeData)
+
   addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.undef, List(), List(WasmRefType.any))
@@ -214,6 +221,12 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
       addHelperImport(WasmFunctionName.typeTest(primRef), List(WasmAnyRef), List(WasmInt32))
     }
   }
+
+  addHelperImport(
+    WasmFunctionName.closure,
+    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.any)
+  )
 
   addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))

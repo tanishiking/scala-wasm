@@ -74,5 +74,6 @@ object Types {
     }
 
     val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
+    val ClassType = Type(WasmStructTypeName(IRNames.ClassClass))
   }
 }

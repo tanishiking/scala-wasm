@@ -157,7 +157,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.Closure(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.TryFinally(pos) =>
-      // case IRTrees.ClassOf(pos) =>
       // case IRTrees.GetClass(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
@@ -541,7 +540,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmVTableTypeName(receiverClassName)),
-        StructFieldIdx(methodIdx)
+        StructFieldIdx(WasmStructType.typeDataFieldCount + methodIdx)
       )
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
@@ -615,13 +614,42 @@ private class WasmExpressionBuilder private (
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
-        val globalName = ctx.addConstantStringGlobal(v.value)
-        instrs += GLOBAL_GET(GlobalIdx(globalName))
+        instrs += ctx.getConstantStringInstr(v.value)
 
-      case v: IRTrees.ClassOf => ???
+      case v: IRTrees.ClassOf =>
+        v.typeRef match {
+          case typeRef: IRTypes.NonArrayTypeRef =>
+            genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
+
+          case IRTypes.ArrayTypeRef(base, dimensions) =>
+            val typeDataType =
+              Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
+            val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
+
+            instrs += getNonArrayTypeDataInstr(base)
+            instrs += I32_CONST(I32(dimensions))
+            instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+            instrs += LOCAL_SET(typeDataLocal)
+            genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+        }
     }
 
     l.tpe
+  }
+
+  private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
+    GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(typeRef)))
+
+  private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
+    fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
+      // fast path first
+      instrs += loadTypeDataInstr
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.classOfIdx)
+      instrs += BR_ON_NON_NULL(nonNullLabel)
+      // slow path
+      instrs += loadTypeDataInstr
+      instrs += CALL(FuncIdx(WasmFunctionName.createClassOf))
+    }
   }
 
   private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
