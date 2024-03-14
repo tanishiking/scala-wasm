@@ -247,6 +247,10 @@ object WasmInstr {
     def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
   }
 
+  case object REF_I31 extends WasmInstr("ref.i31", 0xFB_1C)
+  case object I31_GET_S extends WasmInstr("i31.get_s", 0xFB_1D)
+  case object I31_GET_U extends WasmInstr("i31.get_u", 0xFB_1E)
+
   // ============================================================
   // Typed Function References
   // https://github.com/WebAssembly/function-references

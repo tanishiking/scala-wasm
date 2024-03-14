@@ -2,6 +2,7 @@ package sample
 
 import scala.annotation.tailrec
 
+import scala.scalajs.js
 import scala.scalajs.js.annotation._
 
 //
@@ -16,6 +17,9 @@ object Main {
     val loopFib = fib(new LoopFib {}, i)
     val recFib = fib(new RecFib {}, i)
     val tailrecFib = fib(new TailRecFib {}, i)
+    js.Dynamic.global.console.log(s"loopFib: $loopFib -- recFib: $recFib -- tailrecFib: $tailrecFib")
+    val date = new js.Date(0)
+    js.Dynamic.global.console.log(date)
     loopFib == recFib && loopFib == tailrecFib
   }
   def fib(fib: Fib, n: Int): Int = fib.fib(n)

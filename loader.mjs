@@ -13,6 +13,14 @@ function stringHashCode(s) {
   return res;
 }
 
+const linkingInfo = Object.freeze({
+  "esVersion": 6,
+  "assumingES6": true,
+  "productionMode": false,
+  "linkerVersion": "1.15.0",
+  "fileLevelThis": this
+});
+
 const scalaJSHelpers = {
   // BinaryOp.===
   is: Object.is,
@@ -79,6 +87,54 @@ const scalaJSHelpers = {
       return 0;
     return 42; // for any JS object
   },
+
+  // JS interop
+  jsGlobalRefGet: (globalRefName) => (new Function("return " + globalRefName))(),
+  jsGlobalRefSet: (globalRefName, v) => {
+    var argName = globalRefName === 'v' ? 'w' : 'v';
+    (new Function(argName, globalRefName + " = " + argName))(v);
+  },
+  jsGlobalRefTypeof: (globalRefName) => (new Function("return typeof " + globalRefName))(),
+  jsNewArray: () => [],
+  jsArrayPush: (a, v) => (a.push(v), a),
+  jsArraySpreadPush: (a, vs) => (a.push(...vs), a),
+  jsNewObject: () => ({}),
+  jsObjectPush: (o, p, v) => (o[p] = v, o),
+  jsSelect: (o, p) => o[p],
+  jsSelectSet: (o, p, v) => o[p] = v,
+  jsNew: (constr, args) => new constr(...args),
+  jsFunctionApply: (f, args) => f(...args),
+  jsMethodApply: (o, m, args) => o[m](...args),
+  jsDelete: (o, p) => { delete o[p]; },
+  jsIsTruthy: (x) => !!x,
+  jsLinkingInfo: () => linkingInfo,
+
+  // Excruciating list of all the JS operators
+  jsUnaryPlus: (a) => +a,
+  jsUnaryMinus: (a) => -a,
+  jsUnaryTilde: (a) => ~a,
+  jsUnaryBang: (a) => !a,
+  jsUnaryTypeof: (a) => typeof a,
+  jsStrictEquals: (a, b) => a === b,
+  jsNotStrictEquals: (a, b) => a !== b,
+  jsPlus: (a, b) => a + b,
+  jsMinus: (a, b) => a - b,
+  jsTimes: (a, b) => a * b,
+  jsDivide: (a, b) => a / b,
+  jsModulus: (a, b) => a % b,
+  jsBinaryOr: (a, b) => a | b,
+  jsBinaryAnd: (a, b) => a & b,
+  jsBinaryXor: (a, b) => a ^ b,
+  jsShiftLeft: (a, b) => a << b,
+  jsArithmeticShiftRight: (a, b) => a >> b,
+  jsLogicalShiftRight: (a, b) => a >>> b,
+  jsLessThan: (a, b) => a < b,
+  jsLessEqual: (a, b) => a <= b,
+  jsGreaterThan: (a, b) => a > b,
+  jsGreaterEqual: (a, b) => a >= b,
+  jsIn: (a, b) => a in b,
+  jsInstanceof: (a, b) => a instanceof b,
+  jsExponent: (a, b) => a ** b,
 }
 
 export async function load(wasmFileName) {

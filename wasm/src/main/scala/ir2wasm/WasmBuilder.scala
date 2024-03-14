@@ -28,7 +28,7 @@ class WasmBuilder {
       case ClassKind.Class         => transformClass(clazz)
       case ClassKind.HijackedClass => transformHijackedClass(clazz)
       case ClassKind.Interface     => transformInterface(clazz)
-      case _                       => ???
+      case _                       => ()
     }
   }
 

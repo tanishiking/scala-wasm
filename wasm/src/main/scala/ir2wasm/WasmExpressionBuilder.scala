@@ -121,63 +121,58 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.New              => genNew(t)
       case t: IRTrees.If               => genIf(t, expectedType)
       case t: IRTrees.While            => genWhile(t)
+      case t: IRTrees.Debugger         => IRTypes.NoType // ignore
       case t: IRTrees.Skip             => IRTypes.NoType
       case t: IRTrees.IdentityHashCode => genIdentityHashCode(t)
+
+      // JavaScript expressions
+      case t: IRTrees.JSNew                => genJSNew(t)
+      case t: IRTrees.JSSelect             => genJSSelect(t)
+      case t: IRTrees.JSFunctionApply      => genJSFunctionApply(t)
+      case t: IRTrees.JSMethodApply        => genJSMethodApply(t)
+      case t: IRTrees.LoadJSConstructor    => genLoadJSConstructor(t)
+      case t: IRTrees.LoadJSModule         => genLoadJSModule(t)
+      case t: IRTrees.SelectJSNativeMember => genSelectJSNativeMember(t)
+      case t: IRTrees.JSDelete             => genJSDelete(t)
+      case t: IRTrees.JSUnaryOp            => genJSUnaryOp(t)
+      case t: IRTrees.JSBinaryOp           => genJSBinaryOp(t)
+      case t: IRTrees.JSArrayConstr        => genJSArrayConstr(t)
+      case t: IRTrees.JSObjectConstr       => genJSObjectConstr(t)
+      case t: IRTrees.JSGlobalRef          => genJSGlobalRef(t)
+      case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
+      case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
+
       case _ =>
         println(tree)
         ???
 
-      // case unary: IRTrees.JSUnaryOp => ???
       // case select: IRTrees.JSPrivateSelect => ???
-      // case nul: IRTrees.Null => ???
       // case v: IRTrees.UnwrapFromThrowable => ???
       // case IRTrees.RecordValue(pos) =>
-      // case IRTrees.JSTypeOfGlobalRef(pos) =>
-      // case IRTrees.JSMethodApply(pos) =>
-      // case IRTrees.Debugger(pos) =>
       // case IRTrees.JSNewTarget(pos) =>
       // case IRTrees.SelectStatic(tpe) =>
-      // case IRTrees.IsInstanceOf(pos) =>
-      // case IRTrees.JSLinkingInfo(pos) =>
-      // case IRTrees.Select(tpe) =>
-      // case IRTrees.Return(pos) =>
       // case IRTrees.ArrayLength(pos) =>
-      // case IRTrees.While(pos) =>
-      // case IRTrees.LoadJSConstructor(pos) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.NewArray(pos) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.Throw(pos) =>
-      // case IRTrees.JSNew(pos) =>
       // case IRTrees.Closure(pos) =>
-      // case IRTrees.JSGlobalRef(pos) =>
-      // case IRTrees.JSBinaryOp(pos) =>
-      // case IRTrees.JSObjectConstr(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
-      // case IRTrees.AsInstanceOf(pos) =>
       // case IRTrees.TryFinally(pos) =>
-      // case IRTrees.Labeled(pos) =>
-      // case IRTrees.SelectJSNativeMember(pos) =>
       // case IRTrees.ClassOf(pos) =>
       // case IRTrees.GetClass(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.ArraySelect(tpe) =>
-      // case IRTrees.JSSelect(pos) =>
-      // case IRTrees.LoadJSModule(pos) =>
-      // case IRTrees.JSFunctionApply(pos) =>
       // case IRTrees.WrapAsThrowable(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
       // case IRTrees.Clone(pos) =>
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
       // case IRTrees.ArrayValue(pos) =>
-      // case IRTrees.JSDelete(pos) =>
       // case IRTrees.ForIn(pos) =>
-      // case IRTrees.JSArrayConstr(pos) =>
       // case tc: IRTrees.TryCatch => ???
       // case IRTrees.JSImportCall(pos) =>
-      // case IRTrees.IdentityHashCode(pos) =>
     }
 
     genAdapt(generatedType, expectedType)
@@ -248,9 +243,19 @@ private class WasmExpressionBuilder private (
       case assign: IRTrees.ArraySelect     => ??? // array.set
       case assign: IRTrees.RecordSelect    => ??? // struct.set
       case assign: IRTrees.JSPrivateSelect => ???
-      case assign: IRTrees.JSSelect        => ???
-      case assign: IRTrees.JSSuperSelect   => ???
-      case assign: IRTrees.JSGlobalRef     => ???
+
+      case assign: IRTrees.JSSelect =>
+        genTree(assign.qualifier, IRTypes.AnyType)
+        genTree(assign.item, IRTypes.AnyType)
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
+
+      case assign: IRTrees.JSSuperSelect => ???
+
+      case assign: IRTrees.JSGlobalRef =>
+        genLiteral(IRTrees.StringLiteral(assign.name)(assign.pos))
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsGlobalRefSet))
 
       case ref: IRTrees.VarRef =>
         genTree(t.rhs, t.lhs.tpe)
@@ -616,15 +621,8 @@ private class WasmExpressionBuilder private (
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
-        // TODO We should allocate literal strings once and for all as globals
-        // This is absolutely atrocious at the moment
-        val str = v.value
-        instrs += CALL(FuncIdx(WasmFunctionName.emptyString))
-        for (c <- str) {
-          instrs += WasmInstr.I32_CONST(I32(c.toInt))
-          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
-        }
+        val globalName = ctx.addConstantStringGlobal(v.value)
+        instrs += GLOBAL_GET(GlobalIdx(globalName))
 
       case v: IRTrees.ClassOf => ???
     }
@@ -1344,5 +1342,176 @@ private class WasmExpressionBuilder private (
     instrs += I32_CONST(I32(42))
 
     IRTypes.IntType
+  }
+
+  private def genJSNew(tree: IRTrees.JSNew): IRTypes.Type = {
+    genTree(tree.ctor, IRTypes.AnyType)
+    genJSArgsArray(tree.args)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsNew))
+    IRTypes.AnyType
+  }
+
+  private def genJSSelect(tree: IRTrees.JSSelect): IRTypes.Type = {
+    genTree(tree.qualifier, IRTypes.AnyType)
+    genTree(tree.item, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+    IRTypes.AnyType
+  }
+
+  private def genJSFunctionApply(tree: IRTrees.JSFunctionApply): IRTypes.Type = {
+    genTree(tree.fun, IRTypes.AnyType)
+    genJSArgsArray(tree.args)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsFunctionApply))
+    IRTypes.AnyType
+  }
+
+  private def genJSMethodApply(tree: IRTrees.JSMethodApply): IRTypes.Type = {
+    genTree(tree.receiver, IRTypes.AnyType)
+    genTree(tree.method, IRTypes.AnyType)
+    genJSArgsArray(tree.args)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsMethodApply))
+    IRTypes.AnyType
+  }
+
+  private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
+    val info = ctx.getClassInfo(tree.className)
+    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+    }
+    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+  }
+
+  private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
+    val info = ctx.getClassInfo(tree.className)
+    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+    }
+    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+  }
+
+  private def genSelectJSNativeMember(tree: IRTrees.SelectJSNativeMember): IRTypes.Type = {
+    val info = ctx.getClassInfo(tree.className)
+    val jsNativeLoadSpec = info.jsNativeMembers.getOrElse(tree.member.name, {
+      throw new AssertionError(s"Found $tree for non-existing JS native member at ${tree.pos}")
+    })
+    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+  }
+
+  private def genLoadJSNativeLoadSpec(loadSpec: IRTrees.JSNativeLoadSpec)(
+    implicit pos: Position
+  ): IRTypes.Type = {
+    import IRTrees.JSNativeLoadSpec._
+
+    def genFollowPath(path: List[String]): Unit = {
+      for (prop <- path) {
+        genLiteral(IRTrees.StringLiteral(prop))
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+      }
+    }
+
+    loadSpec match {
+      case Global(globalRef, path) =>
+        genLiteral(IRTrees.StringLiteral(globalRef))
+        instrs += CALL(FuncIdx(WasmFunctionName.jsGlobalRefGet))
+        genFollowPath(path)
+        IRTypes.AnyType
+      case Import(module, path) =>
+        ???
+      case ImportWithGlobalFallback(importSpec, globalSpec) =>
+        genLoadJSNativeLoadSpec(globalSpec)
+    }
+  }
+
+  private def genJSDelete(tree: IRTrees.JSDelete): IRTypes.Type = {
+    genTree(tree.qualifier, IRTypes.AnyType)
+    genTree(tree.item, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsDelete))
+    IRTypes.NoType
+  }
+
+  private def genJSUnaryOp(tree: IRTrees.JSUnaryOp): IRTypes.Type = {
+    genTree(tree.lhs, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsUnaryOps(tree.op)))
+    IRTypes.AnyType
+  }
+
+  private def genJSBinaryOp(tree: IRTrees.JSBinaryOp): IRTypes.Type = {
+    import IRTrees.JSBinaryOp
+
+    tree.op match {
+      case JSBinaryOp.|| | JSBinaryOp.&& =>
+        /* Here we need to implement the short-circuiting behavior, with a
+         * condition based on the truthy value of the left-hand-side.
+         */
+        val lhsLocal = fctx.genSyntheticLocalName()
+        fctx.locals.define(WasmLocal(lhsLocal, Types.WasmAnyRef, isParameter = false))
+        genTree(tree.lhs, IRTypes.AnyType)
+        instrs += LOCAL_TEE(LocalIdx(lhsLocal))
+        instrs += CALL(FuncIdx(WasmFunctionName.jsIsTruthy))
+        instrs += IF(BlockType.ValueType(Types.WasmAnyRef))
+        if (tree.op == JSBinaryOp.||) {
+          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+          instrs += ELSE
+          genTree(tree.rhs, IRTypes.AnyType)
+        } else {
+          genTree(tree.rhs, IRTypes.AnyType)
+          instrs += ELSE
+          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+        }
+        instrs += END
+
+      case _ =>
+        genTree(tree.lhs, IRTypes.AnyType)
+        genTree(tree.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsBinaryOps(tree.op)))
+    }
+
+    tree.tpe
+  }
+
+  private def genJSArrayConstr(tree: IRTrees.JSArrayConstr): IRTypes.Type = {
+    genJSArgsArray(tree.items)
+    IRTypes.AnyType
+  }
+
+  private def genJSObjectConstr(tree: IRTrees.JSObjectConstr): IRTypes.Type = {
+    instrs += CALL(FuncIdx(WasmFunctionName.jsNewObject))
+    for ((prop, value) <- tree.fields) {
+      genTree(prop, IRTypes.AnyType)
+      genTree(value, IRTypes.AnyType)
+      instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    }
+    IRTypes.AnyType
+  }
+
+  private def genJSGlobalRef(tree: IRTrees.JSGlobalRef): IRTypes.Type = {
+    genLiteral(IRTrees.StringLiteral(tree.name)(tree.pos))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsGlobalRefGet))
+    IRTypes.AnyType
+  }
+
+  private def genJSTypeOfGlobalRef(tree: IRTrees.JSTypeOfGlobalRef): IRTypes.Type = {
+    genLiteral(IRTrees.StringLiteral(tree.globalRef.name)(tree.pos))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsGlobalRefTypeof))
+    IRTypes.AnyType
+  }
+
+  private def genJSArgsArray(args: List[IRTrees.TreeOrJSSpread]): Unit = {
+    instrs += CALL(FuncIdx(WasmFunctionName.jsNewArray))
+    for (arg <- args) {
+      arg match {
+        case arg: IRTrees.Tree =>
+          genTree(arg, IRTypes.AnyType)
+          instrs += CALL(FuncIdx(WasmFunctionName.jsArrayPush))
+        case IRTrees.JSSpread(items) =>
+          genTree(items, IRTypes.AnyType)
+          instrs += CALL(FuncIdx(WasmFunctionName.jsArraySpreadPush))
+      }
+    }
+  }
+
+  private def genJSLinkingInfo(tree: IRTrees.JSLinkingInfo): IRTypes.Type = {
+    instrs += CALL(FuncIdx(WasmFunctionName.jsLinkingInfo))
+    IRTypes.AnyType
   }
 }
