@@ -33,7 +33,6 @@ class WasmBuilder {
   }
 
   def transformTopLevelExport(topLevelExport: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
-    implicit val fctx = WasmFunctionContext()
     topLevelExport.tree match {
       case d: IRTrees.TopLevelFieldExportDef   => ???
       case d: IRTrees.TopLevelJSClassExportDef => ???
@@ -306,7 +305,7 @@ class WasmBuilder {
 
   private def transformToplevelMethodExportDef(
       exportDef: IRTrees.TopLevelMethodExportDef
-  )(implicit ctx: WasmContext, fctx: WasmFunctionContext) = {
+  )(implicit ctx: WasmContext): Unit = {
     val method = exportDef.methodDef
     val methodName = method.name match {
       case lit: IRTrees.StringLiteral => lit
@@ -358,30 +357,16 @@ class WasmBuilder {
       }
     }
 
-    val sig = WasmFunctionSignature(
-      newParams.map(arg => transformType(arg.ptpe)),
-      transformResultType(resultType)
-    )
-    val typeName = ctx.addFunctionType(sig)
-    val functionType = WasmFunctionType(typeName, sig)
-
-    val params = newParams.map { arg =>
-      WasmLocal(
-        Names.WasmLocalName.fromIR(arg.name.name),
-        transformType(arg.ptpe),
-        isParameter = true
-      )
-    }
-    params.foreach(fctx.locals.define)
-
-    val expr = WasmExpressionBuilder.transformBody(newBody, resultType)
-    val func = WasmFunction(
+    implicit val fctx = WasmFunctionContext(
       Names.WasmFunctionName(methodName),
-      functionType,
-      fctx.locals.all,
-      expr
+      receiverTyp = None,
+      newParams,
+      resultType
     )
-    ctx.addFunction(func)
+
+    WasmExpressionBuilder.generateIRBody(newBody, resultType)
+
+    val func = fctx.buildAndAddToContext()
 
     val exprt = new WasmExport.Function(
       methodName.value,
@@ -394,50 +379,32 @@ class WasmBuilder {
       clazz: LinkedClass,
       method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
-    val receiver = WasmLocal(
-      Names.WasmLocalName.receiver,
-      // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
-      // Otherwise, vtable can't be a subtype of the supertype's subtype
-      // Constructor can use the exact type because it won't be registered to vtables.
+    val functionName = Names.WasmFunctionName(clazz.name.name, method.name.name)
+
+    // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
+    // Otherwise, vtable can't be a subtype of the supertype's subtype
+    // Constructor can use the exact type because it won't be registered to vtables.
+    val receiverTyp =
       if (clazz.kind == ClassKind.HijackedClass)
         transformType(IRTypes.BoxedClassToPrimType(clazz.name.name))
       else if (method.flags.namespace.isConstructor)
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
       else
-        WasmRefType.any,
-      isParameter = true
-    )
-    val paramTys = receiver.typ +:
-      method.args.map(arg => transformType(arg.ptpe))
-    val resultTy = transformResultType(method.resultType)
-    val sig = WasmFunctionSignature(paramTys, resultTy)
-    val typeName = ctx.addFunctionType(sig)
-    val functionType = WasmFunctionType(typeName, sig)
+        WasmRefType.any
 
     // Prepare for function context, set receiver and parameters
-    implicit val fctx = WasmFunctionContext(receiver)
-    (receiver +: method.args.map { arg =>
-      WasmLocal(
-        Names.WasmLocalName.fromIR(arg.name.name),
-        transformType(arg.ptpe),
-        isParameter = true
-      )
-    }).foreach(fctx.locals.define)
+    implicit val fctx = WasmFunctionContext(
+      functionName,
+      Some(receiverTyp),
+      method.args,
+      method.resultType
+    )
 
     // build function body
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
-    // val prefix =
-    //   if (method.flags.namespace.isConstructor) builder.objectCreationPrefix(clazz, method) else Nil
-    val expr = WasmExpressionBuilder.transformBody(body, method.resultType)
+    WasmExpressionBuilder.generateIRBody(body, method.resultType)
 
-    val func = WasmFunction(
-      Names.WasmFunctionName(clazz.name.name, method.name.name),
-      functionType,
-      fctx.locals.all,
-      expr
-    )
-    ctx.addFunction(func)
-    func
+    fctx.buildAndAddToContext()
   }
 
   private def transformField(
