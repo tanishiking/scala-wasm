@@ -17,10 +17,11 @@ import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Position
+import _root_.wasm4s.Defaults
 
 object WasmExpressionBuilder {
   def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
-      ctx: FunctionTypeWriterWasmContext,
+      ctx: TypeDefinableWasmContext,
       fctx: WasmFunctionContext
   ): Unit = {
     val builder = new WasmExpressionBuilder(ctx, fctx)
@@ -40,8 +41,8 @@ object WasmExpressionBuilder {
   private object PrimTypeWithBoxUnbox {
     def unapply(primType: IRTypes.PrimTypeWithRef): Option[IRTypes.PrimTypeWithRef] = {
       primType match {
-        case IRTypes.BooleanType | IRTypes.ByteType | IRTypes.ShortType |
-            IRTypes.IntType | IRTypes.FloatType | IRTypes.DoubleType =>
+        case IRTypes.BooleanType | IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType |
+            IRTypes.FloatType | IRTypes.DoubleType =>
           Some(primType)
         case _ =>
           None
@@ -51,7 +52,7 @@ object WasmExpressionBuilder {
 }
 
 private class WasmExpressionBuilder private (
-    ctx: FunctionTypeWriterWasmContext,
+    ctx: TypeDefinableWasmContext,
     fctx: WasmFunctionContext
 ) {
   import WasmExpressionBuilder._
@@ -142,6 +143,14 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
 
+      // array
+      case t: IRTrees.ArrayLength => genArrayLength(t)
+      case t: IRTrees.NewArray    => genNewArray(t)
+      case t: IRTrees.ArraySelect => genArraySelect(t)
+      case t: IRTrees.ArrayValue  => genArrayValue(t)
+      case t: IRTrees.Throw =>
+        instrs += UNREACHABLE // Implement Exception Handling (Throwable doesn't compile yet)
+        IRTypes.NothingType
       case _ =>
         println(tree)
         ???
@@ -151,23 +160,24 @@ private class WasmExpressionBuilder private (
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSNewTarget(pos) =>
       // case IRTrees.SelectStatic(tpe) =>
-      // case IRTrees.ArrayLength(pos) =>
+      // case IRTrees.IsInstanceOf(pos) =>
+      // case IRTrees.JSLinkingInfo(pos) =>
+      // case IRTrees.Select(tpe) =>
+      // case IRTrees.Return(pos) =>
+      // case IRTrees.While(pos) =>
+      // case IRTrees.LoadJSConstructor(pos) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
-      // case IRTrees.NewArray(pos) =>
       // case IRTrees.Match(tpe) =>
-      // case IRTrees.Throw(pos) =>
       // case IRTrees.Closure(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.TryFinally(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
-      // case IRTrees.ArraySelect(tpe) =>
       // case IRTrees.WrapAsThrowable(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
       // case IRTrees.Clone(pos) =>
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
-      // case IRTrees.ArrayValue(pos) =>
       // case IRTrees.ForIn(pos) =>
       // case tc: IRTrees.TryCatch => ???
       // case IRTrees.JSImportCall(pos) =>
@@ -238,7 +248,18 @@ private class WasmExpressionBuilder private (
         genTree(t.rhs, t.lhs.tpe)
         instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
-      case assign: IRTrees.ArraySelect     => ??? // array.set
+      case sel: IRTrees.ArraySelect =>
+        val typeName = sel.array.tpe match {
+          case arrTy: IRTypes.ArrayType => WasmArrayTypeName(arrTy)
+          case _ =>
+            throw new IllegalArgumentException(
+              s"ArraySelect.array must be an array type, but has type ${sel.array.tpe}"
+            )
+        }
+        genTreeAuto(sel.array)
+        genTree(sel.index, IRTypes.IntType)
+        genTree(t.rhs, t.lhs.tpe)
+        instrs += ARRAY_SET(TypeIdx(typeName))
       case assign: IRTrees.RecordSelect    => ??? // struct.set
       case assign: IRTrees.JSPrivateSelect => ???
 
@@ -279,7 +300,9 @@ private class WasmExpressionBuilder private (
         // statically resolved call with non-null argument
         val receiverClassName = IRTypes.PrimTypeToBoxedClass(prim)
         genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(t.pos)
+          IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(
+            t.pos
+          )
         )
 
       case IRTypes.ClassType(className) if IRNames.HijackedClasses.contains(className) =>
@@ -297,9 +320,9 @@ private class WasmExpressionBuilder private (
     implicit val pos: Position = t.pos
 
     val receiverClassName = t.receiver.tpe match {
-      case ClassType(className)   => className
-      case IRTypes.AnyType        => IRNames.ObjectClass
-      case _                      => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
+      case ClassType(className) => className
+      case IRTypes.AnyType      => IRNames.ObjectClass
+      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
@@ -461,21 +484,19 @@ private class WasmExpressionBuilder private (
   }
 
   /** Generates a vtable- or itable-based dispatch.
-   *
-   *  Before this code gen, the stack must contain the receiver and the args of
-   *  the target method. In addition, the receiver must be available in the
-   *  local `receiverLocalForDispatch`. The two occurrences of the receiver
-   *  must have the type for dispatch.
-   *
-   *  After this code gen, the stack contains the result. If the result type is
-   *  `NothingType`, `genTableDispatch` leaves the stack in an arbitrary state.
-   *  It is up to the caller to insert an `unreachable` instruction when
-   *  appropriate.
-   */
+    *
+    * Before this code gen, the stack must contain the receiver and the args of the target method.
+    * In addition, the receiver must be available in the local `receiverLocalForDispatch`. The two
+    * occurrences of the receiver must have the type for dispatch.
+    *
+    * After this code gen, the stack contains the result. If the result type is `NothingType`,
+    * `genTableDispatch` leaves the stack in an arbitrary state. It is up to the caller to insert an
+    * `unreachable` instruction when appropriate.
+    */
   def genTableDispatch(
-    receiverClassInfo: WasmContext.WasmClassInfo,
-    methodName: IRNames.MethodName,
-    receiverLocalForDispatch: WasmLocalName
+      receiverClassInfo: WasmContext.WasmClassInfo,
+      methodName: IRNames.MethodName,
+      receiverLocalForDispatch: WasmLocalName
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
@@ -992,7 +1013,9 @@ private class WasmExpressionBuilder private (
             case IRTypes.NothingType =>
               () // unreachable
             case IRTypes.NoType =>
-              throw new AssertionError(s"Found expression of type void in String_+ at ${tree.pos}: $tree")
+              throw new AssertionError(
+                s"Found expression of type void in String_+ at ${tree.pos}: $tree"
+              )
           }
 
         case IRTypes.ClassType(IRNames.BoxedStringClass) =>
@@ -1127,7 +1150,9 @@ private class WasmExpressionBuilder private (
               case IRTypes.UndefType | IRTypes.StringType =>
                 ()
               case PrimTypeWithBoxUnbox(primType) =>
-                instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unboxOrNull(primType.primRef)))
+                instrs += CALL(
+                  WasmImmediate.FuncIdx(WasmFunctionName.unboxOrNull(primType.primRef))
+                )
               case IRTypes.CharType =>
                 val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
                 instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
@@ -1153,11 +1178,11 @@ private class WasmExpressionBuilder private (
   }
 
   /** Unbox the `anyref` on the stack to the target `PrimType`.
-   *
-   *  `targetTpe` must not be `NothingType`, `NullType` nor `NoType`.
-   *
-   *  The type left on the stack is non-nullable.
-   */
+    *
+    * `targetTpe` must not be `NothingType`, `NullType` nor `NoType`.
+    *
+    * The type left on the stack is non-nullable.
+    */
   private def genUnbox(targetTpe: IRTypes.PrimType)(implicit pos: Position): Unit = {
     targetTpe match {
       case IRTypes.UndefType =>
@@ -1358,7 +1383,10 @@ private class WasmExpressionBuilder private (
   }
 
   /** Codegen to box a primitive `char`/`long` into a `CharacterBox`/`LongBox`. */
-  private def genBox(primType: IRTypes.PrimTypeWithRef, boxClassName: IRNames.ClassName): IRTypes.Type = {
+  private def genBox(
+      primType: IRTypes.PrimTypeWithRef,
+      boxClassName: IRNames.ClassName
+  ): IRTypes.Type = {
     // `primTyp` is `i32` for `char` (containing a `u16` value) or `i64` for `long`.
     val primTyp = TypeTransformer.transformType(primType)(ctx)
     val primLocal = WasmLocal(fctx.genSyntheticLocalName(), primTyp, isParameter = false)
@@ -1455,14 +1483,16 @@ private class WasmExpressionBuilder private (
 
   private def genSelectJSNativeMember(tree: IRTrees.SelectJSNativeMember): IRTypes.Type = {
     val info = ctx.getClassInfo(tree.className)
-    val jsNativeLoadSpec = info.jsNativeMembers.getOrElse(tree.member.name, {
-      throw new AssertionError(s"Found $tree for non-existing JS native member at ${tree.pos}")
-    })
+    val jsNativeLoadSpec = info.jsNativeMembers.getOrElse(
+      tree.member.name, {
+        throw new AssertionError(s"Found $tree for non-existing JS native member at ${tree.pos}")
+      }
+    )
     genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
   }
 
-  private def genLoadJSNativeLoadSpec(loadSpec: IRTrees.JSNativeLoadSpec)(
-    implicit pos: Position
+  private def genLoadJSNativeLoadSpec(loadSpec: IRTrees.JSNativeLoadSpec)(implicit
+      pos: Position
   ): IRTypes.Type = {
     import IRTrees.JSNativeLoadSpec._
 
@@ -1577,5 +1607,94 @@ private class WasmExpressionBuilder private (
   private def genJSLinkingInfo(tree: IRTrees.JSLinkingInfo): IRTypes.Type = {
     instrs += CALL(FuncIdx(WasmFunctionName.jsLinkingInfo))
     IRTypes.AnyType
+  }
+
+  // ===============================================================================
+  // array
+  // ===============================================================================
+  private def genArrayLength(t: IRTrees.ArrayLength): IRTypes.Type = {
+    genTreeAuto(t.array)
+    instrs += ARRAY_LEN
+    IRTypes.IntType
+  }
+
+  private def genNewArray(t: IRTrees.NewArray): IRTypes.Type = {
+    if (t.lengths.isEmpty || t.lengths.sizeIs > t.typeRef.dimensions)
+      throw new AssertionError(
+        s"invalid lengths ${t.lengths} for array type ${t.typeRef.displayName}"
+      )
+
+    def genWithDimensions(typeRef: IRTypes.ArrayTypeRef, lengths: List[IRTrees.Tree]): Unit = {
+      val elemTy = extractArrayElemType(t.typeRef)
+      val wasmElemTy = TypeTransformer.transformType(elemTy)(ctx)
+      val arrTyName = WasmTypeName.WasmArrayTypeName(IRTypes.ArrayType(typeRef))
+      ctx.addArrayType(
+        WasmArrayType(
+          arrTyName,
+          WasmStructField(Names.WasmFieldName.arrayField, wasmElemTy, isMutable = true)
+        )
+      )
+      if (lengths.tail.isEmpty) {
+        val zero = Defaults.defaultValue(wasmElemTy)
+        instrs += zero
+      } else {
+        genWithDimensions(
+          IRTypes.ArrayTypeRef(typeRef.base, typeRef.dimensions - 1),
+          lengths.tail
+        )
+      }
+      genTree(lengths.head, IRTypes.IntType)
+      instrs += ARRAY_NEW(TypeIdx(arrTyName))
+    }
+    genWithDimensions(t.typeRef, t.lengths)
+    t.tpe
+  }
+
+  /** For getting element from an array, array.set should be generated by transformation of
+    * `Assign(ArraySelect(...), ...)`
+    */
+  private def genArraySelect(t: IRTrees.ArraySelect): IRTypes.Type = {
+    val arrayType = t.array.tpe match {
+      case t: IRTypes.ArrayType => t
+      case _ =>
+        throw new IllegalArgumentException(
+          s"ArraySelect.array must be an array type, but has type ${t.array.tpe}"
+        )
+    }
+    genTreeAuto(t.array)
+    genTree(t.index, IRTypes.IntType)
+    instrs += ARRAY_GET(TypeIdx(WasmTypeName.WasmArrayTypeName(arrayType)))
+
+    val typeRef = arrayType.arrayTypeRef
+    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
+    else
+      typeRef.base match {
+        case IRTypes.ClassRef(className) => ClassType(className)
+        case IRTypes.PrimRef(tpe)        => tpe
+      }
+  }
+
+  private def genArrayValue(t: IRTrees.ArrayValue): IRTypes.Type = {
+    val irElemTy = extractArrayElemType(t.typeRef)
+    val wasmElemTy = TypeTransformer.transformType(irElemTy)(ctx)
+    val arrTyName = Names.WasmTypeName.WasmArrayTypeName(t.tpe)
+    ctx.addArrayType(
+      WasmArrayType(
+        arrTyName,
+        WasmStructField(Names.WasmFieldName.arrayField, wasmElemTy, isMutable = true)
+      )
+    )
+    t.elems.foreach(genTreeAuto)
+    instrs += ARRAY_NEW_FIXED(TypeIdx(arrTyName), I32(t.elems.size))
+    t.tpe
+  }
+
+  private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
+    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
+    else
+      typeRef.base match {
+        case IRTypes.ClassRef(className) => ClassType(className)
+        case IRTypes.PrimRef(tpe)        => tpe
+      }
   }
 }

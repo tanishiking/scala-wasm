@@ -250,6 +250,7 @@ object Names {
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
     val u16Array = new WasmFieldName("u16Array")
+    val arrayField = new WasmFieldName("array_field")
 
     // Fields of the typeData structs
     object typeData {
@@ -339,7 +340,7 @@ object Names {
       def apply(ty: IRTypes.ArrayType) = {
         val ref = ty.arrayTypeRef
         // TODO: better naming?
-        new WasmArrayTypeName(s"${ref.base.displayName}_${ref.dimensions}")
+        new WasmArrayTypeName(s"array_${ref.base.displayName}_${ref.dimensions}")
       }
       val itables = new WasmArrayTypeName("itable")
       val u16Array = new WasmArrayTypeName("u16Array")

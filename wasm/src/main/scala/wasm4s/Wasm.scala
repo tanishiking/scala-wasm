@@ -128,7 +128,7 @@ object WasmStructType {
 }
 
 case class WasmArrayType(
-    name: WasmTypeName,
+    name: WasmTypeName.WasmArrayTypeName,
     field: WasmStructField
 ) extends WasmGCTypeDefinition
 object WasmArrayType {
@@ -176,6 +176,7 @@ object WasmElement {
   */
 class WasmModule(
     private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
+    private val _arrayTypes: mutable.Set[WasmArrayType] = new mutable.HashSet(),
     private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer(),
     // val importsInOrder: List[WasmNamedModuleField] = Nil,
     private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer(),
@@ -197,6 +198,7 @@ class WasmModule(
 ) {
   def addImport(imprt: WasmImport): Unit = _imports.addOne(imprt)
   def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
+  def addArrayType(typ: WasmArrayType): Unit = _arrayTypes.addOne(typ)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
@@ -206,7 +208,7 @@ class WasmModule(
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array)
+  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array) ++ _arrayTypes.toList
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList

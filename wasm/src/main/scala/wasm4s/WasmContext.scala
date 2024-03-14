@@ -108,7 +108,7 @@ trait ReadOnlyWasmContext {
   }
 }
 
-trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
+trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
 
@@ -163,9 +163,12 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
     addFuncDeclaration(name)
     WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
   }
+
+  def addArrayType(ty: WasmArrayType): Unit =
+    module.addArrayType(ty)
 }
 
-class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
+class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
   private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
@@ -419,7 +422,7 @@ object WasmContext {
       // flags: IRTrees.MemberFlags,
       isAbstract: Boolean
   ) {
-    def toWasmFunctionType()(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType =
+    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmFunctionType =
       TypeTransformer.transformFunctionType(this)
 
   }

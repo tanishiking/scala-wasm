@@ -15,7 +15,7 @@ object TypeTransformer {
   def transformFunctionType(
       // clazz: WasmContext.WasmClassInfo,
       method: WasmContext.WasmFunctionInfo
-  )(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType = {
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionType = {
     // val className = clazz.name
     val name = method.name
     val receiverType = makeReceiverType
@@ -43,41 +43,35 @@ object TypeTransformer {
     t match {
       case IRTypes.AnyType => Types.WasmAnyRef
 
-      case tpe @ IRTypes.ArrayType(IRTypes.ArrayTypeRef(elemType, size)) =>
-        // TODO
-        // val wasmElemTy =
-        //   elemType match {
-        //     case IRTypes.ClassRef(className) =>
-        //       // val gcTypeSym = context.gcTypes.reference(Ident(className.nameString))
-        //       Types.WasmRefType(Types.WasmHeapType.Type(Names.WasmGCTypeName.fromIR(className)))
-        //     case IRTypes.PrimRef(tpe) =>
-        //       transform(tpe)
-        //   }
-        // val field = WasmStructField("TODO", wasmElemTy, isMutable = false)
-        // val arrayTySym =
-        //   context.gcTypes.define(WasmArrayType(Names.WasmGCTypeName.fromIR(tpe), field))
-        // Types.WasmRefType(Types.WasmHeapType.Type(arrayTySym))
-        ???
-      case clazz @ IRTypes.ClassType(className) =>
-        className match {
-          case _ =>
-            val info = ctx.getClassInfo(clazz.className)
-            if (info.isAncestorOfHijackedClass)
-              Types.WasmAnyRef
-            else if (info.isInterface)
-              Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
-            else
-              Types.WasmRefNullType(
-                Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
-              )
-        }
-      case IRTypes.RecordType(fields) => ???
+      case tpe: IRTypes.ArrayType =>
+        Types.WasmRefNullType(
+          Types.WasmHeapType.Type(Names.WasmTypeName.WasmArrayTypeName(tpe))
+        )
+      case IRTypes.ClassType(className) => transformClassByName(className)
+      case IRTypes.RecordType(fields)   => ???
       case IRTypes.StringType | IRTypes.UndefType =>
         Types.WasmRefType.any
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 
-  def transformPrimType(
+  private def transformClassByName(
+      className: IRNames.ClassName
+  )(implicit ctx: ReadOnlyWasmContext): Types.WasmType = {
+    className match {
+      case _ =>
+        val info = ctx.getClassInfo(className)
+        if (info.isAncestorOfHijackedClass)
+          Types.WasmAnyRef
+        else if (info.isInterface)
+          Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+        else
+          Types.WasmRefNullType(
+            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+          )
+    }
+  }
+
+  private def transformPrimType(
       t: IRTypes.PrimTypeWithRef
   ): Types.WasmType =
     t match {
