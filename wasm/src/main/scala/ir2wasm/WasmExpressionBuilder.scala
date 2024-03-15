@@ -697,7 +697,7 @@ private class WasmExpressionBuilder private (
       case CharToInt | ByteToInt | ShortToInt =>
         () // these are no-ops because they are all represented as i32's with the right mathematical value
       case IntToLong =>
-        instrs += I64_EXTEND32_S
+        instrs += I64_EXTEND_I32_S
       case IntToDouble =>
         instrs += F64_CONVERT_I32_S
       case FloatToDouble =>
