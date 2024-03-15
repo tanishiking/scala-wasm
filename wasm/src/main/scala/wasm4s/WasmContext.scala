@@ -244,6 +244,7 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   )
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
 
+  addHelperImport(WasmFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
   addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(WasmAnyRef))

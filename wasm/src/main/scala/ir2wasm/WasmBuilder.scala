@@ -192,7 +192,7 @@ class WasmBuilder {
     // Declare the struct type for the class
     val vtableField = WasmStructField(
       Names.WasmFieldName.vtable,
-      WasmRefNullType(WasmHeapType.Type(vtableType.name)),
+      WasmRefType(WasmHeapType.Type(vtableType.name)),
       isMutable = false
     )
     val fields = clazz.fields.map(transformField)

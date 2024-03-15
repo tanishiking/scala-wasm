@@ -18,8 +18,10 @@ object HelperFunctions {
     genCreateStringFromData()
     genTypeDataName()
     genCreateClassOf()
+    genGetClassOf()
     genArrayTypeData()
     genGetComponentType()
+    genAnyGetClass()
   }
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
@@ -338,6 +340,43 @@ object HelperFunctions {
     fctx.buildAndAddToContext()
   }
 
+  /** `getClassOf: (ref typeData) -> (ref jlClass)`.
+   *
+   *  Initializes the `java.lang.Class` instance associated with the given
+   *  `typeData` if not already done, and returns it.
+   *
+   *  This includes the fast-path and the slow-path to `createClassOf`, for
+   *  call sites that are not performance-sensitive.
+   */
+  private def genGetClassOf()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName.WasmStructTypeName
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.getClassOf,
+      List("typeData" -> typeDataType),
+      List(WasmRefType(WasmHeapType.ClassType))
+    )
+
+    val List(typeDataParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    fctx.block(WasmRefType(WasmHeapType.ClassType)) { alreadyInitializedLabel =>
+      // fast path
+      instrs += LOCAL_GET(typeDataParam)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.classOfIdx)
+      instrs += BR_ON_NON_NULL(alreadyInitializedLabel)
+      // slow path
+      instrs += LOCAL_GET(typeDataParam)
+      instrs += CALL(FuncIdx(WasmFunctionName.createClassOf))
+    } // end bock alreadyInitializedLabel
+
+    fctx.buildAndAddToContext()
+  }
+
   /** `arrayTypeData: (ref typeData), i32 -> (ref typeData)`.
    *
    *  Returns the typeData of an array with `dims` dimensions over the given
@@ -434,22 +473,184 @@ object HelperFunctions {
     val componentTypeDataLocal = fctx.addLocal("componentTypeData", typeDataType)
 
     fctx.block() { nullResultLabel =>
-      fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullClassOfLabel =>
-        // Try and extract non-null component type data
-        instrs += LOCAL_GET(typeDataParam)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.componentTypeIdx)
-        instrs += BR_ON_NULL(nullResultLabel)
-        // fast path
-        instrs += LOCAL_TEE(componentTypeDataLocal)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.classOfIdx)
-        instrs += BR_ON_NON_NULL(nonNullClassOfLabel)
-        // slow path
-        instrs += LOCAL_GET(componentTypeDataLocal)
-        instrs += CALL(FuncIdx(WasmFunctionName.createClassOf))
-      } // end bock nonNullClassOfLabel
+      // Try and extract non-null component type data
+      instrs += LOCAL_GET(typeDataParam)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.componentTypeIdx)
+      instrs += BR_ON_NULL(nullResultLabel)
+      // Get the corresponding classOf
+      instrs += CALL(FuncIdx(WasmFunctionName.getClassOf))
       instrs += RETURN
     } // end block nullResultLabel
     instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `anyGetClass: (ref any) -> (ref null jlClass)`.
+   *
+   *  This is the implementation of `value.getClass()` when `value` can be an
+   *  instance of a hijacked class, i.e., a primitive.
+   *
+   *  For `number`s, the result is based on the actual value, as specified by
+   *  [[https://www.scala-js.org/doc/semantics.html#getclass]].
+   */
+  private def genAnyGetClass()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName.WasmStructTypeName
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.anyGetClass,
+      List("value" -> WasmRefType.any),
+      List(WasmRefNullType(WasmHeapType.ClassType))
+    )
+
+    val List(valueParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val objectTypeIdx = TypeIdx(WasmStructTypeName(IRNames.ObjectClass))
+    val typeDataLocal = fctx.addLocal("typeData", typeDataType)
+    val doubleValueLocal = fctx.addLocal("doubleValue", WasmFloat64)
+    val intValueLocal = fctx.addLocal("intValue", WasmInt32)
+
+    def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
+      GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(IRTypes.ClassRef(className))))
+
+    fctx.block(WasmRefNullType(WasmHeapType.ClassType)) { nonNullClassOfLabel =>
+      fctx.block(typeDataType) { gotTypeDataLabel =>
+        fctx.block(WasmRefType(WasmHeapType.ObjectType)) { ourObjectLabel =>
+          // if value is our object, jump to $ourObject
+          instrs += LOCAL_GET(valueParam)
+          instrs += BR_ON_CAST(
+            CastFlags(false, false),
+            ourObjectLabel,
+            WasmImmediate.HeapType(WasmHeapType.Simple.Any),
+            WasmImmediate.HeapType(WasmHeapType.ObjectType)
+          )
+
+          // switch(jsValueType(value)) { ... }
+          fctx.block() { typeOtherLabel =>
+            fctx.block() { typeUndefinedLabel =>
+              fctx.block() { typeNumberLabel =>
+                fctx.block() { typeStringLabel =>
+                  fctx.block() { typeBooleanLabel =>
+                    instrs += LOCAL_GET(valueParam)
+                    instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
+                    instrs += BR_TABLE(LabelIdxVector(List(
+                      typeBooleanLabel, // 0
+                      typeBooleanLabel, // 1
+                      typeStringLabel, // 2
+                      typeNumberLabel, // 3
+                      typeUndefinedLabel, // 4
+                    )), typeOtherLabel)
+                  }
+
+                  // typeBoolean:
+                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
+                  instrs += BR(gotTypeDataLabel)
+                }
+
+                // typeString:
+                instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
+                instrs += BR(gotTypeDataLabel)
+              }
+
+              /* typeNumber:
+               * For `number`s, the result is based on the actual value, as specified by
+               * [[https://www.scala-js.org/doc/semantics.html#getclass]].
+               */
+
+              // doubleValue := unboxDouble(value)
+              instrs += LOCAL_GET(valueParam)
+              instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.DoubleRef)))
+              instrs += LOCAL_TEE(doubleValueLocal)
+
+              // intValue := doubleValue.toInt
+              instrs += I32_TRUNC_SAT_F64_S
+              instrs += LOCAL_TEE(intValueLocal)
+
+              // if same(intValue.toDouble, doubleValue) -- same bit pattern to avoid +0.0 == -0.0
+              instrs += F64_CONVERT_I32_S
+              instrs += I64_REINTERPRET_F64
+              instrs += LOCAL_GET(doubleValueLocal)
+              instrs += I64_REINTERPRET_F64
+              instrs += I64_EQ
+              fctx.ifThenElse() {
+                // then it is a Byte, a Short, or an Integer
+
+                // if intValue.toByte.toInt == intValue
+                instrs += LOCAL_GET(intValueLocal)
+                instrs += I32_EXTEND8_S
+                instrs += LOCAL_GET(intValueLocal)
+                instrs += I32_EQ
+                fctx.ifThenElse() {
+                  // then it is a Byte
+                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedByteClass)
+                  instrs += BR(gotTypeDataLabel)
+                } {
+                  // else, if intValue.toShort.toInt == intValue
+                  instrs += LOCAL_GET(intValueLocal)
+                  instrs += I32_EXTEND16_S
+                  instrs += LOCAL_GET(intValueLocal)
+                  instrs += I32_EQ
+                  fctx.ifThenElse() {
+                    // then it is a Short
+                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedShortClass)
+                    instrs += BR(gotTypeDataLabel)
+                  } {
+                    // else, it is an Integer
+                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedIntegerClass)
+                    instrs += BR(gotTypeDataLabel)
+                  }
+                }
+              } {
+                // else, it is a Float or a Double
+
+                // if doubleValue.toFloat.toDouble == doubleValue
+                instrs += LOCAL_GET(doubleValueLocal)
+                instrs += F32_DEMOTE_F64
+                instrs += F64_PROMOTE_F32
+                instrs += LOCAL_GET(doubleValueLocal)
+                instrs += F64_EQ
+                fctx.ifThenElse() {
+                  // then it is a Float
+                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
+                  instrs += BR(gotTypeDataLabel)
+                } {
+                  // else, if it is NaN
+                  instrs += LOCAL_GET(doubleValueLocal)
+                  instrs += LOCAL_GET(doubleValueLocal)
+                  instrs += F64_NE
+                  fctx.ifThenElse() {
+                    // then it is a Float
+                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
+                    instrs += BR(gotTypeDataLabel)
+                  } {
+                    // else, it is a Double
+                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedDoubleClass)
+                    instrs += BR(gotTypeDataLabel)
+                  }
+                }
+              }
+            }
+
+            // typeUndefined:
+            instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
+            instrs += BR(gotTypeDataLabel)
+          }
+
+          // typeOther:
+          instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
+          instrs += RETURN
+        }
+
+        instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0))
+      }
+
+      instrs += CALL(FuncIdx(WasmFunctionName.getClassOf))
+    }
 
     fctx.buildAndAddToContext()
   }

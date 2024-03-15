@@ -223,11 +223,19 @@ class WasmTextWriter {
   }
 
   private def writeImmediate(i: WasmImmediate, instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+    def floatString(v: Double): String = {
+      if (v.isNaN()) "nan"
+      else if (v == Double.PositiveInfinity) "inf"
+      else if (v == Double.NegativeInfinity) "-inf"
+      else if (v.equals(-0.0)) "-0.0"
+      else v.toString()
+    }
+
     val str = i match {
       case WasmImmediate.I64(v)          => v.toString()
       case WasmImmediate.I32(v)          => v.toString()
-      case WasmImmediate.F64(v)          => v.toString()
-      case WasmImmediate.F32(v)          => v.toString()
+      case WasmImmediate.F64(v)          => floatString(v)
+      case WasmImmediate.F32(v)          => floatString(v.toDouble)
       case WasmImmediate.LocalIdx(name)  => name.show
       case WasmImmediate.GlobalIdx(name) => name.show
       case WasmImmediate.HeapType(ht) =>
@@ -245,6 +253,8 @@ class WasmTextWriter {
       case WasmImmediate.BlockType.ValueType(optTy) =>
         optTy.fold("") { ty => s"(result ${ty.show})" }
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
+      case WasmImmediate.LabelIdxVector(indices) =>
+        indices.map(i => "$" + i.value).mkString(" ")
       case i: WasmImmediate.CastFlags =>
         throw new UnsupportedOperationException(s"CastFlags $i must be handled directly in the instruction $instr")
       case _ =>

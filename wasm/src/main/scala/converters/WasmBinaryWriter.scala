@@ -278,7 +278,7 @@ final class WasmBinaryWriter(module: WasmModule) {
 
       case FuncIdx(value)        => writeFuncIdx(buf, value)
       case labelIdx: LabelIdx    => writeLabelIdx(buf, labelIdx)
-      case LabelIdxVector(value) => ???
+      case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
       case TypeIdx(value)        => writeTypeIdx(buf, value)
       case TableIdx(value)       => ???
       case TagIdx(value)         => ???

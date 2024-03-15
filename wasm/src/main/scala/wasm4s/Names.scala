@@ -144,6 +144,7 @@ object Names {
     val stringConcat = helper("stringConcat")
     val isString = helper("isString")
 
+    val jsValueType = helper("jsValueType")
     val jsValueHashCode = helper("jsValueHashCode")
 
     val jsGlobalRefGet = helper("jsGlobalRefGet")
@@ -205,8 +206,10 @@ object Names {
     val createStringFromData = helper("createStringFromData")
     val typeDataName = helper("typeDataName")
     val createClassOf = helper("createClassOf")
+    val getClassOf = helper("getClassOf")
     val arrayTypeData = helper("arrayTypeData")
     val getComponentType = helper("getComponentType")
+    val anyGetClass = helper("anyGetClass")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)

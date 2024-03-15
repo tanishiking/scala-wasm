@@ -110,6 +110,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.Apply            => genApply(t)
       case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
       case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
+      case t: IRTrees.GetClass         => genGetClass(t)
       case t: IRTrees.Block            => genBlock(t, expectedType)
       case t: IRTrees.Labeled          => genLabeled(t, expectedType)
       case t: IRTrees.Return           => genReturn(t)
@@ -157,7 +158,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.Closure(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.TryFinally(pos) =>
-      // case IRTrees.GetClass(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.ArraySelect(tpe) =>
@@ -1165,6 +1165,40 @@ private class WasmExpressionBuilder private (
 
   private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
     ctx.getClassInfo(subClass).ancestors.contains(superClass)
+
+  private def genGetClass(tree: IRTrees.GetClass): IRTypes.Type = {
+    /* Unlike in `genApply` or `genStringConcat`, here we make no effort to
+     * optimize known-primitive receivers. In practice, such cases would be
+     * useless.
+     */
+
+    val needHijackedClassDispatch = tree.expr.tpe match {
+      case IRTypes.ClassType(className) =>
+        ctx.getClassInfo(className).isAncestorOfHijackedClass
+      case IRTypes.ArrayType(_) | IRTypes.NothingType | IRTypes.NullType =>
+        false
+      case _ =>
+        true
+    }
+
+    if (!needHijackedClassDispatch) {
+      val typeDataType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
+      val objectTypeIdx = TypeIdx(WasmStructTypeName(IRNames.ObjectClass))
+
+      val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
+
+      genTreeAuto(tree.expr)
+      instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0)) // implicit trap on null
+      instrs += LOCAL_SET(typeDataLocal)
+      genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+    } else {
+      genTree(tree.expr, IRTypes.AnyType)
+      instrs += REF_AS_NOT_NULL
+      instrs += CALL(FuncIdx(WasmFunctionName.anyGetClass))
+    }
+
+    tree.tpe
+  }
 
   private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
     val name = WasmLocalName.fromIR(r.ident.name)
