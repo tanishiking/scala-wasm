@@ -1,18 +1,18 @@
-package testsuite.core.hijackedclassesupcast
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object HijackedClassesUpcastTest {
-  def main(): Unit = { val _ = test() }
+  def main(): Unit = {
+    ok(
+      testBoolean(true) &&
+        testInteger(5) &&
+        testIntegerNull(null) &&
+        testString("foo") &&
+        testStringNull(null) &&
+        testCharacter('A')
+    )
 
-  @JSExportTopLevel("hijackedClassesUpcast")
-  def test(): Boolean = {
-    testBoolean(true) &&
-      testInteger(5) &&
-      testIntegerNull(null) &&
-      testString("foo") &&
-      testStringNull(null) &&
-      testCharacter('A')
   }
 
   def testBoolean(x: Boolean): Boolean = {
@@ -39,11 +39,11 @@ object HijackedClassesUpcastTest {
 
   def testIntegerNull(x: Any): Boolean = {
     !x.isInstanceOf[Int] &&
-      !x.isInstanceOf[java.lang.Integer] &&
-      (x.asInstanceOf[Int] == 0) && {
-        val x2 = x.asInstanceOf[java.lang.Integer]
-        x2 == null
-      }
+    !x.isInstanceOf[java.lang.Integer] &&
+    (x.asInstanceOf[Int] == 0) && {
+      val x2 = x.asInstanceOf[java.lang.Integer]
+      x2 == null
+    }
   }
 
   def testString(x: String): Boolean = {

@@ -28,17 +28,11 @@ object Main {
 
     val result =
       if (mode == "testsuite") {
-        val className = TestSuites.suites.map(_.className)
-        val moduleInitializers = className
-          .map { clazz =>
-            ModuleInitializer.mainMethod(clazz, "main")
-          }
-          .zip(className)
-
         for {
           irFiles <- new CliReader(classpath).irFiles
           _ <- Future.sequence {
-            moduleInitializers.map { case (moduleInitializer, className) =>
+            TestSuites.suites.map { case TestSuites.TestSuite(className, methodName) =>
+              val moduleInitializer = ModuleInitializer.mainMethod(className, methodName)
               Compiler.compileIRFiles(
                 irFiles,
                 List(moduleInitializer),

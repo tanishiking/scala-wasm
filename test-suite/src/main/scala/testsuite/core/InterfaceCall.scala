@@ -1,14 +1,11 @@
-package testsuite.core.interfacecall
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object InterfaceCall {
-  def main(): Unit = { val _ = test() }
-
-  @JSExportTopLevel("interfaceCall")
-  def test(): Boolean = {
+  def main(): Unit = {
     val c = new Concrete()
-    c.plus(c.zero, 1) == 1 && c.minus(1, c.zero) == 1
+    ok(c.plus(c.zero, 1) == 1 && c.minus(1, c.zero) == 1)
   }
 
   class Concrete extends AddSub with Zero {

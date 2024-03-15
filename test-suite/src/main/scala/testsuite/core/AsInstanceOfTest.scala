@@ -1,15 +1,14 @@
-package testsuite.core.asinstanceof
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object AsInstanceOfTest {
-  def main(): Unit = { val _ = test() }
-
-  @JSExportTopLevel("asInstanceOf")
-  def test(): Boolean = {
-    testInt(5) &&
-      testClasses(new Child()) &&
-      testString("foo", true)
+  def main(): Unit = {
+    ok(
+      testInt(5) &&
+        testClasses(new Child()) &&
+        testString("foo", true)
+    )
   }
 
   def testClasses(c: Child): Boolean = {
