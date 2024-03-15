@@ -1,44 +1,43 @@
-package testsuite.core.hijackedclassesdispatch
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object HijackedClassesDispatchTest {
-  def main(): Unit = { val _ = test() }
-
-  @JSExportTopLevel("hijackedClassesDispatch")
-  def test(): Boolean = {
+  def main(): Unit = {
     val obj = new Test()
     val otherObj = new Test()
     val obj2 = new Test2()
     val otherObj2 = new Test2()
-    testToString(true, "true") &&
-      testToString(54321, "54321") &&
-      testToString(obj, "Test class") &&
-      testToString(obj2, "[object]") &&
-      testToString('A', "A") &&
-      testHashCode(true, 1231) &&
-      testHashCode(54321, 54321) &&
-      testHashCode("foo", 101574) &&
-      testHashCode(obj, 123) &&
-      testHashCode(obj2, 42) &&
-      testHashCode('A', 65) &&
-      testIntValue(Int.box(5), 5) &&
-      testIntValue(Long.box(6L), 6) &&
-      testIntValue(Double.box(7.5), 7) &&
-      testIntValue(new CustomNumber(), 789) &&
-      testLength("foo", 3) &&
-      testLength(new CustomCharSeq(), 54) &&
-      testCharAt("foobar", 3, 'b') &&
-      testCharAt(new CustomCharSeq(), 3, 'A') &&
-      testEquals(true, 1, false) &&
-      testEquals(1.0, 1, true) &&
-      testEquals("foo", "foo", true) &&
-      testEquals("foo", "bar", false) &&
-      testEquals(obj, obj2, false) &&
-      testEquals(obj, otherObj, true) &&
-      testEquals(obj2, otherObj2, false) &&
-      testNotifyAll(true) &&
-      testNotifyAll(obj)
+    ok(
+      testToString(true, "true") &&
+        testToString(54321, "54321") &&
+        testToString(obj, "Test class") &&
+        testToString(obj2, "[object]") &&
+        testToString('A', "A") &&
+        testHashCode(true, 1231) &&
+        testHashCode(54321, 54321) &&
+        testHashCode("foo", 101574) &&
+        testHashCode(obj, 123) &&
+        testHashCode(obj2, 42) &&
+        testHashCode('A', 65) &&
+        testIntValue(Int.box(5), 5) &&
+        testIntValue(Long.box(6L), 6) &&
+        testIntValue(Double.box(7.5), 7) &&
+        testIntValue(new CustomNumber(), 789) &&
+        testLength("foo", 3) &&
+        testLength(new CustomCharSeq(), 54) &&
+        testCharAt("foobar", 3, 'b') &&
+        testCharAt(new CustomCharSeq(), 3, 'A') &&
+        testEquals(true, 1, false) &&
+        testEquals(1.0, 1, true) &&
+        testEquals("foo", "foo", true) &&
+        testEquals("foo", "bar", false) &&
+        testEquals(obj, obj2, false) &&
+        testEquals(obj, otherObj, true) &&
+        testEquals(obj2, otherObj2, false) &&
+        testNotifyAll(true) &&
+        testNotifyAll(obj)
+    )
   }
 
   def testToString(x: Any, expected: String): Boolean =

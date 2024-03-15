@@ -1,11 +1,9 @@
-package testsuite.core.add
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object Add {
-  def main(): Unit = { val _ = test() }
-  @JSExportTopLevel("add")
-  def test(): Boolean = {
-    1 + 1 == 2
+  def main(): Unit = {
+    ok(1 + 1 == 2)
   }
 }

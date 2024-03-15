@@ -1,18 +1,17 @@
 package cli
 
 object TestSuites {
-  case class TestSuite(className: String, methodName: String)
+  case class TestSuite(className: String, methodName: String = "main")
   val suites = List(
-    TestSuite("testsuite.core.simple.Simple", "simple"),
-    TestSuite("testsuite.core.add.Add", "add"),
-    TestSuite("testsuite.core.add.Add", "add"),
-    TestSuite("testsuite.core.virtualdispatch.VirtualDispatch", "virtualDispatch"),
-    TestSuite("testsuite.core.interfacecall.InterfaceCall", "interfaceCall"),
-    TestSuite("testsuite.core.asinstanceof.AsInstanceOfTest", "asInstanceOf"),
-    TestSuite("testsuite.core.jsinterop.JSInteropTest", "jsInterop"),
-    TestSuite("testsuite.core.hijackedclassesdispatch.HijackedClassesDispatchTest", "hijackedClassesDispatch"),
-    TestSuite("testsuite.core.hijackedclassesmono.HijackedClassesMonoTest", "hijackedClassesMono"),
-    TestSuite("testsuite.core.hijackedclassesupcast.HijackedClassesUpcastTest", "hijackedClassesUpcast"),
-    TestSuite("testsuite.core.tostring.ToStringTest", "toStringConversions")
+    TestSuite("testsuite.core.Simple"),
+    TestSuite("testsuite.core.Add"),
+    TestSuite("testsuite.core.VirtualDispatch"),
+    TestSuite("testsuite.core.InterfaceCall"),
+    TestSuite("testsuite.core.AsInstanceOfTest"),
+    TestSuite("testsuite.core.JSInteropTest"),
+    TestSuite("testsuite.core.HijackedClassesDispatchTest"),
+    TestSuite("testsuite.core.HijackedClassesMonoTest"),
+    TestSuite("testsuite.core.HijackedClassesUpcastTest"),
+    TestSuite("testsuite.core.ToStringTest")
   )
 }

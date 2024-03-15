@@ -1,11 +1,9 @@
-package testsuite.core.simple
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object Simple {
-  def main(): Unit = { val _ = test() }
-  @JSExportTopLevel("simple")
-  def test(): Boolean = {
-    true
+  def main(): Unit = {
+    ok(true)
   }
 }

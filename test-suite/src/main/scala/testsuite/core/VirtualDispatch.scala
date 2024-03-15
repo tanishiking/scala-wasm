@@ -1,20 +1,19 @@
-package testsuite.core.virtualdispatch
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object VirtualDispatch {
-  def main(): Unit = { val _ = test() }
-
-  @JSExportTopLevel("virtualDispatch")
-  def test(): Boolean = {
+  def main(): Unit = {
     val a = new A
     val b = new B
 
-    testA(a) &&
-    testB(a, isInstanceOfA = true) &&
-    testB(b, isInstanceOfA = false) &&
-    testC(a, isInstanceOfA = true) &&
-    testC(b, isInstanceOfA = false)
+    ok(
+      testA(a) &&
+        testB(a, isInstanceOfA = true) &&
+        testB(b, isInstanceOfA = false) &&
+        testC(a, isInstanceOfA = true) &&
+        testC(b, isInstanceOfA = false)
+    )
   }
 
   def testA(a: A): Boolean = {

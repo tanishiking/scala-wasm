@@ -1,14 +1,13 @@
-package testsuite.core.hijackedclassesmono
+package testsuite.core
 
-import scala.scalajs.js.annotation._
+import testsuite.Assert.ok
 
 object HijackedClassesMonoTest {
-  def main(): Unit = { val _ = test() }
-
-  @JSExportTopLevel("hijackedClassesMono")
-  def test(): Boolean = {
-    testInteger(5) &&
-      testString("foo")
+  def main(): Unit = {
+    ok(
+      testInteger(5) &&
+        testString("foo")
+    )
   }
 
   def testInteger(x: Int): Boolean = {
@@ -17,6 +16,6 @@ object HijackedClassesMonoTest {
 
   def testString(foo: String): Boolean = {
     foo.length() == 3 &&
-      foo.hashCode() == 101574
+    foo.hashCode() == 101574
   }
 }

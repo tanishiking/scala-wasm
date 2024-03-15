@@ -14,6 +14,9 @@ import org.scalajs.ir.ClassKind
 import scala.collection.mutable.LinkedHashMap
 import wasm.ir2wasm.TypeTransformer
 
+import org.scalajs.linker.interface.ModuleInitializer
+import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
+
 trait ReadOnlyWasmContext {
   import WasmContext._
   protected val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
@@ -173,7 +176,11 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
     classInfo.put(name, info)
 
-  private def addHelperImport(name: WasmFunctionName, params: List[WasmType], results: List[WasmType]): Unit = {
+  private def addHelperImport(
+      name: WasmFunctionName,
+      params: List[WasmType],
+      results: List[WasmType]
+  ): Unit = {
     val sig = WasmFunctionSignature(params, results)
     val typ = WasmFunctionType(addFunctionType(sig), sig)
     module.addImport(WasmImport(name.className, name.methodName, WasmImportDesc.Func(name, typ)))
@@ -208,7 +215,11 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.stringConcat, List(WasmRefType.any, WasmRefType.any), List(WasmRefType.any))
+  addHelperImport(
+    WasmFunctionName.stringConcat,
+    List(WasmRefType.any, WasmRefType.any),
+    List(WasmRefType.any)
+  )
   addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
@@ -218,14 +229,26 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   addHelperImport(WasmFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.jsNewArray, Nil, List(WasmAnyRef))
   addHelperImport(WasmFunctionName.jsArrayPush, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsArraySpreadPush, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(
+    WasmFunctionName.jsArraySpreadPush,
+    List(WasmAnyRef, WasmAnyRef),
+    List(WasmAnyRef)
+  )
   addHelperImport(WasmFunctionName.jsNewObject, Nil, List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsObjectPush, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(
+    WasmFunctionName.jsObjectPush,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(WasmAnyRef)
+  )
   addHelperImport(WasmFunctionName.jsSelect, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
   addHelperImport(WasmFunctionName.jsSelectSet, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), Nil)
   addHelperImport(WasmFunctionName.jsNew, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
   addHelperImport(WasmFunctionName.jsFunctionApply, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsMethodApply, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(
+    WasmFunctionName.jsMethodApply,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(WasmAnyRef)
+  )
   addHelperImport(WasmFunctionName.jsDelete, List(WasmAnyRef, WasmAnyRef), Nil)
   addHelperImport(WasmFunctionName.jsIsTruthy, List(WasmAnyRef), List(WasmInt32))
   addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(WasmAnyRef))
@@ -243,7 +266,7 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   def addStartInstructions(instrs: List[WasmInstr]): Unit =
     _startInstructions ++= instrs
 
-  def complete(): Unit = {
+  def complete(moduleInitializers: List[ModuleInitializer]): Unit = {
     val instrs = _startInstructions
 
     for ((str, globalName) <- constantStringGlobals) {
@@ -254,6 +277,21 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
         instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringConcat))
       }
       instrs += WasmInstr.GLOBAL_SET(WasmImmediate.GlobalIdx(globalName))
+    }
+    moduleInitializers.foreach { init =>
+      ModuleInitializerImpl.fromInitializer(init.initializer) match {
+        case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
+          () // TODO: but we don't use args yet in scala-wasm
+        case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
+          val name = className.withSuffix("$")
+          instrs +=
+            WasmInstr.CALL(WasmImmediate.FuncIdx(Names.WasmFunctionName.loadModule(name)))
+          instrs += WasmInstr.REF_AS_NOT_NULL
+          instrs +=
+            WasmInstr.CALL(
+              WasmImmediate.FuncIdx(WasmFunctionName(name, encodedMainMethodName))
+            )
+      }
     }
 
     if (_startInstructions.nonEmpty) {
@@ -381,7 +419,8 @@ object WasmContext {
         .getOrElse(throw new Error(s"Function not found: $name"))
     def resolveWithIdx(name: WasmFunctionName): (Int, WasmFunctionInfo) = {
       val idx = functions.indexWhere(_.name.methodName == name.methodName)
-      if (idx < 0) throw new Error(s"Function not found: $name among ${functions.map(_.name.methodName)}")
+      if (idx < 0)
+        throw new Error(s"Function not found: $name among ${functions.map(_.name.methodName)}")
       else (idx, functions(idx))
     }
   }
