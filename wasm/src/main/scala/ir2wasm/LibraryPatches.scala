@@ -17,31 +17,22 @@ import wasm.utils.MemClassDefIRFile
 /** Patches that we apply to the standard library classes to make them wasm-friendly. */
 object LibraryPatches {
   def patchIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Seq[IRFile]] = {
-    val derivedCharBox = new java.util.concurrent.atomic.AtomicReference[IRFile](null)
-    val derivedLongBox = new java.util.concurrent.atomic.AtomicReference[IRFile](null)
-
-    val patched1: Future[Seq[IRFile]] = Future.traverse(irFiles) { irFile =>
+    val derivedIRFiles: Future[Seq[Option[IRFile]]] = Future.traverse(irFiles) { irFile =>
       val irFileImpl = IRFileImpl.fromIRFile(irFile)
       irFileImpl.entryPointsInfo.flatMap { entryPointsInfo =>
         entryPointsInfo.className match {
           case BoxedCharacterClass | BoxedLongClass =>
             irFileImpl.tree.map { classDef =>
-              val derivedBox = MemClassDefIRFile(deriveBoxClass(classDef))
-              if (classDef.className == BoxedCharacterClass)
-                derivedCharBox.set(derivedBox)
-              else
-                derivedLongBox.set(derivedBox)
-              irFile
+              Some(MemClassDefIRFile(deriveBoxClass(classDef)))
             }
           case _ =>
-            Future.successful(irFile)
+            Future.successful(None)
         }
       }
     }
 
-    patched1.map { irFiles1 =>
-      val extra = List(derivedCharBox.get(), derivedLongBox.get())
-      extra ++ irFiles1
+    derivedIRFiles.map { derived =>
+      derived.flatten ++ irFiles
     }
   }
 
