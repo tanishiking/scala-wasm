@@ -23,23 +23,18 @@ object LibraryPatches {
     val patched1: Future[Seq[IRFile]] = Future.traverse(irFiles) { irFile =>
       val irFileImpl = IRFileImpl.fromIRFile(irFile)
       irFileImpl.entryPointsInfo.flatMap { entryPointsInfo =>
-        MethodPatches.get(entryPointsInfo.className) match {
-          case None =>
-            entryPointsInfo.className match {
-              case BoxedCharacterClass | BoxedLongClass =>
-                irFileImpl.tree.map { classDef =>
-                  val derivedBox = MemClassDefIRFile(deriveBoxClass(classDef))
-                  if (classDef.className == BoxedCharacterClass)
-                    derivedCharBox.set(derivedBox)
-                  else
-                    derivedLongBox.set(derivedBox)
-                  irFile
-                }
-              case _ =>
-                Future.successful(irFile)
+        entryPointsInfo.className match {
+          case BoxedCharacterClass | BoxedLongClass =>
+            irFileImpl.tree.map { classDef =>
+              val derivedBox = MemClassDefIRFile(deriveBoxClass(classDef))
+              if (classDef.className == BoxedCharacterClass)
+                derivedCharBox.set(derivedBox)
+              else
+                derivedLongBox.set(derivedBox)
+              irFile
             }
-          case Some(patches) =>
-            irFileImpl.tree.map(classDef => MemClassDefIRFile(applyMethodPatches(classDef, patches)))
+          case _ =>
+            Future.successful(irFile)
         }
       }
     }
@@ -79,61 +74,6 @@ object LibraryPatches {
     )(EOH)
 
     MemClassDefIRFile(classDef)
-  }
-
-  private val MethodPatches: Map[ClassName, List[MethodDef]] = {
-    Map(
-      ObjectClass -> List(
-        // TODO Remove this patch when we support getClass() and full string concatenation
-        MethodDef(
-          EMF, m("toString", Nil, T), NON,
-          Nil, ClassType(BoxedStringClass),
-          Some(StringLiteral("[object]"))
-        )(EOH, NOV)
-      ),
-
-      BoxedCharacterClass.withSuffix("$") -> List(
-        MethodDef(
-          EMF, m("toString", List(C), T), NON,
-          List(paramDef("c", CharType)), ClassType(BoxedStringClass),
-          Some(BinaryOp(BinaryOp.String_+, StringLiteral(""), VarRef("c")(CharType)))
-        )(EOH, NOV)
-      ),
-
-      BoxedIntegerClass.withSuffix("$") -> List(
-        MethodDef(
-          EMF, m("toHexString", List(I), T), NON,
-          List(paramDef("i", IntType)), ClassType(BoxedStringClass),
-          Some(
-            // TODO Write a compliant implementation
-            BinaryOp(BinaryOp.String_+, StringLiteral(""), VarRef("i")(IntType))
-          )
-        )(EOH, NOV)
-      )
-    )
-  }
-
-  private def applyMethodPatches(classDef: ClassDef, patches: List[MethodDef]): ClassDef = {
-    val patchesMap = patches.map(m => m.name.name -> m).toMap
-    val patchedMethods = classDef.methods.map(m => patchesMap.getOrElse(m.name.name, m))
-
-    import classDef._
-    ClassDef(
-      name,
-      originalName,
-      kind,
-      jsClassCaptures,
-      superClass,
-      interfaces,
-      jsSuperClass,
-      jsNativeLoadSpec,
-      fields,
-      patchedMethods,
-      jsConstructor,
-      jsMethodProps,
-      jsNativeMembers,
-      topLevelExportDefs
-    )(EOH)(pos)
   }
 
   /** Generates the accompanying Box class of `Character` or `Long`.

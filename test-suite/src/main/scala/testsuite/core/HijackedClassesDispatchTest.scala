@@ -12,7 +12,7 @@ object HijackedClassesDispatchTest {
       testToString(true, "true") &&
         testToString(54321, "54321") &&
         testToString(obj, "Test class") &&
-        testToString(obj2, "[object]") &&
+        testToStringStartsWith(obj2, "testsuite.core.HijackedClassesDispatchTest$Test2@") &&
         testToString('A', "A") &&
         testHashCode(true, 1231) &&
         testHashCode(54321, 54321) &&
@@ -42,6 +42,9 @@ object HijackedClassesDispatchTest {
 
   def testToString(x: Any, expected: String): Boolean =
     x.toString() == expected
+
+  def testToStringStartsWith(x: Any, expectedPrefix: String): Boolean =
+    x.toString().startsWith(expectedPrefix)
 
   def testHashCode(x: Any, expected: Int): Boolean =
     x.hashCode() == expected
