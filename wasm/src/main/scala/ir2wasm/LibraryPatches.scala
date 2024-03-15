@@ -40,40 +40,9 @@ object LibraryPatches {
     }
 
     patched1.map { irFiles1 =>
-      val extra = List(FloatingPointBitsIRFile, derivedCharBox.get(), derivedLongBox.get())
+      val extra = List(derivedCharBox.get(), derivedLongBox.get())
       extra ++ irFiles1
     }
-  }
-
-  private val FloatingPointBitsIRFile: IRFile = {
-    val classDef = ClassDef(
-      ClassIdent("java.lang.FloatingPointBits$"),
-      NON,
-      ModuleClass,
-      None,
-      Some(ClassIdent(ObjectClass)),
-      Nil,
-      None,
-      None,
-      Nil,
-      List(
-        trivialCtor("java.lang.FloatingPointBits$"),
-        MethodDef(
-          EMF, MethodIdent(m("numberHashCode", List(D), I)), NON,
-          List(paramDef("value", DoubleType)), IntType,
-          Some(Block(
-            // TODO This is not a compliant but it's good enough for now
-            UnaryOp(UnaryOp.DoubleToInt, VarRef("value")(DoubleType))
-          ))
-        )(EOH, NOV)
-      ),
-      None,
-      Nil,
-      Nil,
-      Nil
-    )(EOH)
-
-    MemClassDefIRFile(classDef)
   }
 
   /** Generates the accompanying Box class of `Character` or `Long`.
