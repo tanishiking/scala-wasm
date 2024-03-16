@@ -397,72 +397,27 @@ class WasmBuilder {
       exportDef: IRTrees.TopLevelMethodExportDef
   )(implicit ctx: WasmContext): Unit = {
     val method = exportDef.methodDef
-    val methodName = method.name match {
-      case lit: IRTrees.StringLiteral => lit
-      case _                          => ???
-    }
+    val exportedName = exportDef.topLevelExportName
 
-    // hack
-    // export top[moduleID="main"] static def "foo"(arg: any): any = {
-    //   val prep0: int = arg.asInstanceOf[int];
-    //   mod:sample.Main$.foo;I;I(prep0)
-    // }
-    // ->
-    // export top[moduleID="main"] static def "foo"(arg: int): int = {
-    //   val prep0: int = arg;
-    //   mod:sample.Main$.foo;I;I(arg)
-    // }
-    val paramTypeMap = mutable.Map[IRTrees.LocalIdent, IRTypes.Type]()
-    val nameMap = mutable.Map[IRTrees.LocalIdent, IRTrees.LocalIdent]()
-    val resultType: IRTypes.Type = method.body.tpe
-    def collectMapping(t: IRTrees.Tree): Unit = {
-      t match {
-        case IRTrees.Block(stats) => stats.foreach(collectMapping)
-        case IRTrees.VarDef(lhs, _, _, _, IRTrees.AsInstanceOf(IRTrees.VarRef(ident), tpe)) =>
-          paramTypeMap.update(ident, tpe) // arg -> int
-          nameMap.update(lhs, ident) // prep0 -> arg
-        case _ =>
-      }
-    }
-    def mutateTree(t: IRTrees.Tree): IRTrees.Tree = {
-      t match {
-        case b: IRTrees.Block => IRTrees.Block(b.stats.map(mutateTree))(b.pos)
-        case vdef @ IRTrees.VarDef(_, _, _, _, IRTrees.AsInstanceOf(vref, tpe)) =>
-          vdef.copy(rhs = vref)(vdef.pos)
-        case app: IRTrees.Apply =>
-          app.copy(args = app.args.map(a => mutateTree(a)))(app.tpe)(app.pos)
-        case vref: IRTrees.VarRef =>
-          val newName = nameMap.getOrElse(vref.ident, throw new Error("Invalid name"))
-          vref.copy(ident = newName)(vref.tpe)(vref.pos)
-        case t => t
-      }
-    }
-
-    collectMapping(method.body)
-    val newBody = mutateTree(method.body)
-    val newParams = method.args.map { arg =>
-      paramTypeMap.get(arg.name) match {
-        case None         => arg
-        case Some(newTpe) => arg.copy(ptpe = newTpe)(arg.pos)
-      }
+    if (method.restParam.isDefined) {
+      throw new UnsupportedOperationException(
+        s"Top-level export with ...rest param is unsupported at ${method.pos}: $method"
+      )
     }
 
     implicit val fctx = WasmFunctionContext(
       enclosingClassName = None,
-      Names.WasmFunctionName(methodName),
+      Names.WasmFunctionName.forExport(exportedName),
       receiverTyp = None,
-      newParams,
-      resultType
+      method.args,
+      IRTypes.AnyType
     )
 
-    WasmExpressionBuilder.generateIRBody(newBody, resultType)
+    WasmExpressionBuilder.generateIRBody(method.body, IRTypes.AnyType)
 
     val func = fctx.buildAndAddToContext()
 
-    val exprt = new WasmExport.Function(
-      methodName.value,
-      func
-    )
+    val exprt = new WasmExport.Function(exportedName, func)
     ctx.addExport(exprt)
   }
 

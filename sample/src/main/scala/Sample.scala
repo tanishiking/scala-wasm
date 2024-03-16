@@ -12,8 +12,7 @@ import scala.scalajs.js.annotation._
 //
 object Main {
   @JSExportTopLevel("test")
-  def test() = {
-    val i = 4
+  def test(i: Int): Boolean = {
     val loopFib = fib(new LoopFib {}, i)
     val recFib = fib(new RecFib {}, i)
     val tailrecFib = fib(new TailRecFib {}, i)

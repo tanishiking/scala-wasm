@@ -103,7 +103,9 @@ object Names {
   object WasmFunctionName {
     def apply(clazz: IRNames.ClassName, method: IRNames.MethodName): WasmFunctionName =
       new WasmFunctionName(clazz.nameString, method.nameString)
-    def apply(lit: IRTrees.StringLiteral): WasmFunctionName = new WasmFunctionName(lit.value, "")
+
+    def forExport(exportedName: String): WasmFunctionName =
+      new WasmFunctionName(exportedName, "")
 
     // Adding prefix __ to avoid name clashes with user code.
     // It should be safe not to add prefix to the method name
