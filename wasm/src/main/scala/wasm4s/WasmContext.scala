@@ -70,7 +70,7 @@ trait ReadOnlyWasmContext {
   ): List[WasmFunctionInfo] = {
     collectMethods(name, includeAbstractMethods)
       .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
-        acc.indexWhere(_.name.methodName == m.name.methodName) match {
+        acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
           case i if i < 0 => acc :+ m
           case i          => acc.updated(i, m)
         }
@@ -197,7 +197,7 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
   ): Unit = {
     val sig = WasmFunctionSignature(params, results)
     val typ = WasmFunctionType(addFunctionType(sig), sig)
-    module.addImport(WasmImport(name.className, name.methodName, WasmImportDesc.Func(name, typ)))
+    module.addImport(WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typ)))
   }
 
   addGCType(WasmStructType.typeData)
@@ -312,7 +312,11 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
           instrs += WasmInstr.REF_AS_NOT_NULL
           instrs +=
             WasmInstr.CALL(
-              WasmImmediate.FuncIdx(WasmFunctionName(name, encodedMainMethodName))
+              WasmImmediate.FuncIdx(WasmFunctionName(
+                IRTrees.MemberNamespace.Public,
+                name,
+                encodedMainMethodName
+              ))
             )
       }
     }
@@ -384,8 +388,8 @@ object WasmContext {
     def methods: List[WasmFunctionInfo] = _methods
 
     def maybeAddAbstractMethod(methodName: IRNames.MethodName, ctx: WasmContext): Unit = {
-      if (!methods.exists(_.name.methodName == methodName.nameString)) {
-        val wasmName = WasmFunctionName(name, methodName)
+      if (!methods.exists(_.name.simpleName == methodName.nameString)) {
+        val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, name, methodName)
         val argTypes = methodName.paramTypeRefs.map(ctx.inferTypeFromTypeRef(_))
         val resultType = ctx.inferTypeFromTypeRef(methodName.resultTypeRef)
         _methods = _methods :+ WasmFunctionInfo(wasmName, argTypes, resultType, isAbstract = true)
@@ -393,7 +397,7 @@ object WasmContext {
     }
 
     def getMethodInfo(methodName: IRNames.MethodName): WasmFunctionInfo = {
-      methods.find(_.name.methodName == methodName.nameString).getOrElse {
+      methods.find(_.name.simpleName == methodName.nameString).getOrElse {
         throw new IllegalArgumentException(
           s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
         )
@@ -440,7 +444,7 @@ object WasmContext {
       val itableIdx =
         itables.lastIndexWhere { classInfo =>
           val methodIdx = classInfo.methods.lastIndexWhere { func =>
-            func.name.methodName == name.nameString
+            func.name.simpleName == name.nameString
           }
           if (methodIdx >= 0) {
             foundMethodIdx = methodIdx
@@ -455,12 +459,12 @@ object WasmContext {
   case class WasmVTable(val functions: List[WasmFunctionInfo]) {
     def resolve(name: WasmFunctionName): WasmFunctionInfo =
       functions
-        .find(_.name.methodName == name.methodName)
+        .find(_.name.simpleName == name.simpleName)
         .getOrElse(throw new Error(s"Function not found: $name"))
     def resolveWithIdx(name: WasmFunctionName): (Int, WasmFunctionInfo) = {
-      val idx = functions.indexWhere(_.name.methodName == name.methodName)
+      val idx = functions.indexWhere(_.name.simpleName == name.simpleName)
       if (idx < 0)
-        throw new Error(s"Function not found: $name among ${functions.map(_.name.methodName)}")
+        throw new Error(s"Function not found: $name among ${functions.map(_.name.simpleName)}")
       else (idx, functions(idx))
     }
   }

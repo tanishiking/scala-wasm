@@ -230,7 +230,13 @@ class WasmBuilder {
       .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
     val typeName = WasmTypeName.WasmStructTypeName(clazz.name.name)
     val globalInstanceName = WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name)
-    val ctorName = WasmFunctionName(clazz.name.name, ctor.name.name)
+
+    val ctorName = WasmFunctionName(
+      ctor.flags.namespace,
+      clazz.name.name,
+      ctor.name.name
+    )
+
     val body = List(
       // global.get $module_name
       // ref.if_null
@@ -355,7 +361,7 @@ class WasmBuilder {
       Names.WasmTypeName.WasmITableTypeName(className),
       classInfo.methods.map { m =>
         WasmStructField(
-          Names.WasmFieldName(m.name.methodName),
+          Names.WasmFieldName(m.name.simpleName),
           WasmRefNullType(WasmHeapType.Func(m.toWasmFunctionType().name)),
           isMutable = false
         )
@@ -425,7 +431,11 @@ class WasmBuilder {
       clazz: LinkedClass,
       method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
-    val functionName = Names.WasmFunctionName(clazz.name.name, method.name.name)
+    val functionName = Names.WasmFunctionName(
+      method.flags.namespace,
+      clazz.name.name,
+      method.name.name
+    )
 
     // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
     // Otherwise, vtable can't be a subtype of the supertype's subtype

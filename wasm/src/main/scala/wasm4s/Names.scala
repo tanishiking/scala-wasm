@@ -97,23 +97,46 @@ object Names {
   // }
 
   case class WasmFunctionName private (
-      val className: String,
-      val methodName: String
-  ) extends WasmName(s"$className#$methodName")
+      val namespace: String,
+      val simpleName: String
+  ) extends WasmName(namespace + "#" + simpleName)
+
   object WasmFunctionName {
-    def apply(clazz: IRNames.ClassName, method: IRNames.MethodName): WasmFunctionName =
-      new WasmFunctionName(clazz.nameString, method.nameString)
+    def apply(
+      namespace: IRTrees.MemberNamespace,
+      clazz: IRNames.ClassName,
+      method: IRNames.MethodName
+    ): WasmFunctionName = {
+      new WasmFunctionName(
+        namespaceString(namespace) + "#" + clazz.nameString,
+        method.nameString
+      )
+    }
+
+    private def namespaceString(namespace: IRTrees.MemberNamespace): String = {
+      import IRTrees.MemberNamespace._
+
+      // These strings are the same ones that the JS back-end uses
+      namespace match {
+        case Public            => "f"
+        case Private           => "p"
+        case PublicStatic      => "s"
+        case PrivateStatic     => "ps"
+        case Constructor       => "ct"
+        case StaticConstructor => "sct"
+      }
+    }
 
     def forExport(exportedName: String): WasmFunctionName =
-      new WasmFunctionName(exportedName, "")
+      new WasmFunctionName("export", exportedName)
 
     // Adding prefix __ to avoid name clashes with user code.
     // It should be safe not to add prefix to the method name
     // since loadModule is a static method and it's not registered in the vtable.
     def loadModule(clazz: IRNames.ClassName): WasmFunctionName =
-      new WasmFunctionName(s"__${clazz.nameString}", "loadModule")
+      new WasmFunctionName("loadModule", clazz.nameString)
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
-      new WasmFunctionName(s"__${clazz.nameString}", "newDefault")
+      new WasmFunctionName("new", clazz.nameString)
 
     val start = new WasmFunctionName("start", "start")
 

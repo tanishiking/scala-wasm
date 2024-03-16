@@ -47,7 +47,7 @@ object Preprocessor {
       method: IRTrees.MethodDef
   ): WasmFunctionInfo = {
     WasmFunctionInfo(
-      Names.WasmFunctionName(clazz.name.name, method.name.name),
+      Names.WasmFunctionName(method.flags.namespace, clazz.name.name, method.name.name),
       method.args.map(_.ptpe),
       method.resultType,
       isAbstract = method.body.isEmpty
