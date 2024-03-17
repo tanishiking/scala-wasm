@@ -43,7 +43,7 @@ lazy val wasm = project
     version := "0.1.0-SNAPSHOT",
     scalaVersion := scalaV,
     libraryDependencies ++= Seq(
-      "org.scala-js" %%% "scalajs-linker" % "1.15.0"
+      "org.scala-js" %%% "scalajs-linker" % "1.16.0"
     ),
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= {

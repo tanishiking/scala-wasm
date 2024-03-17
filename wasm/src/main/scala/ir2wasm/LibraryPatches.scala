@@ -179,16 +179,16 @@ object LibraryPatches {
     val primType = BoxedClassToPrimType(className).asInstanceOf[PrimTypeWithRef]
     val derivedClassType = ClassType(derivedClassName)
 
-    val fieldName = FieldName("value")
+    val fieldName = FieldName(derivedClassName, SimpleFieldName("value"))
     val fieldIdent = FieldIdent(fieldName)
 
     val derivedFields: List[FieldDef] = List(
       FieldDef(EMF, fieldIdent, NON, primType)
     )
 
-    val selectField = Select(This()(derivedClassType), derivedClassName, fieldIdent)(primType)
+    val selectField = Select(This()(derivedClassType), fieldIdent)(primType)
 
-    val ctorParamDef = ParamDef(LocalIdent(fieldName.toLocalName), NON, primType, mutable = false)
+    val ctorParamDef = ParamDef(LocalIdent(fieldName.simpleName.toLocalName), NON, primType, mutable = false)
     val derivedCtor = MethodDef(
       EMF.withNamespace(MemberNamespace.Constructor),
       MethodIdent(MethodName.constructor(List(primType.primRef))),

@@ -458,6 +458,7 @@ class WasmBuilder {
     }
 
     implicit val fctx = WasmFunctionContext(
+      enclosingClassName = None,
       Names.WasmFunctionName(methodName),
       receiverTyp = None,
       newParams,
@@ -494,6 +495,7 @@ class WasmBuilder {
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(
+      Some(clazz.className),
       functionName,
       Some(receiverTyp),
       method.args,

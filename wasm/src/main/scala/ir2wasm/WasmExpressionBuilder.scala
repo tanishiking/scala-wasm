@@ -217,25 +217,25 @@ private class WasmExpressionBuilder private (
   private def genAssign(t: IRTrees.Assign): IRTypes.Type = {
     t.lhs match {
       case sel: IRTrees.Select =>
-        val className = WasmStructTypeName(sel.className)
+        val className = sel.field.name.className
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
 
         // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
         genTreeAuto(sel.qualifier)
 
         genTree(t.rhs, t.lhs.tpe)
-        instrs += STRUCT_SET(TypeIdx(className), idx)
+        instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
       case sel: IRTrees.SelectStatic => // OK?
-        val className = WasmStructTypeName(sel.className)
+        val className = sel.field.name.className
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
         instrs += GLOBAL_GET(
-          GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(sel.className))
+          GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(className))
         )
         genTree(t.rhs, t.lhs.tpe)
-        instrs += STRUCT_SET(TypeIdx(className), idx)
+        instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
       case assign: IRTrees.ArraySelect     => ??? // array.set
       case assign: IRTrees.RecordSelect    => ??? // struct.set
@@ -653,20 +653,23 @@ private class WasmExpressionBuilder private (
   }
 
   private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
-    val className = WasmStructTypeName(sel.className)
+    val className = sel.field.name.className
     val fieldName = WasmFieldName(sel.field.name)
-    val idx = ctx.getClassInfo(sel.className).getFieldIdx(fieldName)
+    val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
 
     // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
     genTreeAuto(sel.qualifier)
 
-    instrs += STRUCT_GET(TypeIdx(className), idx)
+    instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(className)), idx)
     sel.tpe
   }
 
   private def genStoreModule(t: IRTrees.StoreModule): IRTypes.Type = {
-    val name = WasmGlobalName.WasmModuleInstanceName.fromIR(t.className)
-    genTree(t.value, IRTypes.ClassType(t.className))
+    val className = fctx.enclosingClassName.getOrElse {
+      throw new AssertionError(s"Cannot emit $t at ${t.pos} without enclosing class name")
+    }
+    val name = WasmGlobalName.WasmModuleInstanceName.fromIR(className)
+    genTreeAuto(IRTrees.This()(IRTypes.ClassType(className))(t.pos))
     instrs += GLOBAL_SET(GlobalIdx(name))
     IRTypes.NoType
   }
