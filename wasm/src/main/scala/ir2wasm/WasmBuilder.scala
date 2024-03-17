@@ -441,18 +441,20 @@ class WasmBuilder {
     // Otherwise, vtable can't be a subtype of the supertype's subtype
     // Constructor can use the exact type because it won't be registered to vtables.
     val receiverTyp =
-      if (clazz.kind == ClassKind.HijackedClass)
-        transformType(IRTypes.BoxedClassToPrimType(clazz.name.name))
+      if (method.flags.namespace.isStatic)
+        None
+      else if (clazz.kind == ClassKind.HijackedClass)
+        Some(transformType(IRTypes.BoxedClassToPrimType(clazz.name.name)))
       else if (method.flags.namespace.isConstructor)
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
+        Some(WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name))))
       else
-        WasmRefType.any
+        Some(WasmRefType.any)
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(
       Some(clazz.className),
       functionName,
-      Some(receiverTyp),
+      receiverTyp,
       method.args,
       method.resultType
     )

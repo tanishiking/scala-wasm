@@ -108,6 +108,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.This             => genThis(t)
       case t: IRTrees.ApplyStatically  => genApplyStatically(t)
       case t: IRTrees.Apply            => genApply(t)
+      case t: IRTrees.ApplyStatic      => genApplyStatic(t)
       case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
       case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
       case t: IRTrees.GetClass         => genGetClass(t)
@@ -597,6 +598,16 @@ private class WasmExpressionBuilder private (
           instrs += UNREACHABLE
         t.tpe
     }
+  }
+
+  private def genApplyStatic(tree: IRTrees.ApplyStatic): IRTypes.Type = {
+    genArgs(tree.args, tree.method.name)
+    val namespace = IRTrees.MemberNamespace.forStaticCall(tree.flags)
+    val funcName = Names.WasmFunctionName(namespace, tree.className, tree.method.name)
+    instrs += CALL(FuncIdx(funcName))
+    if (tree.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
+    tree.tpe
   }
 
   private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {

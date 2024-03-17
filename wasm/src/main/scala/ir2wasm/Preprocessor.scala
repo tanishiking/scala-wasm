@@ -22,9 +22,9 @@ object Preprocessor {
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    val infos = clazz.methods.filterNot(_.flags.namespace.isConstructor).map { method =>
-      makeWasmFunctionInfo(clazz, method)
-    }
+    val infos = clazz.methods
+      .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
+      .map(method => makeWasmFunctionInfo(clazz, method))
 
     ctx.putClassInfo(
       clazz.name.name,

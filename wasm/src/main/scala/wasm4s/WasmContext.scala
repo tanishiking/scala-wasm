@@ -306,15 +306,11 @@ class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext 
         case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
           () // TODO: but we don't use args yet in scala-wasm
         case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
-          val name = className.withSuffix("$")
-          instrs +=
-            WasmInstr.CALL(WasmImmediate.FuncIdx(Names.WasmFunctionName.loadModule(name)))
-          instrs += WasmInstr.REF_AS_NOT_NULL
           instrs +=
             WasmInstr.CALL(
               WasmImmediate.FuncIdx(WasmFunctionName(
-                IRTrees.MemberNamespace.Public,
-                name,
+                IRTrees.MemberNamespace.PublicStatic,
+                className,
                 encodedMainMethodName
               ))
             )
