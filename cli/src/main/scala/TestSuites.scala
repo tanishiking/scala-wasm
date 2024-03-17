@@ -17,6 +17,7 @@ object TestSuites {
     TestSuite("testsuite.core.HijackedClassesMonoTest"),
     TestSuite("testsuite.core.HijackedClassesUpcastTest"),
     TestSuite("testsuite.core.StaticMethodTest"),
+    TestSuite("testsuite.core.ThrowablesTest"),
     TestSuite("testsuite.core.ToStringTest")
   )
 }
