@@ -63,8 +63,14 @@ object Compiler {
     } yield {
       val onlyModule = moduleSet.modules.head
 
-      // Sort for stability
-      val sortedClasses = onlyModule.classDefs.sortBy(_.className)
+      /* Sort by ancestor count so that superclasses always appear before
+       * subclasses, then tie-break by name for stability.
+       */
+      val sortedClasses = onlyModule.classDefs.sortWith { (a, b) =>
+        val cmp = a.ancestors.sizeCompare(b.ancestors)
+        if (cmp != 0) cmp < 0
+        else a.className.compareTo(b.className) < 0
+      }
 
       sortedClasses.foreach(showLinkedClass(_))
 

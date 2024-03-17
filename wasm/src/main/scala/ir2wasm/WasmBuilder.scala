@@ -143,6 +143,7 @@ class WasmBuilder {
 
     val className = clazz.name.name
     val typeRef = IRTypes.ClassRef(className)
+    val classInfo = ctx.getClassInfo(className)
 
     // generate vtable type, this should be done for both abstract and concrete classes
     val vtable = ctx.calculateVtableType(className)
@@ -185,7 +186,7 @@ class WasmBuilder {
       WasmRefType(WasmHeapType.Type(vtableType.name)),
       isMutable = false
     )
-    val fields = clazz.fields.map(transformField)
+    val fields = classInfo.allFieldDefs.map(transformField)
     val structType = WasmStructType(
       Names.WasmTypeName.WasmStructTypeName(clazz.name.name),
       vtableField +: WasmStructField.itables +: fields,
@@ -195,7 +196,7 @@ class WasmBuilder {
 
     // Define the `new` function, unless the class is abstract
     if (!isAbstractClass)
-      genStructNewDefault(clazz, Some(gVtable), gItable)
+      genStructNewDefault(classInfo, Some(gVtable), gItable)
 
     structType
   }
@@ -269,15 +270,17 @@ class WasmBuilder {
   }
 
   private def genStructNewDefault(
-      clazz: LinkedClass,
+      classInfo: WasmClassInfo,
       vtable: Option[WasmGlobal],
       itable: Option[WasmGlobal]
   )(implicit ctx: WasmContext): Unit = {
+    val className = classInfo.name
+
     val getVTable = vtable match {
       case None =>
         REF_NULL(
           WasmImmediate.HeapType(
-            WasmHeapType.Type(WasmTypeName.WasmVTableTypeName(clazz.name.name))
+            WasmHeapType.Type(WasmTypeName.WasmVTableTypeName(className))
           )
         )
       case Some(v) => GLOBAL_GET(WasmImmediate.GlobalIdx(v.name))
@@ -288,19 +291,19 @@ class WasmBuilder {
     }
     val defaultFields =
       getVTable +: getITable +:
-        clazz.fields.collect { case f: IRTrees.FieldDef =>
+        classInfo.allFieldDefs.map { f =>
           val ty = transformType(f.ftpe)
           Defaults.defaultValue(ty)
         }
 
-    val className = WasmTypeName.WasmStructTypeName(clazz.name.name)
+    val structName = WasmTypeName.WasmStructTypeName(className)
     val body =
-      defaultFields :+ STRUCT_NEW(WasmImmediate.TypeIdx(className))
+      defaultFields :+ STRUCT_NEW(WasmImmediate.TypeIdx(structName))
     val sig =
-      WasmFunctionSignature(Nil, List(WasmRefType(WasmHeapType.Type(className))))
+      WasmFunctionSignature(Nil, List(WasmRefType(WasmHeapType.Type(structName))))
     val newDefaultTypeName = ctx.addFunctionType(sig)
     val func = WasmFunction(
-      WasmFunctionName.newDefault(clazz.name.name),
+      WasmFunctionName.newDefault(className),
       WasmFunctionType(newDefaultTypeName, sig),
       Nil,
       WasmExpr(body)
@@ -467,17 +470,10 @@ class WasmBuilder {
   }
 
   private def transformField(
-      field: IRTrees.AnyFieldDef
+      field: IRTrees.FieldDef
   )(implicit ctx: WasmContext): WasmStructField = {
-    val fieldName =
-      field match {
-        case f: IRTrees.FieldDef =>
-          Names.WasmFieldName(f.name.name)
-        // TODO
-        case js: IRTrees.JSFieldDef => ???
-      }
     WasmStructField(
-      fieldName,
+      Names.WasmFieldName(field.name.name),
       transformType(field.ftpe),
       // needs to be mutable even if it's flags.isMutable = false
       // because it's initialized by constructor

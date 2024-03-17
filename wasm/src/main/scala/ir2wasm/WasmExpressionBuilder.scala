@@ -220,7 +220,7 @@ private class WasmExpressionBuilder private (
       case sel: IRTrees.Select =>
         val className = sel.field.name.className
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
 
         // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
         genTreeAuto(sel.qualifier)
@@ -231,7 +231,7 @@ private class WasmExpressionBuilder private (
       case sel: IRTrees.SelectStatic => // OK?
         val className = sel.field.name.className
         val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
+        val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
         instrs += GLOBAL_GET(
           GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(className))
         )
@@ -675,7 +675,7 @@ private class WasmExpressionBuilder private (
   private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
     val className = sel.field.name.className
     val fieldName = WasmFieldName(sel.field.name)
-    val idx = ctx.getClassInfo(className).getFieldIdx(fieldName)
+    val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
 
     // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
     genTreeAuto(sel.qualifier)

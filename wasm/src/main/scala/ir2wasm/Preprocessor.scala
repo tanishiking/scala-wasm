@@ -22,6 +22,23 @@ object Preprocessor {
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    val allFieldDefs: List[IRTrees.FieldDef] =
+      if (clazz.kind.isClass) {
+        val inheritedFields = clazz.superClass match {
+          case None => Nil
+          case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
+        }
+        val myFieldDefs = clazz.fields.map {
+          case fd: IRTrees.FieldDef =>
+            fd
+          case fd: IRTrees.JSFieldDef =>
+            throw new AssertionError(s"Illegal $fd in Scala class ${clazz.className}")
+        }
+        inheritedFields ::: myFieldDefs
+      } else {
+        Nil
+      }
+
     val infos = clazz.methods
       .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
       .map(method => makeWasmFunctionInfo(clazz, method))
@@ -32,7 +49,7 @@ object Preprocessor {
         clazz.name.name,
         clazz.kind,
         infos,
-        clazz.fields.collect { case f: IRTrees.FieldDef => Names.WasmFieldName(f.name.name) },
+        allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
         clazz.ancestors,
