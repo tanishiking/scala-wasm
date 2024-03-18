@@ -8,6 +8,8 @@ object TestSuites {
     TestSuite("testsuite.core.VirtualDispatch"),
     TestSuite("testsuite.core.InterfaceCall"),
     TestSuite("testsuite.core.AsInstanceOfTest"),
+    TestSuite("testsuite.core.ClassOfTest"),
+    TestSuite("testsuite.core.GetClassTest"),
     TestSuite("testsuite.core.JSInteropTest"),
     TestSuite("testsuite.core.HijackedClassesDispatchTest"),
     TestSuite("testsuite.core.HijackedClassesMonoTest"),

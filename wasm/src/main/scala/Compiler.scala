@@ -4,8 +4,7 @@ import wasm.ir2wasm._
 import wasm.wasm4s._
 
 import org.scalajs.ir
-import org.scalajs.ir.Trees._
-import org.scalajs.ir.Types._
+import org.scalajs.ir.{Names => IRNames}
 
 import org.scalajs.linker.interface._
 import org.scalajs.linker.standard._
@@ -46,6 +45,7 @@ object Compiler {
      */
     val factory = SymbolRequirement.factory("wasm")
     val symbolRequirements = factory.multiple(
+      factory.instantiateClass(IRNames.ClassClass, SpecialNames.ClassCtor),
       factory.instantiateClass(SpecialNames.CharBoxClass, SpecialNames.CharBoxCtor),
       factory.instantiateClass(SpecialNames.LongBoxClass, SpecialNames.LongBoxCtor)
     )
@@ -70,6 +70,8 @@ object Compiler {
 
       Preprocessor.preprocess(sortedClasses)(context)
       println("preprocessed")
+      HelperFunctions.genGlobalHelpers()
+      builder.genPrimitiveTypeDataGlobals()
       sortedClasses.foreach { clazz =>
         builder.transformClassDef(clazz)
       }

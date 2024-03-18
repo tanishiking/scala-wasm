@@ -79,6 +79,53 @@ case class WasmStructType(
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
+object WasmStructType {
+  /** Run-time type data of a `TypeRef`.
+   *  Support for `j.l.Class` methods and other reflective operations.
+   *
+   *  @see [[Names.WasmFieldName.typeData]], which contains documentation of
+   *    what is in each field.
+   */
+  val typeData: WasmStructType = WasmStructType(
+    WasmTypeName.WasmStructTypeName.typeData,
+    List(
+      WasmStructField(
+        WasmFieldName.typeData.nameData,
+        WasmRefNullType(WasmHeapType.Type(WasmArrayTypeName.u16Array)),
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.kind,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.componentType,
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.name,
+        WasmAnyRef,
+        isMutable = true
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.classOfValue,
+        WasmRefNullType(WasmHeapType.ClassType),
+        isMutable = true
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.arrayOf,
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        isMutable = true
+      )
+    ),
+    None
+  )
+
+  // The number of fields of typeData, after which we find the vtable entries
+  val typeDataFieldCount = typeData.fields.size
+}
 
 case class WasmArrayType(
     name: WasmTypeName,
@@ -90,6 +137,12 @@ object WasmArrayType {
   val itables = WasmArrayType(
     WasmArrayTypeName.itables,
     WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
+  )
+
+  /** array u16 */
+  val u16Array = WasmArrayType(
+    WasmArrayTypeName.u16Array,
+    WasmStructField(WasmFieldName.u16Array, WasmInt16, false)
   )
 }
 
@@ -104,6 +157,18 @@ object WasmStructField {
     WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name)),
     isMutable = false
   )
+}
+
+final case class WasmElement(typ: WasmType, init: List[WasmExpr], mode: WasmElement.Mode)
+
+object WasmElement {
+  sealed abstract class Mode
+
+  object Mode {
+    case object Passive extends Mode
+    // final case class Active(table: WasmImmediate.TableIdx, offset: WasmExpr) extends Mode
+    case object Declarative extends Mode
+  }
 }
 
 /** @see
@@ -123,8 +188,8 @@ class WasmModule(
     // val memories: List[WasmMemory] = Nil,
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
     private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
-    private var _startFunction: Option[WasmFunctionName] = None
-    // val elements: List[WasmElement] = Nil,
+    private var _startFunction: Option[WasmFunctionName] = None,
+    private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
     // val tags: List[WasmTag] = Nil,
     // val startFunction: WasmFunction = null,
     // val data: List[WasmData] = Nil,
@@ -137,15 +202,17 @@ class WasmModule(
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
   def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
+  def addElement(element: WasmElement): Unit = _elements.addOne(element)
 
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables)
+  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array)
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def globals = _globals.toList
   def exports = _exports.toList
   def startFunction: Option[WasmFunctionName] = _startFunction
+  def elements: List[WasmElement] = _elements.toList
 }
 
 object WasmModule {

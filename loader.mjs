@@ -61,6 +61,9 @@ const scalaJSHelpers = {
   tF: (x) => typeof x === 'number' && (Math.fround(x) === x || x !== x),
   tD: (x) => typeof x === 'number',
 
+  // Closure
+  closure: (f, data) => f.bind(void 0, data),
+
   // Strings
   emptyString: () => "",
   stringLength: (s) => s.length,
@@ -73,6 +76,32 @@ const scalaJSHelpers = {
   doubleToString: (d) => "" + d,
   stringConcat: (x, y) => ("" + x) + y, // the added "" is for the case where x === y === null
   isString: (x) => typeof x === 'string',
+
+  /* Get the type of JS value of `x` in a single JS helper call, for the purpose of dispatch.
+   *
+   * 0: false
+   * 1: true
+   * 2: string
+   * 3: number
+   * 4: undefined
+   * 5: everything else
+   *
+   * This encoding has the following properties:
+   *
+   * - false and true also return their value as the appropriate i32.
+   * - the types implementing `Comparable` are consecutive from 0 to 3.
+   */
+  jsValueType: (x) => {
+    if (typeof x === 'number')
+      return 3;
+    if (typeof x === 'string')
+      return 2;
+    if (typeof x === 'boolean')
+      return x | 0;
+    if (typeof x === 'undefined')
+      return 4;
+    return 5;
+  },
 
   // Hash code, because it is overridden in all hijacked classes
   // Specified by the hashCode() method of the corresponding hijacked classes

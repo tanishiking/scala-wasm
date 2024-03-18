@@ -19,12 +19,12 @@ import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Position
 
 object WasmExpressionBuilder {
-  def transformBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
+  def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
       ctx: FunctionTypeWriterWasmContext,
       fctx: WasmFunctionContext
-  ): WasmExpr = {
+  ): Unit = {
     val builder = new WasmExpressionBuilder(ctx, fctx)
-    WasmExpr(builder.genBody(tree, resultType))
+    builder.genBody(tree, resultType)
   }
 
   private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
@@ -56,12 +56,10 @@ private class WasmExpressionBuilder private (
 ) {
   import WasmExpressionBuilder._
 
-  private val instrs = mutable.ListBuffer.empty[WasmInstr]
+  private val instrs = fctx.instrs
 
-  def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): List[WasmInstr] = {
+  def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit =
     genTree(tree, expectedType)
-    instrs.toList
-  }
 
   /** object creation prefix
     * ```
@@ -112,6 +110,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.Apply            => genApply(t)
       case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
       case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
+      case t: IRTrees.GetClass         => genGetClass(t)
       case t: IRTrees.Block            => genBlock(t, expectedType)
       case t: IRTrees.Labeled          => genLabeled(t, expectedType)
       case t: IRTrees.Return           => genReturn(t)
@@ -159,8 +158,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.Closure(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.TryFinally(pos) =>
-      // case IRTrees.ClassOf(pos) =>
-      // case IRTrees.GetClass(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.ArraySelect(tpe) =>
@@ -373,87 +370,83 @@ private class WasmExpressionBuilder private (
 
       val resultTyp = TypeTransformer.transformResultType(t.tpe)(ctx)
 
-      val labelDone = fctx.genLabel()
-      instrs += BLOCK(BlockType.ValueType(resultTyp.headOption), Some(labelDone))
+      fctx.block(resultTyp) { labelDone =>
+        def pushArgs(argsLocals: List[LocalIdx]): Unit =
+          argsLocals.foreach(argLocal => instrs += LOCAL_GET(argLocal))
 
-      // First try the case where the value is one of our objects
-      val labelNotOurObject = fctx.genLabel()
-      instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelNotOurObject))
+        // First try the case where the value is one of our objects
+        val argsLocals = fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
+          // Load receiver and arguments and store them in temporary variables
+          genReceiverNotNull()
+          val argsLocals = if (t.args.isEmpty) {
+            /* When there are no arguments, we can leave the receiver directly on
+             * the stack instead of going through a local. We will still need a
+             * local for the table-based dispatch, though.
+             */
+            Nil
+          } else {
+            val receiverLocal = fctx.addSyntheticLocal(Types.WasmRefType.any)
 
-      // Load receiver and arguments and store them in temporary variables
-      genReceiverNotNull()
-      val argsLocals = if (t.args.isEmpty) {
-        /* When there are no arguments, we can leave the receiver directly on
-         * the stack instead of going through a local. We will still need a
-         * local for the table-based dispatch, though.
-         */
-        Nil
-      } else {
-        val receiverLocal: WasmLocalName = fctx.genSyntheticLocalName()
-        fctx.locals.define(WasmLocal(receiverLocal, Types.WasmRefType.any, isParameter = false))
+            instrs += LOCAL_SET(receiverLocal)
+            val argsLocals: List[LocalIdx] =
+              for ((arg, typeRef) <- t.args.zip(t.method.name.paramTypeRefs)) yield {
+                val typ = ctx.inferTypeFromTypeRef(typeRef)
+                genTree(arg, typ)
+                val localName = fctx.addSyntheticLocal(TypeTransformer.transformType(typ)(ctx))
+                instrs += LOCAL_SET(localName)
+                localName
+              }
+            instrs += LOCAL_GET(receiverLocal)
+            argsLocals
+          }
 
-        instrs += LOCAL_SET(LocalIdx(receiverLocal))
-        val argsLocals: List[WasmLocalName] = for ((arg, typeRef) <- t.args.zip(t.method.name.paramTypeRefs)) yield {
-          val typ = ctx.inferTypeFromTypeRef(typeRef)
-          genTree(arg, typ)
-          val localName = fctx.genSyntheticLocalName()
-          fctx.locals.define(WasmLocal(localName, TypeTransformer.transformType(typ)(ctx), isParameter = false))
-          instrs += LOCAL_SET(LocalIdx(localName))
-          localName
+          instrs += BR_ON_CAST_FAIL(
+            CastFlags(false, false),
+            labelNotOurObject,
+            WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
+            WasmImmediate.HeapType(heapTypeForDispatch)
+          )
+          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+          pushArgs(argsLocals)
+          genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
+          instrs += BR(labelDone)
+
+          argsLocals
+        } // end block labelNotOurObject
+
+        // Now we have a value that is not one of our objects; the (ref any) is still on the stack
+
+        if (t.method.name == toStringMethodName) {
+          // By spec, toString() is special
+          assert(argsLocals.isEmpty)
+          instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+        } else if (receiverClassName == JLNumberClass) {
+          // the value must be a `number`, hence we can unbox to `double`
+          genUnbox(IRTypes.DoubleType)
+          pushArgs(argsLocals)
+          genHijackedClassCall(IRNames.BoxedDoubleClass)
+        } else if (receiverClassName == CharSequenceClass) {
+          // the value must be a `string`; it already has the right type
+          pushArgs(argsLocals)
+          genHijackedClassCall(IRNames.BoxedStringClass)
+        } else {
+          /* It must be a method of j.l.Object and it can be any value.
+           * hashCode() and equals() are overridden in all hijacked classes; we
+           * use dedicated JavaScript helpers for those.
+           * The other methods are never overridden and can be statically
+           * resolved to j.l.Object.
+           */
+          pushArgs(argsLocals)
+          t.method.name match {
+            case `hashCodeMethodName` =>
+              instrs += CALL(FuncIdx(WasmFunctionName.jsValueHashCode))
+            case `equalsMethodName` =>
+              instrs += CALL(FuncIdx(WasmFunctionName.is))
+            case _ =>
+              genHijackedClassCall(IRNames.ObjectClass)
+          }
         }
-        instrs += LOCAL_GET(LocalIdx(receiverLocal))
-        argsLocals
-      }
-
-      def pushArgs(): Unit =
-        argsLocals.foreach(argLocal => instrs += LOCAL_GET(LocalIdx(argLocal)))
-
-      instrs += BR_ON_CAST_FAIL(
-        CastFlags(false, false),
-        labelNotOurObject,
-        WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
-        WasmImmediate.HeapType(heapTypeForDispatch)
-      )
-      instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
-      pushArgs()
-      genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
-      instrs += BR(labelDone)
-      instrs += END // BLOCK labelNotOurObject
-
-      // Now we have a value that is not one of our objects; the (ref any) is still on the stack
-
-      if (t.method.name == toStringMethodName) {
-        // By spec, toString() is special
-        assert(argsLocals.isEmpty)
-        instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
-      } else if (receiverClassName == JLNumberClass) {
-        // the value must be a `number`, hence we can unbox to `double`
-        genUnbox(IRTypes.DoubleType)
-        pushArgs()
-        genHijackedClassCall(IRNames.BoxedDoubleClass)
-      } else if (receiverClassName == CharSequenceClass) {
-        // the value must be a `string`; it already has the right type
-        pushArgs()
-        genHijackedClassCall(IRNames.BoxedStringClass)
-      } else {
-        /* It must be a method of j.l.Object and it can be any value.
-         * hashCode() and equals() are overridden in all hijacked classes; we
-         * use dedicated JavaScript helpers for those.
-         * The other methods are never overridden and can be statically
-         * resolved to j.l.Object.
-         */
-        pushArgs()
-        t.method.name match {
-          case `hashCodeMethodName` =>
-            instrs += CALL(FuncIdx(WasmFunctionName.jsValueHashCode))
-          case `equalsMethodName` =>
-            instrs += CALL(FuncIdx(WasmFunctionName.is))
-          case _ =>
-            genHijackedClassCall(IRNames.ObjectClass)
-        }
-      }
-
-      instrs += END // BLOCK labelDone
+      } // end block labelDone
     }
 
     if (t.tpe == IRTypes.NothingType)
@@ -547,7 +540,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmVTableTypeName(receiverClassName)),
-        StructFieldIdx(methodIdx)
+        StructFieldIdx(WasmStructType.typeDataFieldCount + methodIdx)
       )
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
@@ -621,13 +614,42 @@ private class WasmExpressionBuilder private (
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
-        val globalName = ctx.addConstantStringGlobal(v.value)
-        instrs += GLOBAL_GET(GlobalIdx(globalName))
+        instrs += ctx.getConstantStringInstr(v.value)
 
-      case v: IRTrees.ClassOf => ???
+      case v: IRTrees.ClassOf =>
+        v.typeRef match {
+          case typeRef: IRTypes.NonArrayTypeRef =>
+            genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
+
+          case IRTypes.ArrayTypeRef(base, dimensions) =>
+            val typeDataType =
+              Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
+            val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
+
+            instrs += getNonArrayTypeDataInstr(base)
+            instrs += I32_CONST(I32(dimensions))
+            instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+            instrs += LOCAL_SET(typeDataLocal)
+            genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+        }
     }
 
     l.tpe
+  }
+
+  private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
+    GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(typeRef)))
+
+  private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
+    fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
+      // fast path first
+      instrs += loadTypeDataInstr
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.classOfIdx)
+      instrs += BR_ON_NON_NULL(nonNullLabel)
+      // slow path
+      instrs += loadTypeDataInstr
+      instrs += CALL(FuncIdx(WasmFunctionName.createClassOf))
+    }
   }
 
   private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
@@ -871,23 +893,17 @@ private class WasmExpressionBuilder private (
            * end $done
            */
 
-          val labelDone = fctx.genLabel()
-          instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelDone))
+          fctx.block(Types.WasmRefType.any) { labelDone =>
+            fctx.block() { labelIsNull =>
+              genTreeAuto(tree)
+              instrs += BR_ON_NULL(labelIsNull)
+              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
+              instrs += BR_ON_NON_NULL(labelDone)
+            }
 
-          val labelIsNull = fctx.genLabel()
-          instrs += BLOCK(BlockType.ValueType(), Some(labelIsNull))
-
-          genTreeAuto(tree)
-          instrs += BR_ON_NULL(labelIsNull)
-          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
-          genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
-          instrs += BR_ON_NON_NULL(labelDone)
-
-          instrs += END // block $isNull
-
-          genLiteral(IRTrees.StringLiteral("null")(tree.pos))
-
-          instrs += END // block $done
+            genLiteral(IRTrees.StringLiteral("null")(tree.pos))
+          }
         } else {
           /* Dispatch where the receiver can be a JS value.
            *
@@ -905,32 +921,27 @@ private class WasmExpressionBuilder private (
            * end $done
            */
 
-          val labelDone = fctx.genLabel()
-          instrs += BLOCK(BlockType.ValueType(Types.WasmRefType.any), Some(labelDone))
+          fctx.block(Types.WasmRefType.any) { labelDone =>
+            // First try the case where the value is one of our objects
+            fctx.block(Types.WasmAnyRef) { labelNotOurObject =>
+              // Load receiver
+              genTreeAuto(tree)
 
-          // First try the case where the value is one of our objects
-          val labelNotOurObject = fctx.genLabel()
-          instrs += BLOCK(BlockType.ValueType(Types.WasmAnyRef), Some(labelNotOurObject))
+              instrs += BR_ON_CAST_FAIL(
+                CastFlags(true, false),
+                labelNotOurObject,
+                WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
+                WasmImmediate.HeapType(Types.WasmHeapType.ObjectType)
+              )
+              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
+              instrs += BR_ON_NON_NULL(labelDone)
+              instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Any))
+            } // end block labelNotOurObject
 
-          // Load receiver
-          genTreeAuto(tree)
-
-          instrs += BR_ON_CAST_FAIL(
-            CastFlags(true, false),
-            labelNotOurObject,
-            WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
-            WasmImmediate.HeapType(Types.WasmHeapType.ObjectType)
-          )
-          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
-          genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
-          instrs += BR_ON_NON_NULL(labelDone)
-          instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Any))
-          instrs += END // BLOCK labelNotOurObject
-
-          // Now we have a value that is not one of our objects; the anyref is still on the stack
-          instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
-
-          instrs += END // BLOCK labelDone
+            // Now we have a value that is not one of our objects; the anyref is still on the stack
+            instrs += CALL(FuncIdx(WasmFunctionName.jsValueToString))
+          } // end block labelDone
         }
       }
 
@@ -1155,6 +1166,40 @@ private class WasmExpressionBuilder private (
   private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
     ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
+  private def genGetClass(tree: IRTrees.GetClass): IRTypes.Type = {
+    /* Unlike in `genApply` or `genStringConcat`, here we make no effort to
+     * optimize known-primitive receivers. In practice, such cases would be
+     * useless.
+     */
+
+    val needHijackedClassDispatch = tree.expr.tpe match {
+      case IRTypes.ClassType(className) =>
+        ctx.getClassInfo(className).isAncestorOfHijackedClass
+      case IRTypes.ArrayType(_) | IRTypes.NothingType | IRTypes.NullType =>
+        false
+      case _ =>
+        true
+    }
+
+    if (!needHijackedClassDispatch) {
+      val typeDataType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
+      val objectTypeIdx = TypeIdx(WasmStructTypeName(IRNames.ObjectClass))
+
+      val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
+
+      genTreeAuto(tree.expr)
+      instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0)) // implicit trap on null
+      instrs += LOCAL_SET(typeDataLocal)
+      genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+    } else {
+      genTree(tree.expr, IRTypes.AnyType)
+      instrs += REF_AS_NOT_NULL
+      instrs += CALL(FuncIdx(WasmFunctionName.anyGetClass))
+    }
+
+    tree.tpe
+  }
+
   private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
     val name = WasmLocalName.fromIR(r.ident.name)
     instrs += LOCAL_GET(LocalIdx(name))
@@ -1187,15 +1232,10 @@ private class WasmExpressionBuilder private (
   }
 
   private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
-    val local = WasmLocal(
-      WasmLocalName.fromIR(r.name.name),
-      TypeTransformer.transformType(r.vtpe)(ctx),
-      isParameter = false
-    )
-    fctx.locals.define(local)
+    val localIdx = fctx.addLocal(r.name.name, TypeTransformer.transformType(r.vtpe)(ctx))
 
     genTree(r.rhs, r.vtpe)
-    instrs += LOCAL_SET(LocalIdx(local.name))
+    instrs += LOCAL_SET(localIdx)
 
     IRTypes.NoType
   }
@@ -1203,18 +1243,15 @@ private class WasmExpressionBuilder private (
   private def genIf(t: IRTrees.If, expectedType: IRTypes.Type): IRTypes.Type = {
     val ty = TypeTransformer.transformType(expectedType)(ctx)
     genTree(t.cond, IRTypes.BooleanType)
-    instrs += IF(BlockType.ValueType(ty))
-    genTree(t.thenp, expectedType)
-    instrs += ELSE
-    genTree(t.elsep, expectedType)
-    instrs += END
+    fctx.ifThenElse(ty) {
+      genTree(t.thenp, expectedType)
+    } {
+      genTree(t.elsep, expectedType)
+    }
     expectedType
   }
 
   private def genWhile(t: IRTrees.While): IRTypes.Type = {
-    val label = fctx.genLabel()
-    val noResultType = BlockType.ValueType(Types.WasmNoType)
-
     t.cond match {
       case IRTrees.BooleanLiteral(true) =>
         // infinite loop that must be typed as `nothing`, i.e., unreachable
@@ -1223,10 +1260,10 @@ private class WasmExpressionBuilder private (
         //   br $label
         // end
         // unreachable
-        instrs += LOOP(noResultType, Some(label))
-        genTree(t.body, IRTypes.NoType)
-        instrs += BR(label)
-        instrs += END
+        fctx.loop() { label =>
+          genTree(t.body, IRTypes.NoType)
+          instrs += BR(label)
+        }
         instrs += UNREACHABLE
         IRTypes.NothingType
 
@@ -1238,14 +1275,13 @@ private class WasmExpressionBuilder private (
         //     br $label
         //   end
         // end
-
-        instrs += LOOP(noResultType, Some(label))
-        genTree(t.cond, IRTypes.BooleanType)
-        instrs += IF(noResultType)
-        genTree(t.body, IRTypes.NoType)
-        instrs += BR(label)
-        instrs += END // IF
-        instrs += END // LOOP
+        fctx.loop() { label =>
+          genTree(t.cond, IRTypes.BooleanType)
+          fctx.ifThen() {
+            genTree(t.body, IRTypes.NoType)
+            instrs += BR(label)
+          }
+        }
         IRTypes.NoType
     }
   }
@@ -1261,6 +1297,7 @@ private class WasmExpressionBuilder private (
     val label = fctx.registerLabel(t.label.name, expectedType)
     val ty = TypeTransformer.transformType(t.tpe)(ctx)
 
+    // Manual BLOCK here because we have a specific `label`
     instrs += BLOCK(BlockType.ValueType(ty), Some(label))
     genTree(t.body, expectedType)
     instrs += END

@@ -332,7 +332,7 @@ object WasmImmediate {
 
   case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate
   case class LabelIdx(val value: Int) extends WasmImmediate
-  case class LabelIdxVector(val value: List[Int]) extends WasmImmediate
+  case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
   case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: Int) extends WasmImmediate

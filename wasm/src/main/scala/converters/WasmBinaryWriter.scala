@@ -69,6 +69,7 @@ final class WasmBinaryWriter(module: WasmModule) {
     writeSection(fullOutput, SectionExport)(writeExportSection(_))
     if (module.startFunction.isDefined)
       writeSection(fullOutput, SectionStart)(writeStartSection(_))
+    writeSection(fullOutput, SectionElement)(writeElementSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
 
     fullOutput.result()
@@ -150,6 +151,19 @@ final class WasmBinaryWriter(module: WasmModule) {
 
   private def writeStartSection(buf: Buffer): Unit = {
     writeFuncIdx(buf, module.startFunction.get)
+  }
+
+  private def writeElementSection(buf: Buffer): Unit = {
+    buf.vec(module.elements) { element =>
+      element.mode match {
+        case WasmElement.Mode.Passive     => buf.byte(5)
+        case WasmElement.Mode.Declarative => buf.byte(7)
+      }
+      writeType(buf, element.typ)
+      buf.vec(element.init) { expr =>
+        writeExpr(buf, expr)
+      }
+    }
   }
 
   private def writeCodeSection(buf: Buffer): Unit = {
@@ -264,7 +278,7 @@ final class WasmBinaryWriter(module: WasmModule) {
 
       case FuncIdx(value)        => writeFuncIdx(buf, value)
       case labelIdx: LabelIdx    => writeLabelIdx(buf, labelIdx)
-      case LabelIdxVector(value) => ???
+      case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
       case TypeIdx(value)        => writeTypeIdx(buf, value)
       case TableIdx(value)       => ???
       case TagIdx(value)         => ???
