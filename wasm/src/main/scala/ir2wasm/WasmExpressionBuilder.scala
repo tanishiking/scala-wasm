@@ -142,6 +142,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSGlobalRef          => genJSGlobalRef(t)
       case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
+      case t: IRTrees.Closure              => genClosure(t)
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -159,7 +160,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.SelectStatic(tpe) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.Match(tpe) =>
-      // case IRTrees.Closure(pos) =>
       // case IRTrees.RecordSelect(tpe) =>
       // case IRTrees.TryFinally(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
@@ -1651,5 +1651,84 @@ private class WasmExpressionBuilder private (
     t.elems.foreach(genTreeAuto)
     instrs += ARRAY_NEW_FIXED(TypeIdx(arrTy.name), I32(t.elems.size))
     t.tpe
+  }
+
+  private def genClosure(tree: IRTrees.Closure): IRTypes.Type = {
+    implicit val ctx = this.ctx
+
+    val hasThis = !tree.arrow
+    val hasRestParam = tree.restParam.isDefined
+    val dataStructType = ctx.getClosureDataStructType(tree.captureParams.map(_.ptpe))
+
+    // Define the function where captures are reified as a `__captureData` argument.
+    val closureFuncName = fctx.genInnerFuncName()
+    locally {
+      val receiverParam =
+        if (!hasThis) None
+        else Some(WasmLocal(WasmLocalName.receiver, Types.WasmAnyRef, isParameter = true))
+
+      val captureDataParam = WasmLocal(
+        WasmLocalName("__captureData"),
+        Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
+        isParameter = true
+      )
+
+      val paramLocals = (tree.params ::: tree.restParam.toList).map { param =>
+        val typ = TypeTransformer.transformType(param.ptpe)
+        WasmLocal(WasmLocalName.fromIR(param.name.name), typ, isParameter = true)
+      }
+      val resultTyps = TypeTransformer.transformResultType(IRTypes.AnyType)
+
+      implicit val fctx = WasmFunctionContext(
+        enclosingClassName = None,
+        closureFuncName,
+        receiverParam,
+        captureDataParam :: paramLocals,
+        resultTyps
+      )
+
+      val captureDataLocalIdx = fctx.paramIndices.head
+
+      // Extract the fields of captureData in individual locals
+      for ((captureParam, index) <- tree.captureParams.zipWithIndex) {
+        val local = fctx.addLocal(
+          captureParam.name.name,
+          TypeTransformer.transformType(captureParam.ptpe)
+        )
+        fctx.instrs += LOCAL_GET(captureDataLocalIdx)
+        fctx.instrs += STRUCT_GET(TypeIdx(dataStructType.name), StructFieldIdx(index))
+        fctx.instrs += LOCAL_SET(local)
+      }
+
+      // Now transform the body - use AnyType as result type to box potential primitives
+      WasmExpressionBuilder.generateIRBody(tree.body, IRTypes.AnyType)
+
+      fctx.buildAndAddToContext()
+    }
+
+    // Put a reference to the function on the stack
+    instrs += ctx.refFuncWithDeclaration(closureFuncName)
+
+    // Evaluate the capture values and instantiate the capture data struct
+    for ((param, value) <- tree.captureParams.zip(tree.captureValues))
+      genTree(value, param.ptpe)
+    instrs += STRUCT_NEW(TypeIdx(dataStructType.name))
+
+    /* If there is a ...rest param, the helper requires as third argument the
+     * number of regular arguments.
+     */
+    if (hasRestParam)
+      instrs += I32_CONST(I32(tree.params.size))
+
+    // Call the appropriate helper
+    val helper = (hasThis, hasRestParam) match {
+      case (false, false) => WasmFunctionName.closure
+      case (true, false)  => WasmFunctionName.closureThis
+      case (false, true)  => WasmFunctionName.closureRest
+      case (true, true)   => WasmFunctionName.closureThisRest
+    }
+    instrs += CALL(FuncIdx(helper))
+
+    IRTypes.AnyType
   }
 }

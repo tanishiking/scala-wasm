@@ -111,10 +111,13 @@ trait ReadOnlyWasmContext {
 trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
+  protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
 
   private var nextConstantStringIndex: Int = 1
   private var nextArrayTypeIndex: Int = 1
+  private var nextClosureDataTypeIndex: Int = 1
 
+  def addFunction(fun: WasmFunction): Unit
   protected def addGlobal(g: WasmGlobal): Unit
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
 
@@ -158,6 +161,19 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   def getConstantStringInstr(str: String): WasmInstr = {
     val globalName = addConstantStringGlobal(str)
     WasmInstr.GLOBAL_GET(WasmImmediate.GlobalIdx(globalName))
+  }
+
+  def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
+    closureDataTypes.getOrElse(captureParamTypes, {
+      val fields: List[WasmStructField] =
+        for ((tpe, i) <- captureParamTypes.zipWithIndex) yield
+          WasmStructField(WasmFieldName.captureParam(i), TypeTransformer.transformType(tpe)(this), isMutable = false)
+      val structTypeName = WasmStructTypeName.captureData(nextClosureDataTypeIndex)
+      nextClosureDataTypeIndex += 1
+      val structType = WasmStructType(structTypeName, fields, superType = None)
+      addGCType(structType)
+      structType
+    })
   }
 
   def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
@@ -241,6 +257,21 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   addHelperImport(
     WasmFunctionName.closure,
+    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
+    WasmFunctionName.closureThis,
+    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
+    WasmFunctionName.closureRest,
+    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
+    WasmFunctionName.closureThisRest,
     List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
     List(WasmRefType.any)
   )

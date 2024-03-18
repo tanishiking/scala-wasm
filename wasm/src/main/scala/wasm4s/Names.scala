@@ -156,6 +156,9 @@ object Names {
     def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
 
     val closure = helper("closure")
+    val closureThis = helper("closureThis")
+    val closureRest = helper("closureRest")
+    val closureThisRest = helper("closureThisRest")
 
     val emptyString = helper("emptyString")
     val stringLength = helper("stringLength")
@@ -246,6 +249,9 @@ object Names {
     def apply(name: WasmTypeName.WasmITableTypeName) = new WasmFieldName(name.name)
     def apply(name: IRNames.MethodName) = new WasmFieldName(name.nameString)
     def apply(name: WasmFunctionName) = new WasmFieldName(name.name)
+
+    def captureParam(i: Int): WasmFieldName = new WasmFieldName("c" + i)
+
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
@@ -329,6 +335,8 @@ object Names {
     }
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
+
+      def captureData(index: Int): WasmStructTypeName = new WasmStructTypeName("captureData__" + index)
 
       val typeData = new WasmStructTypeName("typeData")
     }
