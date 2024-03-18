@@ -15,6 +15,7 @@ import wasm.ir2wasm.TypeTransformer
 
 class WasmFunctionContext private (
   ctx: WasmContext,
+  val enclosingClassName: Option[IRNames.ClassName],
   val functionName: WasmFunctionName,
   _receiver: Option[WasmLocal],
   _params: List[WasmLocal],
@@ -171,15 +172,17 @@ class WasmFunctionContext private (
 
 object WasmFunctionContext {
   def apply(
+    enclosingClassName: Option[IRNames.ClassName],
     name: WasmFunctionName,
     receiver: Option[WasmLocal],
     params: List[WasmLocal],
     resultTypes: List[WasmType]
   )(implicit ctx: WasmContext): WasmFunctionContext = {
-    new WasmFunctionContext(ctx, name, receiver, params, resultTypes)
+    new WasmFunctionContext(ctx, enclosingClassName, name, receiver, params, resultTypes)
   }
 
   def apply(
+    enclosingClassName: Option[IRNames.ClassName],
     name: WasmFunctionName,
     receiverTyp: Option[WasmType],
     paramDefs: List[IRTrees.ParamDef],
@@ -195,7 +198,7 @@ object WasmFunctionContext {
         isParameter = true
       )
     }
-    apply(name, receiver, params, TypeTransformer.transformResultType(resultType))
+    apply(enclosingClassName, name, receiver, params, TypeTransformer.transformResultType(resultType))
   }
 
   def apply(
@@ -206,6 +209,6 @@ object WasmFunctionContext {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
-    apply(name, receiver = None, paramLocals, resultTypes)
+    apply(enclosingClassName = None, name, receiver = None, paramLocals, resultTypes)
   }
 }

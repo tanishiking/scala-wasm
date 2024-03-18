@@ -149,21 +149,11 @@ class WasmBuilder {
     val vtableType = genVTableType(clazz, vtable.functions)
     ctx.addGCType(vtableType)
 
-    val isAbstractClass = {
-      // If number of declared functions doesn't match number of defined functions, it must be a AbstractClass
-      // TODO: better way to check if it's abstract class
-      val definedFunctions = ctx.calculateGlobalVTable(className)
-      val declaredFunctions = vtable.functions
-      declaredFunctions.length != definedFunctions.length
-    }
+    val isAbstractClass = !clazz.hasDirectInstances
 
     // we should't generate global vtable for abstract class because
     // - Can't generate Global vtable because we can't fill the slot for abstract methods
     // - We won't access vtable for abstract classes since we can't instantiate abstract classes, there's no point generating
-    //
-    // However, I couldn't find a way to test if the LinkedClass is abstract
-    // "clazz.methods.exists(m => m.body.isEmpty)" doesn't work because abstract methods are removed at linker optimization
-    // the WasmFunctionInfo of the abstract methods will be added specially in Preprocessor
     //
     // When we don't generate a vtable, we still generate the typeData
 
@@ -458,6 +448,7 @@ class WasmBuilder {
     }
 
     implicit val fctx = WasmFunctionContext(
+      enclosingClassName = None,
       Names.WasmFunctionName(methodName),
       receiverTyp = None,
       newParams,
@@ -494,6 +485,7 @@ class WasmBuilder {
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(
+      Some(clazz.className),
       functionName,
       Some(receiverTyp),
       method.args,
