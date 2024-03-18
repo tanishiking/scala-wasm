@@ -4,7 +4,8 @@
 
 ### Usage
 
-- `sample/run` to compile `sample/src/main/scala/Sample.scala`.
+- first, `npm install`
+- then `sample/run` to compile `sample/src/main/scala/Sample.scala`.
   - prints the WebAssembly Text Format (WAT) (Stack IR form) to the console, for debugging
   - writes the binary format (WASM) to `target/output.wasm`
 
