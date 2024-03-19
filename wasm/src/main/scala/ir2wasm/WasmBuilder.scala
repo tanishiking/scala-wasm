@@ -230,7 +230,13 @@ class WasmBuilder {
       .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
     val typeName = WasmTypeName.WasmStructTypeName(clazz.name.name)
     val globalInstanceName = WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name)
-    val ctorName = WasmFunctionName(clazz.name.name, ctor.name.name)
+
+    val ctorName = WasmFunctionName(
+      ctor.flags.namespace,
+      clazz.name.name,
+      ctor.name.name
+    )
+
     val body = List(
       // global.get $module_name
       // ref.if_null
@@ -355,7 +361,7 @@ class WasmBuilder {
       Names.WasmTypeName.WasmITableTypeName(className),
       classInfo.methods.map { m =>
         WasmStructField(
-          Names.WasmFieldName(m.name.methodName),
+          Names.WasmFieldName(m.name.simpleName),
           WasmRefNullType(WasmHeapType.Func(m.toWasmFunctionType().name)),
           isMutable = false
         )
@@ -397,72 +403,27 @@ class WasmBuilder {
       exportDef: IRTrees.TopLevelMethodExportDef
   )(implicit ctx: WasmContext): Unit = {
     val method = exportDef.methodDef
-    val methodName = method.name match {
-      case lit: IRTrees.StringLiteral => lit
-      case _                          => ???
-    }
+    val exportedName = exportDef.topLevelExportName
 
-    // hack
-    // export top[moduleID="main"] static def "foo"(arg: any): any = {
-    //   val prep0: int = arg.asInstanceOf[int];
-    //   mod:sample.Main$.foo;I;I(prep0)
-    // }
-    // ->
-    // export top[moduleID="main"] static def "foo"(arg: int): int = {
-    //   val prep0: int = arg;
-    //   mod:sample.Main$.foo;I;I(arg)
-    // }
-    val paramTypeMap = mutable.Map[IRTrees.LocalIdent, IRTypes.Type]()
-    val nameMap = mutable.Map[IRTrees.LocalIdent, IRTrees.LocalIdent]()
-    val resultType: IRTypes.Type = method.body.tpe
-    def collectMapping(t: IRTrees.Tree): Unit = {
-      t match {
-        case IRTrees.Block(stats) => stats.foreach(collectMapping)
-        case IRTrees.VarDef(lhs, _, _, _, IRTrees.AsInstanceOf(IRTrees.VarRef(ident), tpe)) =>
-          paramTypeMap.update(ident, tpe) // arg -> int
-          nameMap.update(lhs, ident) // prep0 -> arg
-        case _ =>
-      }
-    }
-    def mutateTree(t: IRTrees.Tree): IRTrees.Tree = {
-      t match {
-        case b: IRTrees.Block => IRTrees.Block(b.stats.map(mutateTree))(b.pos)
-        case vdef @ IRTrees.VarDef(_, _, _, _, IRTrees.AsInstanceOf(vref, tpe)) =>
-          vdef.copy(rhs = vref)(vdef.pos)
-        case app: IRTrees.Apply =>
-          app.copy(args = app.args.map(a => mutateTree(a)))(app.tpe)(app.pos)
-        case vref: IRTrees.VarRef =>
-          val newName = nameMap.getOrElse(vref.ident, throw new Error("Invalid name"))
-          vref.copy(ident = newName)(vref.tpe)(vref.pos)
-        case t => t
-      }
-    }
-
-    collectMapping(method.body)
-    val newBody = mutateTree(method.body)
-    val newParams = method.args.map { arg =>
-      paramTypeMap.get(arg.name) match {
-        case None         => arg
-        case Some(newTpe) => arg.copy(ptpe = newTpe)(arg.pos)
-      }
+    if (method.restParam.isDefined) {
+      throw new UnsupportedOperationException(
+        s"Top-level export with ...rest param is unsupported at ${method.pos}: $method"
+      )
     }
 
     implicit val fctx = WasmFunctionContext(
       enclosingClassName = None,
-      Names.WasmFunctionName(methodName),
+      Names.WasmFunctionName.forExport(exportedName),
       receiverTyp = None,
-      newParams,
-      resultType
+      method.args,
+      IRTypes.AnyType
     )
 
-    WasmExpressionBuilder.generateIRBody(newBody, resultType)
+    WasmExpressionBuilder.generateIRBody(method.body, IRTypes.AnyType)
 
     val func = fctx.buildAndAddToContext()
 
-    val exprt = new WasmExport.Function(
-      methodName.value,
-      func
-    )
+    val exprt = new WasmExport.Function(exportedName, func)
     ctx.addExport(exprt)
   }
 
@@ -470,24 +431,30 @@ class WasmBuilder {
       clazz: LinkedClass,
       method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
-    val functionName = Names.WasmFunctionName(clazz.name.name, method.name.name)
+    val functionName = Names.WasmFunctionName(
+      method.flags.namespace,
+      clazz.name.name,
+      method.name.name
+    )
 
     // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
     // Otherwise, vtable can't be a subtype of the supertype's subtype
     // Constructor can use the exact type because it won't be registered to vtables.
     val receiverTyp =
-      if (clazz.kind == ClassKind.HijackedClass)
-        transformType(IRTypes.BoxedClassToPrimType(clazz.name.name))
+      if (method.flags.namespace.isStatic)
+        None
+      else if (clazz.kind == ClassKind.HijackedClass)
+        Some(transformType(IRTypes.BoxedClassToPrimType(clazz.name.name)))
       else if (method.flags.namespace.isConstructor)
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name)))
+        Some(WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name))))
       else
-        WasmRefType.any
+        Some(WasmRefType.any)
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(
       Some(clazz.className),
       functionName,
-      Some(receiverTyp),
+      receiverTyp,
       method.args,
       method.resultType
     )

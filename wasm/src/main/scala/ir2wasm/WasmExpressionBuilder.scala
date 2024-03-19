@@ -108,6 +108,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.This             => genThis(t)
       case t: IRTrees.ApplyStatically  => genApplyStatically(t)
       case t: IRTrees.Apply            => genApply(t)
+      case t: IRTrees.ApplyStatic      => genApplyStatic(t)
       case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
       case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
       case t: IRTrees.GetClass         => genGetClass(t)
@@ -337,7 +338,11 @@ private class WasmExpressionBuilder private (
      * After this code gen, the stack contains the result.
      */
     def genHijackedClassCall(hijackedClass: IRNames.ClassName): Unit = {
-      val funcName = Names.WasmFunctionName(hijackedClass, t.method.name)
+      val funcName = Names.WasmFunctionName(
+        IRTrees.MemberNamespace.Public,
+        hijackedClass,
+        t.method.name
+      )
       instrs += CALL(FuncIdx(funcName))
     }
 
@@ -522,7 +527,11 @@ private class WasmExpressionBuilder private (
 
       val (methodIdx, info) = ctx
         .calculateVtableType(receiverClassName)
-        .resolveWithIdx(WasmFunctionName(receiverClassName, methodName))
+        .resolveWithIdx(WasmFunctionName(
+          IRTrees.MemberNamespace.Public,
+          receiverClassName,
+          methodName
+        ))
 
       // // push args to the stacks
       // local.get $this ;; for accessing funcref
@@ -582,12 +591,23 @@ private class WasmExpressionBuilder private (
         }
 
         genArgs(t.args, t.method.name)
-        val funcName = Names.WasmFunctionName(t.className, t.method.name)
+        val namespace = IRTrees.MemberNamespace.forNonStaticCall(t.flags)
+        val funcName = Names.WasmFunctionName(namespace, t.className, t.method.name)
         instrs += CALL(FuncIdx(funcName))
         if (t.tpe == IRTypes.NothingType)
           instrs += UNREACHABLE
         t.tpe
     }
+  }
+
+  private def genApplyStatic(tree: IRTrees.ApplyStatic): IRTypes.Type = {
+    genArgs(tree.args, tree.method.name)
+    val namespace = IRTrees.MemberNamespace.forStaticCall(tree.flags)
+    val funcName = Names.WasmFunctionName(namespace, tree.className, tree.method.name)
+    instrs += CALL(FuncIdx(funcName))
+    if (tree.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
+    tree.tpe
   }
 
   private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
@@ -1328,7 +1348,11 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
     instrs += LOCAL_TEE(LocalIdx(localInstance.name))
     genArgs(n.args, n.ctor.name)
-    instrs += CALL(FuncIdx(WasmFunctionName(n.className, n.ctor.name)))
+    instrs += CALL(FuncIdx(WasmFunctionName(
+      IRTrees.MemberNamespace.Constructor,
+      n.className,
+      n.ctor.name
+    )))
     instrs += LOCAL_GET(LocalIdx(localInstance.name))
     n.tpe
   }

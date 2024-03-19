@@ -327,7 +327,11 @@ object HelperFunctions {
     // TODO: "isInstance", "isAssignableFrom", "checkCast", "newArrayOfThisClass"
 
     // Call java.lang.Class::<init>(dataObject)
-    instrs += CALL(FuncIdx(WasmFunctionName(IRNames.ClassClass, SpecialNames.ClassCtor)))
+    instrs += CALL(FuncIdx(WasmFunctionName(
+      IRTrees.MemberNamespace.Constructor,
+      IRNames.ClassClass,
+      SpecialNames.ClassCtor
+    )))
 
     // typeData.classOf := classInstance
     instrs += LOCAL_GET(typeDataParam)
