@@ -148,9 +148,6 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.NewArray    => genNewArray(t)
       case t: IRTrees.ArraySelect => genArraySelect(t)
       case t: IRTrees.ArrayValue  => genArrayValue(t)
-      case t: IRTrees.Throw =>
-        instrs += UNREACHABLE // Implement Exception Handling (Throwable doesn't compile yet)
-        IRTypes.NothingType
       case _ =>
         println(tree)
         ???
@@ -160,12 +157,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSNewTarget(pos) =>
       // case IRTrees.SelectStatic(tpe) =>
-      // case IRTrees.IsInstanceOf(pos) =>
-      // case IRTrees.JSLinkingInfo(pos) =>
-      // case IRTrees.Select(tpe) =>
-      // case IRTrees.Return(pos) =>
-      // case IRTrees.While(pos) =>
-      // case IRTrees.LoadJSConstructor(pos) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.Closure(pos) =>
