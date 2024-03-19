@@ -5,25 +5,20 @@ import scala.annotation.tailrec
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
 
-//
-// class Base {
-//   def sqrt(x: Int) = x * x
-// }
-//
 object Main {
   @JSExportTopLevel("test")
   def test(i: Int): Boolean = {
     val loopFib = fib(new LoopFib {}, i)
     val recFib = fib(new RecFib {}, i)
     val tailrecFib = fib(new TailRecFib {}, i)
-    js.Dynamic.global.console.log(s"loopFib: $loopFib -- recFib: $recFib -- tailrecFib: $tailrecFib")
+    js.Dynamic.global.console
+      .log(s"loopFib: $loopFib -- recFib: $recFib -- tailrecFib: $tailrecFib")
     val date = new js.Date(0)
     js.Dynamic.global.console.log(date)
     loopFib == recFib && loopFib == tailrecFib
   }
   def fib(fib: Fib, n: Int): Int = fib.fib(n)
 }
-
 
 trait LoopFib extends Fib {
   def fib(n: Int): Int = {
@@ -61,41 +56,4 @@ trait TailRecFib extends Fib {
 
 trait Fib {
   def fib(n: Int): Int
-  //  = {
-  //   if (n <= 1) {
-  //     n
-  //   } else {
-  //     fib(n - 1) + fib(n - 2)
-  //   }
-  // }
-
 }
-
-//
-//
-// object Bar {
-//   def bar(b: Base) = b.base
-// }
-
-// class Base extends Incr {
-//   override def incr(x: Int) = foo(x) + 1
-// }
-//
-// trait Incr extends BaseTrait {
-//     // val one = 1
-//     def incr(x: Int): Int
-// }
-//
-// trait BaseTrait {
-//     def foo(x: Int) = x
-// }
-
-// object Foo {
-//     def foo =
-//         Main.ident(1)
-// }
-//
-// class Derived(override val i: Int) extends Base(i) {
-//     def derived(x: Int) = x * i
-//     override def base(x: Int): Int = x * i
-// }

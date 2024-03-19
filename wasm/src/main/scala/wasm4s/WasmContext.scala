@@ -108,11 +108,12 @@ trait ReadOnlyWasmContext {
   }
 }
 
-trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
+trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
 
   private var nextConstantStringIndex: Int = 1
+  private var nextArrayTypeIndex: Int = 1
 
   protected def addGlobal(g: WasmGlobal): Unit
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
@@ -163,9 +164,25 @@ trait FunctionTypeWriterWasmContext extends ReadOnlyWasmContext { this: WasmCont
     addFuncDeclaration(name)
     WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
   }
+
+  def getArrayType(typeRef: IRTypes.ArrayTypeRef): WasmArrayType = {
+    val elemTy = TypeTransformer.transformType(extractArrayElemType(typeRef))(this)
+    val arrTyName = Names.WasmTypeName.WasmArrayTypeName(typeRef)
+    val arrTy = WasmArrayType(
+      arrTyName,
+      WasmStructField(Names.WasmFieldName.arrayField, elemTy, isMutable = true)
+    )
+    module.addArrayType(arrTy)
+    arrTy
+  }
+
+  private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
+    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
+    else inferTypeFromTypeRef(typeRef.base)
+  }
 }
 
-class WasmContext(val module: WasmModule) extends FunctionTypeWriterWasmContext {
+class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
   private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
@@ -419,7 +436,7 @@ object WasmContext {
       // flags: IRTrees.MemberFlags,
       isAbstract: Boolean
   ) {
-    def toWasmFunctionType()(implicit ctx: FunctionTypeWriterWasmContext): WasmFunctionType =
+    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmFunctionType =
       TypeTransformer.transformFunctionType(this)
 
   }
