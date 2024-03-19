@@ -337,11 +337,8 @@ object Names {
     final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmArrayTypeName {
-      def apply(ty: IRTypes.ArrayType) = {
-        val ref = ty.arrayTypeRef
-        // TODO: better naming?
-        new WasmArrayTypeName(s"array_${ref.base.displayName}_${ref.dimensions}")
-      }
+      def apply(typeRef: IRTypes.ArrayTypeRef) =
+        new WasmArrayTypeName(s"arrayOf_${typeRef.base.displayName}_${typeRef.dimensions}")
       val itables = new WasmArrayTypeName("itable")
       val u16Array = new WasmArrayTypeName("u16Array")
     }

@@ -241,7 +241,7 @@ private class WasmExpressionBuilder private (
 
       case sel: IRTrees.ArraySelect =>
         val typeName = sel.array.tpe match {
-          case arrTy: IRTypes.ArrayType => WasmArrayTypeName(arrTy)
+          case arrTy: IRTypes.ArrayType => WasmArrayTypeName(arrTy.arrayTypeRef)
           case _ =>
             throw new IllegalArgumentException(
               s"ArraySelect.array must be an array type, but has type ${sel.array.tpe}"
@@ -1614,30 +1614,14 @@ private class WasmExpressionBuilder private (
       throw new AssertionError(
         s"invalid lengths ${t.lengths} for array type ${t.typeRef.displayName}"
       )
-
-    def genWithDimensions(typeRef: IRTypes.ArrayTypeRef, lengths: List[IRTrees.Tree]): Unit = {
-      val elemTy = extractArrayElemType(t.typeRef)
-      val wasmElemTy = TypeTransformer.transformType(elemTy)(ctx)
-      val arrTyName = WasmTypeName.WasmArrayTypeName(IRTypes.ArrayType(typeRef))
-      ctx.addArrayType(
-        WasmArrayType(
-          arrTyName,
-          WasmStructField(Names.WasmFieldName.arrayField, wasmElemTy, isMutable = true)
-        )
-      )
-      if (lengths.tail.isEmpty) {
-        val zero = Defaults.defaultValue(wasmElemTy)
-        instrs += zero
-      } else {
-        genWithDimensions(
-          IRTypes.ArrayTypeRef(typeRef.base, typeRef.dimensions - 1),
-          lengths.tail
-        )
-      }
-      genTree(lengths.head, IRTypes.IntType)
-      instrs += ARRAY_NEW(TypeIdx(arrTyName))
-    }
-    genWithDimensions(t.typeRef, t.lengths)
+    if (t.lengths.size == 1) {
+      val arrTy = ctx.getArrayType(t.typeRef)
+      val zero = Defaults.defaultValue(arrTy.field.typ)
+      ctx.inferTypeFromTypeRef(t.typeRef.base)
+      instrs += zero
+      genTree(t.lengths.head, IRTypes.IntType)
+      instrs += ARRAY_NEW(TypeIdx(arrTy.name))
+    } else ??? // TODO support multi dimensional arrays
     t.tpe
   }
 
@@ -1645,7 +1629,7 @@ private class WasmExpressionBuilder private (
     * `Assign(ArraySelect(...), ...)`
     */
   private def genArraySelect(t: IRTrees.ArraySelect): IRTypes.Type = {
-    val arrayType = t.array.tpe match {
+    val irArrType = t.array.tpe match {
       case t: IRTypes.ArrayType => t
       case _ =>
         throw new IllegalArgumentException(
@@ -1654,38 +1638,18 @@ private class WasmExpressionBuilder private (
     }
     genTreeAuto(t.array)
     genTree(t.index, IRTypes.IntType)
-    instrs += ARRAY_GET(TypeIdx(WasmTypeName.WasmArrayTypeName(arrayType)))
+    instrs += ARRAY_GET(TypeIdx(ctx.getArrayType(irArrType.arrayTypeRef).name))
 
-    val typeRef = arrayType.arrayTypeRef
-    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
-    else
-      typeRef.base match {
-        case IRTypes.ClassRef(className) => ClassType(className)
-        case IRTypes.PrimRef(tpe)        => tpe
-      }
+    val typeRef = irArrType.arrayTypeRef
+    if (typeRef.dimensions > 1)
+      IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
+    else ctx.inferTypeFromTypeRef(typeRef.base)
   }
 
   private def genArrayValue(t: IRTrees.ArrayValue): IRTypes.Type = {
-    val irElemTy = extractArrayElemType(t.typeRef)
-    val wasmElemTy = TypeTransformer.transformType(irElemTy)(ctx)
-    val arrTyName = Names.WasmTypeName.WasmArrayTypeName(t.tpe)
-    ctx.addArrayType(
-      WasmArrayType(
-        arrTyName,
-        WasmStructField(Names.WasmFieldName.arrayField, wasmElemTy, isMutable = true)
-      )
-    )
+    val arrTy = ctx.getArrayType(t.typeRef)
     t.elems.foreach(genTreeAuto)
-    instrs += ARRAY_NEW_FIXED(TypeIdx(arrTyName), I32(t.elems.size))
+    instrs += ARRAY_NEW_FIXED(TypeIdx(arrTy.name), I32(t.elems.size))
     t.tpe
-  }
-
-  private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
-    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
-    else
-      typeRef.base match {
-        case IRTypes.ClassRef(className) => ClassType(className)
-        case IRTypes.PrimRef(tpe)        => tpe
-      }
   }
 }

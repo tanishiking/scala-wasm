@@ -113,6 +113,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
 
   private var nextConstantStringIndex: Int = 1
+  private var nextArrayTypeIndex: Int = 1
 
   protected def addGlobal(g: WasmGlobal): Unit
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
@@ -164,8 +165,21 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
     WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
   }
 
-  def addArrayType(ty: WasmArrayType): Unit =
-    module.addArrayType(ty)
+  def getArrayType(typeRef: IRTypes.ArrayTypeRef): WasmArrayType = {
+    val elemTy = TypeTransformer.transformType(extractArrayElemType(typeRef))(this)
+    val arrTyName = Names.WasmTypeName.WasmArrayTypeName(typeRef)
+    val arrTy = WasmArrayType(
+      arrTyName,
+      WasmStructField(Names.WasmFieldName.arrayField, elemTy, isMutable = true)
+    )
+    module.addArrayType(arrTy)
+    arrTy
+  }
+
+  private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
+    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
+    else inferTypeFromTypeRef(typeRef.base)
+  }
 }
 
 class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
