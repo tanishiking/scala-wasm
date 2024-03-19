@@ -370,13 +370,16 @@ object WasmContext {
       val name: IRNames.ClassName,
       val kind: ClassKind,
       private var _methods: List[WasmFunctionInfo],
-      private val fields: List[WasmFieldName],
+      val allFieldDefs: List[IRTrees.FieldDef],
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
       val jsNativeMembers: Map[IRNames.MethodName, IRTrees.JSNativeLoadSpec]
   ) {
+    private val fieldIdxByName: Map[IRNames.FieldName, Int] =
+      allFieldDefs.map(_.name.name).zipWithIndex.map(p => p._1 -> (p._2 + classFieldOffset)).toMap
+
     def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
 
     def isInterface = kind == ClassKind.Interface
@@ -400,11 +403,13 @@ object WasmContext {
       }
     }
 
-    def getFieldIdx(name: WasmFieldName): WasmImmediate.StructFieldIdx =
-      fields.indexWhere(_ == name) match {
-        case i if i < 0 => throw new Error(s"Field not found: $name")
-        case i          => WasmImmediate.StructFieldIdx(i + classFieldOffset)
-      }
+    def getFieldIdx(name: IRNames.FieldName): WasmImmediate.StructFieldIdx = {
+      WasmImmediate.StructFieldIdx(fieldIdxByName.getOrElse(name, {
+        throw new AssertionError(
+          s"Unknown field ${name.nameString} in class ${this.name.nameString}"
+        )
+      }))
+    }
   }
 
   case class WasmFunctionInfo(
