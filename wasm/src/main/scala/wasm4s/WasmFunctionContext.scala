@@ -14,7 +14,7 @@ import wasm.wasm4s.WasmInstr._
 import wasm.ir2wasm.TypeTransformer
 
 class WasmFunctionContext private (
-  ctx: WasmContext,
+  ctx: TypeDefinableWasmContext,
   val enclosingClassName: Option[IRNames.ClassName],
   val functionName: WasmFunctionName,
   _receiver: Option[WasmLocal],
@@ -23,6 +23,7 @@ class WasmFunctionContext private (
 ) {
   private var cnt = 0
   private var labelIdx = 0
+  private var innerFuncIdx = 0
 
   val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
 
@@ -79,6 +80,15 @@ class WasmFunctionContext private (
 
   def addSyntheticLocal(typ: WasmType): LocalIdx =
     addLocal(genSyntheticLocalName(), typ)
+
+  def genInnerFuncName(): WasmFunctionName = {
+    val innerName = WasmFunctionName(
+      functionName.namespace,
+      functionName.simpleName + "__c" + innerFuncIdx
+    )
+    innerFuncIdx += 1
+    innerName
+  }
 
   // Helpers to build structured control flow
 
@@ -177,7 +187,7 @@ object WasmFunctionContext {
     receiver: Option[WasmLocal],
     params: List[WasmLocal],
     resultTypes: List[WasmType]
-  )(implicit ctx: WasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     new WasmFunctionContext(ctx, enclosingClassName, name, receiver, params, resultTypes)
   }
 
@@ -187,7 +197,7 @@ object WasmFunctionContext {
     receiverTyp: Option[WasmType],
     paramDefs: List[IRTrees.ParamDef],
     resultType: IRTypes.Type
-  )(implicit ctx: WasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     val receiver = receiverTyp.map { typ =>
       WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
     }
@@ -205,7 +215,7 @@ object WasmFunctionContext {
     name: WasmFunctionName,
     params: List[(String, WasmType)],
     resultTypes: List[WasmType]
-  )(implicit ctx: WasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
