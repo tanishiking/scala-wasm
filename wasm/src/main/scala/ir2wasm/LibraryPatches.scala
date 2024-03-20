@@ -32,8 +32,47 @@ object LibraryPatches {
     }
 
     derivedIRFiles.map { derived =>
-      derived.flatten ++ irFiles
+      derived.flatten ++ Seq(StackTraceIRFile) ++ irFiles
     }
+  }
+
+  private val StackTraceIRFile: IRFile = {
+    val arrayOfSTERef = ArrayTypeRef(ClassRef("java.lang.StackTraceElement"), 1)
+
+    val classDef = ClassDef(
+      ClassIdent("java.lang.StackTrace$"),
+      NON,
+      ModuleClass,
+      None,
+      Some(ClassIdent(ObjectClass)),
+      Nil,
+      None,
+      None,
+      Nil,
+      List(
+        trivialCtor("java.lang.StackTrace$"),
+        MethodDef(
+          EMF, MethodIdent(m("captureJSError", List(ClassRef(ThrowableClass)), O)), NON,
+          List(paramDef("throwable", ClassType(ThrowableClass))), AnyType,
+          Some(
+            JSNew(JSGlobalRef("Error"), Nil)
+          )
+        )(EOH.withInline(true), NOV),
+        MethodDef(
+          EMF, MethodIdent(m("extract", List(O), arrayOfSTERef)), NON,
+          List(paramDef("jsError", AnyType)), ArrayType(arrayOfSTERef),
+          Some(
+            ArrayValue(arrayOfSTERef, Nil)
+          )
+        )(EOH.withInline(true), NOV)
+      ),
+      None,
+      Nil,
+      Nil,
+      Nil
+    )(EOH)
+
+    MemClassDefIRFile(classDef)
   }
 
   /** Generates the accompanying Box class of `Character` or `Long`.
