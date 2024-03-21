@@ -300,8 +300,8 @@ class WasmTextWriter {
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
-      case END | ELSE | _: CATCH => b.deindent()
-      case _                     => ()
+      case END | ELSE => b.deindent()
+      case _          => ()
     }
     b.newLine()
     b.appendElement(instr.mnemonic)
@@ -333,8 +333,8 @@ class WasmTextWriter {
     }
 
     instr match {
-      case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
-      case _                                                     => ()
+      case _: BLOCK | _: LOOP | _: IF | ELSE => b.indent()
+      case _                                 => ()
     }
   }
 

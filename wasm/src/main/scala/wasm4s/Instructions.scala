@@ -204,12 +204,7 @@ object WasmInstr {
   case class CALL(i: FuncIdx) extends WasmInstr("call", 0x10, List(i))
   case class CALL_INDIRECT(i: TableIdx, t: TypeIdx)
       extends WasmInstr("call_indirect", 0x11, List(i, t))
-  case class TRY(i: BlockType) extends WasmInstr("try", 0x06, List(i))
-  case class CATCH(i: TagIdx) extends WasmInstr("catch", 0x07, List(i))
-  case object CATCH_ALL extends WasmInstr("catch_all", 0x19)
-  case class DELEGATE(i: LabelIdx) extends WasmInstr("delegate", 0x18, List(i))
   case class THROW(i: TagIdx) extends WasmInstr("throw", 0x08, List(i))
-  case class RETHROW(i: LabelIdx) extends WasmInstr("rethrow", 0x09)
 
   // Parametric instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#parametric-instructions
