@@ -17,8 +17,11 @@ object Preprocessor {
     for (clazz <- classes)
       preprocess(clazz)
 
-    for (clazz <- classes)
+    for (clazz <- classes) {
       collectAbstractMethodCalls(clazz)
+      if (!clazz.hasDirectInstances && clazz.hasInstanceTests)
+        HelperFunctions.genInstanceTest(clazz)
+    }
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {

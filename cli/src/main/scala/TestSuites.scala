@@ -9,6 +9,7 @@ object TestSuites {
     TestSuite("testsuite.core.VirtualDispatch"),
     TestSuite("testsuite.core.InterfaceCall"),
     TestSuite("testsuite.core.AsInstanceOfTest"),
+    TestSuite("testsuite.core.IsInstanceOfTest"),
     TestSuite("testsuite.core.ClassOfTest"),
     TestSuite("testsuite.core.ClosureTest"),
     TestSuite("testsuite.core.FieldsTest"),

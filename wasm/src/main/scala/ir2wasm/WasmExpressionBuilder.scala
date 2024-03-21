@@ -1087,15 +1087,13 @@ private class WasmExpressionBuilder private (
             genIsPrimType(primType)
           case None =>
             val info = ctx.getClassInfo(testClassName)
-            if (info.isInterface) {
-              // TODO: run-time type test for interface
-              println(tree)
-              ???
-            } else {
+
+            if (info.isInterface)
+              instrs += CALL(FuncIdx(WasmFunctionName.instanceTest(testClassName)))
+            else
               instrs += REF_TEST(
                 HeapType(Types.WasmHeapType.Type(WasmStructTypeName(testClassName)))
               )
-            }
         }
 
       case IRTypes.ArrayType(_) =>

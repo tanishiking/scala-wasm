@@ -131,13 +131,12 @@ object Names {
     def forExport(exportedName: String): WasmFunctionName =
       new WasmFunctionName("export", exportedName)
 
-    // Adding prefix __ to avoid name clashes with user code.
-    // It should be safe not to add prefix to the method name
-    // since loadModule is a static method and it's not registered in the vtable.
     def loadModule(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("loadModule", clazz.nameString)
     def newDefault(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("new", clazz.nameString)
+    def instanceTest(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("instanceTest", clazz.nameString)
 
     val start = new WasmFunctionName("start", "start")
 
