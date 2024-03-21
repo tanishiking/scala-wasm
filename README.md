@@ -26,7 +26,10 @@ $ deno run --allow-read run.mjs
 Requires NodeJS >= 22 (for enough support of WasmGC).
 
 ```sh
+# if you are using NVM, you can install Node 22 with
 $ NVM_NODEJS_ORG_MIRROR=https://nodejs.org/download/nightly nvm install v22
+# switch to use Node 22
+$ nvm use 22
 ```
 
 - `tests/test` will
