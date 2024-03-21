@@ -14,12 +14,12 @@ import wasm.wasm4s.WasmInstr._
 import wasm.ir2wasm.TypeTransformer
 
 class WasmFunctionContext private (
-  ctx: TypeDefinableWasmContext,
-  val enclosingClassName: Option[IRNames.ClassName],
-  val functionName: WasmFunctionName,
-  _receiver: Option[WasmLocal],
-  _params: List[WasmLocal],
-  _resultTypes: List[WasmType]
+    ctx: TypeDefinableWasmContext,
+    val enclosingClassName: Option[IRNames.ClassName],
+    val functionName: WasmFunctionName,
+    _receiver: Option[WasmLocal],
+    _params: List[WasmLocal],
+    _resultTypes: List[WasmType]
 ) {
   private var cnt = 0
   private var labelIdx = 0
@@ -55,9 +55,11 @@ class WasmFunctionContext private (
   }
 
   def getLabelFor(irLabelName: IRNames.LabelName): (LabelIdx, IRTypes.Type) = {
-    registeredLabels.getOrElse(irLabelName, {
-      throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
-    })
+    registeredLabels.getOrElse(
+      irLabelName, {
+        throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
+      }
+    )
   }
 
   def addLocal(name: WasmLocalName, typ: WasmType): LocalIdx = {
@@ -182,21 +184,21 @@ class WasmFunctionContext private (
 
 object WasmFunctionContext {
   def apply(
-    enclosingClassName: Option[IRNames.ClassName],
-    name: WasmFunctionName,
-    receiver: Option[WasmLocal],
-    params: List[WasmLocal],
-    resultTypes: List[WasmType]
+      enclosingClassName: Option[IRNames.ClassName],
+      name: WasmFunctionName,
+      receiver: Option[WasmLocal],
+      params: List[WasmLocal],
+      resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     new WasmFunctionContext(ctx, enclosingClassName, name, receiver, params, resultTypes)
   }
 
   def apply(
-    enclosingClassName: Option[IRNames.ClassName],
-    name: WasmFunctionName,
-    receiverTyp: Option[WasmType],
-    paramDefs: List[IRTrees.ParamDef],
-    resultType: IRTypes.Type
+      enclosingClassName: Option[IRNames.ClassName],
+      name: WasmFunctionName,
+      receiverTyp: Option[WasmType],
+      paramDefs: List[IRTrees.ParamDef],
+      resultType: IRTypes.Type
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     val receiver = receiverTyp.map { typ =>
       WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
@@ -208,13 +210,19 @@ object WasmFunctionContext {
         isParameter = true
       )
     }
-    apply(enclosingClassName, name, receiver, params, TypeTransformer.transformResultType(resultType))
+    apply(
+      enclosingClassName,
+      name,
+      receiver,
+      params,
+      TypeTransformer.transformResultType(resultType)
+    )
   }
 
   def apply(
-    name: WasmFunctionName,
-    params: List[(String, WasmType)],
-    resultTypes: List[WasmType]
+      name: WasmFunctionName,
+      params: List[(String, WasmType)],
+      resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)

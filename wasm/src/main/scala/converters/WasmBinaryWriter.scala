@@ -237,10 +237,13 @@ final class WasmBinaryWriter(module: WasmModule) {
 
   private def writeInstr(buf: Buffer, instr: WasmInstr): Unit = {
     val opcode = instr.opcode
-    if (opcode <= 0xff) {
+    if (opcode <= 0xFF) {
       buf.byte(opcode.toByte)
     } else {
-      assert(opcode <= 0xffff, s"cannot encode an opcode longer than 2 bytes yet: ${opcode.toHexString}")
+      assert(
+        opcode <= 0xFFFF,
+        s"cannot encode an opcode longer than 2 bytes yet: ${opcode.toHexString}"
+      )
       buf.byte((opcode >>> 8).toByte)
       buf.byte(opcode.toByte)
     }
@@ -313,7 +316,7 @@ object WasmBinaryWriter {
     def result(): Array[Byte] = buf.toByteArray()
 
     def byte(b: Byte): Unit =
-      buf.write(b & 0xff)
+      buf.write(b & 0xFF)
 
     def rawByteArray(array: Array[Byte]): Unit =
       buf.write(array)
@@ -390,14 +393,14 @@ object WasmBinaryWriter {
       if (next == 0) {
         buf.write(value.toInt)
       } else {
-        buf.write((value.toInt & 0x7f) | 0x80)
+        buf.write((value.toInt & 0x7F) | 0x80)
         unsignedLEB128(next)
       }
     }
 
     @tailrec
     private def signedLEB128(value: Long): Unit = {
-      val chunk = value.toInt & 0x7f
+      val chunk = value.toInt & 0x7F
       val next = value >> 7
       if (next == (if ((chunk & 0x40) != 0) -1 else 0)) {
         buf.write(chunk)

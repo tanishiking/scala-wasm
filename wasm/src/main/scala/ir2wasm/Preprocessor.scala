@@ -25,7 +25,7 @@ object Preprocessor {
     val allFieldDefs: List[IRTrees.FieldDef] =
       if (clazz.kind.isClass) {
         val inheritedFields = clazz.superClass match {
-          case None => Nil
+          case None      => Nil
           case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
         }
         val myFieldDefs = clazz.fields.map {

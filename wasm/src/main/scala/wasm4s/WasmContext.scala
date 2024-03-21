@@ -164,16 +164,22 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   }
 
   def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
-    closureDataTypes.getOrElse(captureParamTypes, {
-      val fields: List[WasmStructField] =
-        for ((tpe, i) <- captureParamTypes.zipWithIndex) yield
-          WasmStructField(WasmFieldName.captureParam(i), TypeTransformer.transformType(tpe)(this), isMutable = false)
-      val structTypeName = WasmStructTypeName.captureData(nextClosureDataTypeIndex)
-      nextClosureDataTypeIndex += 1
-      val structType = WasmStructType(structTypeName, fields, superType = None)
-      addGCType(structType)
-      structType
-    })
+    closureDataTypes.getOrElse(
+      captureParamTypes, {
+        val fields: List[WasmStructField] =
+          for ((tpe, i) <- captureParamTypes.zipWithIndex)
+            yield WasmStructField(
+              WasmFieldName.captureParam(i),
+              TypeTransformer.transformType(tpe)(this),
+              isMutable = false
+            )
+        val structTypeName = WasmStructTypeName.captureData(nextClosureDataTypeIndex)
+        nextClosureDataTypeIndex += 1
+        val structType = WasmStructType(structTypeName, fields, superType = None)
+        addGCType(structType)
+        structType
+      }
+    )
   }
 
   def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
@@ -202,7 +208,8 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
   private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
-  private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] = new mutable.LinkedHashSet()
+  private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
+    new mutable.LinkedHashSet()
 
   def addExport(exprt: WasmExport[_]): Unit = module.addExport(exprt)
   def addFunction(fun: WasmFunction): Unit = {
@@ -356,11 +363,13 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
           instrs +=
             WasmInstr.CALL(
-              WasmImmediate.FuncIdx(WasmFunctionName(
-                IRTrees.MemberNamespace.PublicStatic,
-                className,
-                encodedMainMethodName
-              ))
+              WasmImmediate.FuncIdx(
+                WasmFunctionName(
+                  IRTrees.MemberNamespace.PublicStatic,
+                  className,
+                  encodedMainMethodName
+                )
+              )
             )
       }
     }
@@ -452,11 +461,15 @@ object WasmContext {
     }
 
     def getFieldIdx(name: IRNames.FieldName): WasmImmediate.StructFieldIdx = {
-      WasmImmediate.StructFieldIdx(fieldIdxByName.getOrElse(name, {
-        throw new AssertionError(
-          s"Unknown field ${name.nameString} in class ${this.name.nameString}"
+      WasmImmediate.StructFieldIdx(
+        fieldIdxByName.getOrElse(
+          name, {
+            throw new AssertionError(
+              s"Unknown field ${name.nameString} in class ${this.name.nameString}"
+            )
+          }
         )
-      }))
+      )
     }
   }
 

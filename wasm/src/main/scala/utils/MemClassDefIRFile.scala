@@ -9,9 +9,9 @@ import org.scalajs.linker.interface.IRFile
 import org.scalajs.linker.interface.unstable.IRFileImpl
 
 /** An in-memory IRFile for a ClassDef.
- *
- *  Adapted from Scala.js upstream.
- */
+  *
+  * Adapted from Scala.js upstream.
+  */
 private final class MemClassDefIRFile(classDef: ClassDef)
     extends IRFileImpl("mem://" + classDef.name.name + ".sjsir", Version.Unversioned) {
 
