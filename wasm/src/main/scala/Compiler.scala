@@ -72,10 +72,9 @@ object Compiler {
         else a.className.compareTo(b.className) < 0
       }
 
-      sortedClasses.foreach(showLinkedClass(_))
+      // sortedClasses.foreach(showLinkedClass(_))
 
       Preprocessor.preprocess(sortedClasses)(context)
-      println("preprocessed")
       HelperFunctions.genGlobalHelpers()
       builder.genPrimitiveTypeDataGlobals()
       sortedClasses.foreach { clazz =>

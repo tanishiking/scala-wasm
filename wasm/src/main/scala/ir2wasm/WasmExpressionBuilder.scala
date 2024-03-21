@@ -1088,95 +1088,12 @@ private class WasmExpressionBuilder private (
           case None =>
             val info = ctx.getClassInfo(testClassName)
 
-            // TODO: Efficient type inclusion test
-            // Current implementation walk through the itables of the Object which takes O(N)
-            // (where N = number of interfaces the expr implements)
-            // Also, this procedure can't be extracted as a helper function in Wasm because the
-            // immediate argument of `ref.test` is specific to the `testClassName`,
-            // which result in a number of instructions everywhere at `isInstanceOf[interface]`.
-            // See: https://github.com/tanishiking/scala-wasm/issues/27#issuecomment-2008252049
-            if (info.isInterface) {
-              val expr = fctx.addLocal(
-                fctx.genSyntheticLocalName(),
-                TypeTransformer.transformType(IRTypes.AnyType)(ctx)
-              )
-              val found = fctx.addLocal(fctx.genSyntheticLocalName(), Types.WasmInt32)
-              val cnt = fctx.addLocal(fctx.genSyntheticLocalName(), Types.WasmInt32)
-              val len = fctx.addLocal(fctx.genSyntheticLocalName(), Types.WasmInt32)
-              val itables = fctx.addLocal(
-                fctx.genSyntheticLocalName(),
-                Types.WasmRefNullType(Types.WasmHeapType.Type(WasmArrayType.itables.name))
-              )
-
-              instrs += LOCAL_SET(expr)
-              instrs += I32_CONST(I32(0))
-              instrs += LOCAL_SET(found)
-
-              fctx.block() { testFail =>
-                // if expr is not an instance of Object, return false
-                instrs += LOCAL_GET(expr)
-                instrs += REF_TEST(HeapType(Types.WasmHeapType.ObjectType))
-                instrs += I32_CONST(I32(1))
-                instrs += I32_XOR
-                instrs += BR_IF(testFail)
-
-                // if the itables is null (no interfaces are implemented)
-                instrs += LOCAL_GET(expr)
-                instrs += REF_CAST(HeapType(Types.WasmHeapType.ObjectType))
-                instrs += STRUCT_GET(TypeIdx(Types.WasmHeapType.ObjectType.typ), StructFieldIdx(1))
-                instrs += LOCAL_TEE(itables)
-                instrs += REF_IS_NULL
-                instrs += BR_IF(testFail)
-
-                // found := 0
-                // len := length(itables)
-                // loop $loopLabel {
-                //   if (cnt < len) {
-                //     if (itables(cnt) is instance of testClassName's itable) {
-                //       found := 1
-                //     } else {
-                //       cnt := cnt + 1
-                //       br $loopLabel
-                //   }
-                // }
-                // return found
-                instrs += I32_CONST(I32(0))
-                instrs += LOCAL_SET(cnt)
-                // len := length(itables)
-                instrs += LOCAL_GET(itables)
-                instrs += ARRAY_LEN
-                instrs += LOCAL_SET(len)
-
-                fctx.loop() { loopLabel =>
-                  instrs += LOCAL_GET(cnt)
-                  instrs += LOCAL_GET(len)
-                  instrs += I32_LT_U
-                  fctx.ifThen() {
-                    instrs += LOCAL_GET(itables)
-                    instrs += LOCAL_GET(cnt)
-                    instrs += ARRAY_GET(TypeIdx(WasmArrayType.itables.name))
-                    instrs += REF_TEST(
-                      HeapType(Types.WasmHeapType.Type(WasmITableTypeName(testClassName)))
-                    )
-                    fctx.ifThenElse() {
-                      instrs += I32_CONST(I32(1))
-                      instrs += LOCAL_SET(found)
-                    } {
-                      instrs += LOCAL_GET(cnt)
-                      instrs += I32_CONST(I32(1))
-                      instrs += I32_ADD
-                      instrs += LOCAL_SET(cnt)
-                      instrs += BR(loopLabel)
-                    }
-                  }
-                }
-              }
-              instrs += LOCAL_GET(found)
-            } else {
+            if (info.isInterface)
+              instrs += CALL(FuncIdx(WasmFunctionName.instanceTest(testClassName)))
+            else
               instrs += REF_TEST(
                 HeapType(Types.WasmHeapType.Type(WasmStructTypeName(testClassName)))
               )
-            }
         }
 
       case IRTypes.ArrayType(_) =>
