@@ -718,13 +718,15 @@ object HelperFunctions {
     instrs += I32_CONST(I32(0))
     instrs += LOCAL_SET(found)
 
-    fctx.block() { testFail =>
+    fctx.block(WasmRefNullType(WasmHeapType.Simple.Any)) { testFail =>
       // if expr is not an instance of Object, return false
       instrs += LOCAL_GET(exprParam)
-      instrs += REF_TEST(HeapType(Types.WasmHeapType.ObjectType))
-      instrs += I32_CONST(I32(1))
-      instrs += I32_XOR
-      instrs += BR_IF(testFail)
+      instrs += BR_ON_CAST_FAIL(
+        CastFlags(true, false),
+        testFail,
+        HeapType(Types.WasmHeapType.Simple.Any),
+        HeapType(Types.WasmHeapType.ObjectType)
+      )
 
       // if the itables is null (no interfaces are implemented)
       instrs += LOCAL_GET(exprParam)
@@ -777,6 +779,7 @@ object HelperFunctions {
         }
       }
     }
+    instrs += DROP
     instrs += LOCAL_GET(found)
     fctx.buildAndAddToContext()
   }

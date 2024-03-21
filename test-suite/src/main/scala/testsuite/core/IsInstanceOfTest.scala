@@ -28,7 +28,7 @@ object IsInstanceOfTest {
   }
 
   private def testMixinAll(o: Base): Boolean = {
-    o.isInstanceOf[Base] && o.isInstanceOf[Base1] & o.isInstanceOf[Base2]
+    o.isInstanceOf[Base] && o.isInstanceOf[Base1] && o.isInstanceOf[Base2]
   }
 
   private def testMixin(): Boolean = {
