@@ -23,6 +23,15 @@ final class WasmBinaryWriter(module: WasmModule) {
       module.arrayTypes
   }
 
+  private val importTypeDefinitions: List[WasmFunctionType] = {
+    module.imports.map { imprt =>
+      imprt.desc match {
+        case WasmImportDesc.Func(id, typ) => typ
+        case WasmImportDesc.Tag(id, typ)  => typ
+      }
+    }
+  }
+
   private val typeIdxValues: Map[WasmTypeName, Int] =
     allTypeDefinitions.map(_.name).zipWithIndex.toMap
 
@@ -31,6 +40,14 @@ final class WasmBinaryWriter(module: WasmModule) {
       case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
     }
     val allNames = importedFunctionNames ::: module.definedFunctions.map(_.name)
+    allNames.zipWithIndex.toMap
+  }
+
+  private val tagIdxValues: Map[WasmTagName, Int] = {
+    val importedTagNames = module.imports.collect {
+      case WasmImport(_, _, WasmImportDesc.Tag(id, _)) => id
+    }
+    val allNames = importedTagNames ::: module.tags.map(_.name)
     allNames.zipWithIndex.toMap
   }
 
@@ -65,6 +82,7 @@ final class WasmBinaryWriter(module: WasmModule) {
     writeSection(fullOutput, SectionType)(writeTypeSection(_))
     writeSection(fullOutput, SectionImport)(writeImportSection(_))
     writeSection(fullOutput, SectionFunction)(writeFunctionSection(_))
+    writeSection(fullOutput, SectionTag)(writeTagSection(_))
     writeSection(fullOutput, SectionGlobal)(writeGlobalSection(_))
     writeSection(fullOutput, SectionExport)(writeExportSection(_))
     if (module.startFunction.isDefined)
@@ -81,7 +99,10 @@ final class WasmBinaryWriter(module: WasmModule) {
   }
 
   private def writeTypeSection(buf: Buffer): Unit = {
-    buf.u32(1) // a single `rectype`
+    buf.u32(1 + importTypeDefinitions.size) // a single `rectype` + the import type definitions
+
+    // the big rectype
+
     buf.byte(0x4E) // `rectype` tag
     buf.u32(typeIdxValues.size) // number of `subtype`s in our single `rectype`
 
@@ -106,6 +127,15 @@ final class WasmBinaryWriter(module: WasmModule) {
           writeResultType(buf, results)
       }
     }
+
+    // the import type definitions, outside the rectype
+
+    for (typeDef <- importTypeDefinitions) {
+      val WasmFunctionType(name, params, results) = typeDef
+      buf.byte(0x60) // func
+      writeResultType(buf, params)
+      writeResultType(buf, results)
+    }
   }
 
   private def writeImportSection(buf: Buffer): Unit = {
@@ -113,10 +143,21 @@ final class WasmBinaryWriter(module: WasmModule) {
       buf.name(imprt.module)
       buf.name(imprt.name)
 
+      val indexBase = allTypeDefinitions.size
+      val importedFunTypeIdx =
+        importTypeDefinitions.map(_.name).zipWithIndex.map(kv => (kv._1, kv._2 + indexBase)).toMap
+
+      def writeImportedTypeIdx(typeName: WasmTypeName.WasmFunctionTypeName): Unit =
+        buf.u32(importedFunTypeIdx(typeName))
+
       imprt.desc match {
         case WasmImportDesc.Func(id, typ) =>
           buf.byte(0x00) // func
-          writeTypeIdx(buf, typ.name)
+          writeImportedTypeIdx(typ.name)
+        case WasmImportDesc.Tag(id, typ) =>
+          buf.byte(0x04) // tag
+          buf.byte(0x00) // exception kind (that is the only valid kind for now)
+          writeImportedTypeIdx(typ.name)
       }
     }
   }
@@ -124,6 +165,13 @@ final class WasmBinaryWriter(module: WasmModule) {
   private def writeFunctionSection(buf: Buffer): Unit = {
     buf.vec(module.definedFunctions) { fun =>
       writeTypeIdx(buf, fun.typ.name)
+    }
+  }
+
+  private def writeTagSection(buf: Buffer): Unit = {
+    buf.vec(module.tags) { tag =>
+      buf.byte(0x00) // exception kind (that is the only valid kind for now)
+      writeTypeIdx(buf, tag.typ)
     }
   }
 
@@ -212,6 +260,9 @@ final class WasmBinaryWriter(module: WasmModule) {
   private def writeFuncIdx(buf: Buffer, funcName: WasmFunctionName): Unit =
     buf.u32(funcIdxValues(funcName))
 
+  private def writeTagIdx(buf: Buffer, tagName: WasmTagName): Unit =
+    buf.u32(tagIdxValues(tagName))
+
   private def writeGlobalIdx(buf: Buffer, globalName: WasmGlobalName): Unit =
     buf.u32(globalIdxValues(globalName))
 
@@ -284,7 +335,7 @@ final class WasmBinaryWriter(module: WasmModule) {
       case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
       case TypeIdx(value)        => writeTypeIdx(buf, value)
       case TableIdx(value)       => ???
-      case TagIdx(value)         => ???
+      case TagIdx(value)         => writeTagIdx(buf, value)
       case LocalIdx(value)       => writeLocalIdx(buf, value)
       case GlobalIdx(value)      => writeGlobalIdx(buf, value)
       case HeapType(value)       => writeHeapType(buf, value)
@@ -309,6 +360,7 @@ object WasmBinaryWriter {
   private final val SectionCode = 0x0A
   private final val SectionData = 0x0B
   private final val SectionDataCount = 0x0C
+  private final val SectionTag = 0x0D
 
   private final class Buffer {
     private val buf = new java.io.ByteArrayOutputStream()

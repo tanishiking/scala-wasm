@@ -27,6 +27,7 @@ class WasmTextWriter {
         )
         module.imports.foreach(writeImport)
         module.definedFunctions.foreach(writeFunction)
+        module.tags.foreach(writeTag)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
         module.startFunction.foreach(writeStart)
@@ -123,6 +124,13 @@ class WasmTextWriter {
                 writeSig(typ.params, typ.results)
               }
             )
+          case WasmImportDesc.Tag(id, typ) =>
+            b.sameLineList(
+              "tag", {
+                b.appendElement(id.show)
+                writeSig(typ.params, typ.results)
+              }
+            )
         }
       }
     )
@@ -169,6 +177,15 @@ class WasmTextWriter {
           nonParams.foreach(writeLocal)
         }
         f.body.instr.foreach(writeInstr)
+      }
+    )
+  }
+
+  private def writeTag(tag: WasmTag)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "tag", {
+        b.appendElement(tag.name.show)
+        b.sameLineListOne("type", tag.typ.show)
       }
     )
   }
@@ -259,6 +276,8 @@ class WasmTextWriter {
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
       case WasmImmediate.LabelIdxVector(indices) =>
         indices.map(i => "$" + i.value).mkString(" ")
+      case WasmImmediate.TagIdx(name) =>
+        name.show
       case i: WasmImmediate.CastFlags =>
         throw new UnsupportedOperationException(
           s"CastFlags $i must be handled directly in the instruction $instr"

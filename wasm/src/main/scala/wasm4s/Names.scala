@@ -17,6 +17,7 @@ object Names {
         case _: WasmGlobalName.WasmGlobalConstantStringName => "str_const"
         case _: WasmFunctionName                            => "fun"
         case _: WasmFieldName                               => "field"
+        case _: WasmTagName                                 => "tag"
         case _: WasmExportName                              => "export"
         case _: WasmTypeName.WasmFunctionTypeName           => "ty"
         case _: WasmTypeName.WasmStructTypeName             => "struct"
@@ -383,6 +384,12 @@ object Names {
       def apply(ir: IRNames.ClassName) = new WasmITableTypeName(ir.nameString)
     }
 
+  }
+
+  final case class WasmTagName private (override private[wasm4s] val name: String)
+      extends WasmName(name)
+  object WasmTagName {
+    def fromStr(str: String): WasmTagName = new WasmTagName(str)
   }
 
   final case class WasmExportName private (override private[wasm4s] val name: String)

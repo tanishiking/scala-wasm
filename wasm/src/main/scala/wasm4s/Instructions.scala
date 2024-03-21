@@ -339,7 +339,7 @@ object WasmImmediate {
   case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
   case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
-  case class TagIdx(val value: Int) extends WasmImmediate
+  case class TagIdx(val value: WasmTagName) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
   case class HeapType(val value: WasmHeapType) extends WasmImmediate
