@@ -80,12 +80,13 @@ case class WasmStructType(
     superType: Option[WasmTypeName]
 ) extends WasmGCTypeDefinition
 object WasmStructType {
-  /** Run-time type data of a `TypeRef`.
-   *  Support for `j.l.Class` methods and other reflective operations.
-   *
-   *  @see [[Names.WasmFieldName.typeData]], which contains documentation of
-   *    what is in each field.
-   */
+
+  /** Run-time type data of a `TypeRef`. Support for `j.l.Class` methods and other reflective
+    * operations.
+    *
+    * @see
+    *   [[Names.WasmFieldName.typeData]], which contains documentation of what is in each field.
+    */
   val typeData: WasmStructType = WasmStructType(
     WasmTypeName.WasmStructTypeName.typeData,
     List(
@@ -229,9 +230,8 @@ object WasmModule {
         if (hasPreds.isEmpty) done else sys.error(hasPreds.toString)
       } else {
         val found = noPreds.map { _._1 }.toSet
-        val updated = hasPreds.map {
-          case (k, v) =>
-            (k, v.filter(!found.contains(_)))
+        val updated = hasPreds.map { case (k, v) =>
+          (k, v.filter(!found.contains(_)))
         }
         tsort(updated, done ++ found)
       }

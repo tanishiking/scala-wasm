@@ -539,11 +539,13 @@ private class WasmExpressionBuilder private (
 
       val (methodIdx, info) = ctx
         .calculateVtableType(receiverClassName)
-        .resolveWithIdx(WasmFunctionName(
-          IRTrees.MemberNamespace.Public,
-          receiverClassName,
-          methodName
-        ))
+        .resolveWithIdx(
+          WasmFunctionName(
+            IRTrees.MemberNamespace.Public,
+            receiverClassName,
+            methodName
+          )
+        )
 
       // // push args to the stacks
       // local.get $this ;; for accessing funcref
@@ -737,7 +739,7 @@ private class WasmExpressionBuilder private (
 
       // Narrowing conversions
       case IntToChar =>
-        instrs += I32_CONST(I32(0xffff))
+        instrs += I32_CONST(I32(0xFFFF))
         instrs += I32_AND
       case IntToByte =>
         instrs += I32_EXTEND8_S
@@ -1364,11 +1366,15 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
     instrs += LOCAL_TEE(LocalIdx(localInstance.name))
     genArgs(n.args, n.ctor.name)
-    instrs += CALL(FuncIdx(WasmFunctionName(
-      IRTrees.MemberNamespace.Constructor,
-      n.className,
-      n.ctor.name
-    )))
+    instrs += CALL(
+      FuncIdx(
+        WasmFunctionName(
+          IRTrees.MemberNamespace.Constructor,
+          n.className,
+          n.ctor.name
+        )
+      )
+    )
     instrs += LOCAL_GET(LocalIdx(localInstance.name))
     n.tpe
   }

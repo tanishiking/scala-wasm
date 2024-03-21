@@ -84,8 +84,9 @@ object Names {
       )
     }
 
-    final case class WasmGlobalConstantStringName private (override private[wasm4s] val name: String)
-        extends WasmGlobalName(name)
+    final case class WasmGlobalConstantStringName private (
+        override private[wasm4s] val name: String
+    ) extends WasmGlobalName(name)
     object WasmGlobalConstantStringName {
       def apply(index: Int): WasmGlobalConstantStringName =
         new WasmGlobalConstantStringName(s"conststring___$index")
@@ -103,9 +104,9 @@ object Names {
 
   object WasmFunctionName {
     def apply(
-      namespace: IRTrees.MemberNamespace,
-      clazz: IRNames.ClassName,
-      method: IRNames.MethodName
+        namespace: IRTrees.MemberNamespace,
+        clazz: IRNames.ClassName,
+        method: IRNames.MethodName
     ): WasmFunctionName = {
       new WasmFunctionName(
         namespaceString(namespace) + "#" + clazz.nameString,
@@ -260,60 +261,62 @@ object Names {
 
     // Fields of the typeData structs
     object typeData {
+
       /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
-       *
-       *  It is non-null for primitives and for classes. It is null for array types,
-       *  as array types compute their `name` from the `name` of their component type.
-       */
+        *
+        * It is non-null for primitives and for classes. It is null for array types, as array types
+        * compute their `name` from the `name` of their component type.
+        */
       val nameData = new WasmFieldName("nameData")
 
       /** The kind of type data, an `i32`.
-       *
-       *  - 0 for regular class
-       *  - 1 for primitive
-       *  - 2 for array
-       *  - 3 for interface
-       *  - 4 for JS type
-       */
+        *
+        *   - 0 for regular class
+        *   - 1 for primitive
+        *   - 2 for array
+        *   - 3 for interface
+        *   - 4 for JS type
+        */
       val kind = new WasmFieldName("kind")
 
       /** The typeData of a component of this array type, or `null` if this is not an array type.
-       *
-       *  For example:
-       *  - the `componentType` for class `Foo` is `null`,
-       *  - the `componentType` for the array type `Array[Foo]` is the `typeData` of `Foo`.
-       */
+        *
+        * For example:
+        *   - the `componentType` for class `Foo` is `null`,
+        *   - the `componentType` for the array type `Array[Foo]` is the `typeData` of `Foo`.
+        */
       val componentType = new WasmFieldName("componentType")
 
       /** The name as nullable string (`anyref`), lazily initialized from the nameData.
-       *
-       *  This field is initialized by the `typeDataName` helper.
-       *
-       *  The contents of this value is specified by `java.lang.Class.getName()`.
-       *  In particular, for array types, it obeys the following rules:
-       *
-       *  - `Array[prim]` where `prim` is a one of the primitive types with `charCode` `X` is `"[X"`,
-       *    for example, `"[I"` for `Array[Int]`.
-       *  - `Array[pack.Cls]` where `Cls` is a class is `"[Lpack.Cls;"`.
-       *  - `Array[nestedArray]` where `nestedArray` is an array type with name `nested` is `"[nested"`,
-       *    for example `"[[I"` for `Array[Array[Int]]` and `"[[Ljava.lang.String;"` for `Array[Array[String]]`.
-       */
+        *
+        * This field is initialized by the `typeDataName` helper.
+        *
+        * The contents of this value is specified by `java.lang.Class.getName()`. In particular, for
+        * array types, it obeys the following rules:
+        *
+        *   - `Array[prim]` where `prim` is a one of the primitive types with `charCode` `X` is
+        *     `"[X"`, for example, `"[I"` for `Array[Int]`.
+        *   - `Array[pack.Cls]` where `Cls` is a class is `"[Lpack.Cls;"`.
+        *   - `Array[nestedArray]` where `nestedArray` is an array type with name `nested` is
+        *     `"[nested"`, for example `"[[I"` for `Array[Array[Int]]` and `"[[Ljava.lang.String;"`
+        *     for `Array[Array[String]]`.
+        */
       val name = new WasmFieldName("name")
 
       /** The `classOf` value, a nullable `java.lang.Class`, lazily initialized from this typeData.
-       *
-       *  This field is initialized by the `createClassOf` helper.
-       */
+        *
+        * This field is initialized by the `createClassOf` helper.
+        */
       val classOfValue = new WasmFieldName("classOf")
 
       /** The typeData of an array of this type, a nullable `typeData`, lazily initialized.
-       *
-       *  This field is initialized by the `arrayTypeData` helper.
-       *
-       *  For example, once initialized,
-       *  - in the `typeData` of class `Foo`, it contains the `typeData` of `Array[Foo]`,
-       *  - in the `typeData` of `Array[Int]`, it contains the `typeData` of `Array[Array[Int]]`.
-       */
+        *
+        * This field is initialized by the `arrayTypeData` helper.
+        *
+        * For example, once initialized,
+        *   - in the `typeData` of class `Foo`, it contains the `typeData` of `Array[Foo]`,
+        *   - in the `typeData` of `Array[Int]`, it contains the `typeData` of `Array[Array[Int]]`.
+        */
       val arrayOf = new WasmFieldName("arrayOf")
 
       val nameDataIdx = WasmImmediate.StructFieldIdx(0)
@@ -336,7 +339,9 @@ object Names {
     object WasmStructTypeName {
       def apply(name: IRNames.ClassName) = new WasmStructTypeName(name.nameString)
 
-      def captureData(index: Int): WasmStructTypeName = new WasmStructTypeName("captureData__" + index)
+      def captureData(index: Int): WasmStructTypeName = new WasmStructTypeName(
+        "captureData__" + index
+      )
 
       val typeData = new WasmStructTypeName("typeData")
     }

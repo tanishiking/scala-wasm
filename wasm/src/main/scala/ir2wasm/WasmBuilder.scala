@@ -62,7 +62,9 @@ class WasmBuilder {
     }
   }
 
-  def transformTopLevelExport(topLevelExport: LinkedTopLevelExport)(implicit ctx: WasmContext): Unit = {
+  def transformTopLevelExport(
+      topLevelExport: LinkedTopLevelExport
+  )(implicit ctx: WasmContext): Unit = {
     topLevelExport.tree match {
       case d: IRTrees.TopLevelFieldExportDef   => ???
       case d: IRTrees.TopLevelJSClassExportDef => ???
@@ -71,8 +73,8 @@ class WasmBuilder {
     }
   }
 
-  private def genTypeDataFieldValues(clazz: LinkedClass)(
-    implicit ctx: WasmContext
+  private def genTypeDataFieldValues(clazz: LinkedClass)(implicit
+      ctx: WasmContext
   ): List[WasmInstr] = {
     val kind = clazz.kind match {
       case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => 0
@@ -83,8 +85,8 @@ class WasmBuilder {
     genTypeDataFieldValues(kind, IRTypes.ClassRef(clazz.className))
   }
 
-  private def genTypeDataFieldValues(kind: Int, typeRef: IRTypes.NonArrayTypeRef)(
-    implicit ctx: WasmContext
+  private def genTypeDataFieldValues(kind: Int, typeRef: IRTypes.NonArrayTypeRef)(implicit
+      ctx: WasmContext
   ): List[WasmInstr] = {
     import WasmImmediate._
 
@@ -95,7 +97,10 @@ class WasmBuilder {
 
     val nameDataValueItems = nameStr.toList.map(c => I32_CONST(I32(c.toInt)))
     val nameDataValueArrayNew =
-      ARRAY_NEW_FIXED(TypeIdx(WasmTypeName.WasmArrayTypeName.u16Array), I32(nameDataValueItems.size))
+      ARRAY_NEW_FIXED(
+        TypeIdx(WasmTypeName.WasmArrayTypeName.u16Array),
+        I32(nameDataValueItems.size)
+      )
     val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
 
     nameDataValue :::
@@ -114,10 +119,10 @@ class WasmBuilder {
   }
 
   private def genTypeDataGlobal(
-    typeRef: IRTypes.NonArrayTypeRef,
-    typeDataType: WasmStructType,
-    typeDataFieldValues: List[WasmInstr],
-    vtableElems: List[REF_FUNC]
+      typeRef: IRTypes.NonArrayTypeRef,
+      typeDataType: WasmStructType,
+      typeDataFieldValues: List[WasmInstr],
+      vtableElems: List[REF_FUNC]
   )(implicit ctx: WasmContext): WasmGlobal = {
     val instrs: List[WasmInstr] =
       typeDataFieldValues ::: vtableElems ::: STRUCT_NEW(typeDataType.name) :: Nil

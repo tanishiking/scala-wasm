@@ -110,23 +110,27 @@ class WasmTextWriter {
     )
 
   private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
-    b.newLineList("import", {
-      b.appendElement(s"\"${i.module}\"")
-      b.appendElement(s"\"${i.name}\"")
+    b.newLineList(
+      "import", {
+        b.appendElement(s"\"${i.module}\"")
+        b.appendElement(s"\"${i.name}\"")
 
-      i.desc match {
-        case WasmImportDesc.Func(id, typ) =>
-          b.sameLineList(
-            "func", {
-              b.appendElement(id.show)
-              writeSig(typ.params, typ.results)
-            }
-          )
+        i.desc match {
+          case WasmImportDesc.Func(id, typ) =>
+            b.sameLineList(
+              "func", {
+                b.appendElement(id.show)
+                writeSig(typ.params, typ.results)
+              }
+            )
+        }
       }
-    })
+    )
   }
 
-  private def writeSig(params: List[WasmType], results: List[WasmType])(implicit b: WatBuilder): Unit = {
+  private def writeSig(params: List[WasmType], results: List[WasmType])(implicit
+      b: WatBuilder
+  ): Unit = {
     params.foreach(typ => b.sameLineListOne("param", typ.show))
     results.foreach(typ => b.sameLineListOne("result", typ.show))
   }
@@ -256,7 +260,9 @@ class WasmTextWriter {
       case WasmImmediate.LabelIdxVector(indices) =>
         indices.map(i => "$" + i.value).mkString(" ")
       case i: WasmImmediate.CastFlags =>
-        throw new UnsupportedOperationException(s"CastFlags $i must be handled directly in the instruction $instr")
+        throw new UnsupportedOperationException(
+          s"CastFlags $i must be handled directly in the instruction $instr"
+        )
       case _ =>
         println(i)
         ???
@@ -264,7 +270,9 @@ class WasmTextWriter {
     b.appendElement(str)
   }
 
-  private def writeRefTypeImmediate(i: WasmImmediate.HeapType, nullable: Boolean)(implicit b: WatBuilder): Unit = {
+  private def writeRefTypeImmediate(i: WasmImmediate.HeapType, nullable: Boolean)(implicit
+      b: WatBuilder
+  ): Unit = {
     if (nullable)
       b.appendElement(s"(ref null ${i.value.show})")
     else
@@ -286,8 +294,10 @@ class WasmTextWriter {
     }
 
     def writeBrOnCastImmediates(
-      castFlags: WasmImmediate.CastFlags, label: WasmImmediate.LabelIdx,
-      from: WasmImmediate.HeapType, to: WasmImmediate.HeapType
+        castFlags: WasmImmediate.CastFlags,
+        label: WasmImmediate.LabelIdx,
+        from: WasmImmediate.HeapType,
+        to: WasmImmediate.HeapType
     ): Unit = {
       writeImmediate(label, instr)
       writeRefTypeImmediate(from, castFlags.nullable1)

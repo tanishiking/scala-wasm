@@ -93,15 +93,16 @@ object HelperFunctions {
   }
 
   /** `typeDataName: (ref typeData) -> (ref any)` (representing a `string`).
-   *
-   *  Initializes the `name` field of the given `typeData` if that was not done
-   *  yet, and returns its value.
-   *
-   *  The computed value is specified by `java.lang.Class.getName()`. See also
-   *  the documentation on [[Names.WasmFieldName.typeData.name]] for details.
-   *
-   *  @see [[https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Class.html#getName()]]
-   */
+    *
+    * Initializes the `name` field of the given `typeData` if that was not done yet, and returns its
+    * value.
+    *
+    * The computed value is specified by `java.lang.Class.getName()`. See also the documentation on
+    * [[Names.WasmFieldName.typeData.name]] for details.
+    *
+    * @see
+    *   [[https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Class.html#getName()]]
+    */
   private def genTypeDataName()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName._
@@ -149,7 +150,10 @@ object HelperFunctions {
 
         // componentTypeData := ref_as_non_null(typeData.componentType)
         instrs += LOCAL_GET(typeDataParam)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.componentTypeIdx)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.componentTypeIdx
+        )
         instrs += REF_AS_NOT_NULL
         instrs += LOCAL_TEE(componentTypeDataLocal)
 
@@ -162,7 +166,10 @@ object HelperFunctions {
 
           // componentNameData := componentTypeData.nameData
           instrs += LOCAL_GET(componentTypeDataLocal)
-          instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.nameDataIdx)
+          instrs += STRUCT_GET(
+            TypeIdx(WasmStructTypeName.typeData),
+            WasmFieldName.typeData.nameDataIdx
+          )
           instrs += REF_AS_NOT_NULL
           instrs += LOCAL_TEE(componentNameDataLocal)
 
@@ -239,7 +246,10 @@ object HelperFunctions {
       } {
         // it is not an array; its name is stored in nameData
         instrs += LOCAL_GET(typeDataParam)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.nameDataIdx)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.nameDataIdx
+        )
         instrs += REF_AS_NOT_NULL
         instrs += CALL(FuncIdx(WasmFunctionName.createStringFromData))
       }
@@ -254,13 +264,13 @@ object HelperFunctions {
   }
 
   /** `createClassOf: (ref typeData) -> (ref jlClass)`.
-   *
-   *  Creates the unique `java.lang.Class` instance associated with the given
-   *  `typeData`, stores it in its `classOfValue` field, and returns it.
-   *
-   *  Must be called only if the `classOfValue` of the typeData is null. All
-   *  call sites must deal with the non-null case as a fast-path.
-   */
+    *
+    * Creates the unique `java.lang.Class` instance associated with the given `typeData`, stores it
+    * in its `classOfValue` field, and returns it.
+    *
+    * Must be called only if the `classOfValue` of the typeData is null. All call sites must deal
+    * with the non-null case as a fast-path.
+    */
   private def genCreateClassOf()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
@@ -327,11 +337,15 @@ object HelperFunctions {
     // TODO: "isInstance", "isAssignableFrom", "checkCast", "newArrayOfThisClass"
 
     // Call java.lang.Class::<init>(dataObject)
-    instrs += CALL(FuncIdx(WasmFunctionName(
-      IRTrees.MemberNamespace.Constructor,
-      IRNames.ClassClass,
-      SpecialNames.ClassCtor
-    )))
+    instrs += CALL(
+      FuncIdx(
+        WasmFunctionName(
+          IRTrees.MemberNamespace.Constructor,
+          IRNames.ClassClass,
+          SpecialNames.ClassCtor
+        )
+      )
+    )
 
     // typeData.classOf := classInstance
     instrs += LOCAL_GET(typeDataParam)
@@ -345,13 +359,13 @@ object HelperFunctions {
   }
 
   /** `getClassOf: (ref typeData) -> (ref jlClass)`.
-   *
-   *  Initializes the `java.lang.Class` instance associated with the given
-   *  `typeData` if not already done, and returns it.
-   *
-   *  This includes the fast-path and the slow-path to `createClassOf`, for
-   *  call sites that are not performance-sensitive.
-   */
+    *
+    * Initializes the `java.lang.Class` instance associated with the given `typeData` if not already
+    * done, and returns it.
+    *
+    * This includes the fast-path and the slow-path to `createClassOf`, for call sites that are not
+    * performance-sensitive.
+    */
   private def genGetClassOf()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
@@ -382,10 +396,9 @@ object HelperFunctions {
   }
 
   /** `arrayTypeData: (ref typeData), i32 -> (ref typeData)`.
-   *
-   *  Returns the typeData of an array with `dims` dimensions over the given
-   *  typeData.
-   */
+    *
+    * Returns the typeData of an array with `dims` dimensions over the given typeData.
+    */
   private def genArrayTypeData()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
@@ -421,7 +434,10 @@ object HelperFunctions {
       fctx.block(typeDataType) { arrayOfIsNonNullLabel =>
         // br_on_non_null $arrayOfIsNonNull typeData.arrayOf
         instrs += LOCAL_GET(typeDataParam)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.arrayOfIdx)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.arrayOfIdx
+        )
         instrs += BR_ON_NON_NULL(arrayOfIsNonNullLabel)
 
         // <top-of-stack> := typeData ; for the <old typeData>.arrayOf := ... later on
@@ -438,7 +454,10 @@ object HelperFunctions {
         instrs += LOCAL_TEE(typeDataParam)
 
         // <old typeData>.arrayOf := typeData
-        instrs += STRUCT_SET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.arrayOfIdx)
+        instrs += STRUCT_SET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.arrayOfIdx
+        )
 
         // loop back to the beginning
         instrs += BR(loopLabel)
@@ -454,10 +473,9 @@ object HelperFunctions {
   }
 
   /** `getComponentType: (ref typeData) -> (ref null jlClass)`.
-   *
-   *  This is the underlying func for the `getComponentType()` closure inside
-   *  class data objects.
-   */
+    *
+    * This is the underlying func for the `getComponentType()` closure inside class data objects.
+    */
   private def genGetComponentType()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
@@ -479,7 +497,10 @@ object HelperFunctions {
     fctx.block() { nullResultLabel =>
       // Try and extract non-null component type data
       instrs += LOCAL_GET(typeDataParam)
-      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.componentTypeIdx)
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.typeData),
+        WasmFieldName.typeData.componentTypeIdx
+      )
       instrs += BR_ON_NULL(nullResultLabel)
       // Get the corresponding classOf
       instrs += CALL(FuncIdx(WasmFunctionName.getClassOf))
@@ -491,13 +512,13 @@ object HelperFunctions {
   }
 
   /** `anyGetClass: (ref any) -> (ref null jlClass)`.
-   *
-   *  This is the implementation of `value.getClass()` when `value` can be an
-   *  instance of a hijacked class, i.e., a primitive.
-   *
-   *  For `number`s, the result is based on the actual value, as specified by
-   *  [[https://www.scala-js.org/doc/semantics.html#getclass]].
-   */
+    *
+    * This is the implementation of `value.getClass()` when `value` can be an instance of a hijacked
+    * class, i.e., a primitive.
+    *
+    * For `number`s, the result is based on the actual value, as specified by
+    * [[https://www.scala-js.org/doc/semantics.html#getclass]].
+    */
   private def genAnyGetClass()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
@@ -542,13 +563,18 @@ object HelperFunctions {
                   fctx.block() { typeBooleanLabel =>
                     instrs += LOCAL_GET(valueParam)
                     instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
-                    instrs += BR_TABLE(LabelIdxVector(List(
-                      typeBooleanLabel, // 0
-                      typeBooleanLabel, // 1
-                      typeStringLabel, // 2
-                      typeNumberLabel, // 3
-                      typeUndefinedLabel, // 4
-                    )), typeOtherLabel)
+                    instrs += BR_TABLE(
+                      LabelIdxVector(
+                        List(
+                          typeBooleanLabel, // 0
+                          typeBooleanLabel, // 1
+                          typeStringLabel, // 2
+                          typeNumberLabel, // 3
+                          typeUndefinedLabel // 4
+                        )
+                      ),
+                      typeOtherLabel
+                    )
                   }
 
                   // typeBoolean:

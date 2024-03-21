@@ -41,7 +41,7 @@ object Main {
     val builder = new WasmBuilder()
     implicit val context: WasmContext = new WasmContext(module)
     basicTestClassDefs.foreach { clazz =>
-      //builder.transformClassDef(clazz)
+      // builder.transformClassDef(clazz)
       ???
     }
     val writer = new converters.WasmTextWriter()
