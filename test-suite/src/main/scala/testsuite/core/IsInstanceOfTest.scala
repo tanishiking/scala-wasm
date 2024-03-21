@@ -21,10 +21,18 @@ object IsInstanceOfTest {
   }
 
   private def testInheritance(): Boolean = {
-    val child = new Child()
-    val parent = new Parent()
-    child.isInstanceOf[Parent] && child.isInstanceOf[Child] &&
-    parent.isInstanceOf[Parent] && !parent.isInstanceOf[Child]
+    val child: Any = new Child()
+    val parent: Any = new Parent()
+    val unrelated: Any = new UnrelatedClass()
+    child.isInstanceOf[AbstractParent] &&
+    child.isInstanceOf[Parent] &&
+    child.isInstanceOf[Child] &&
+    parent.isInstanceOf[AbstractParent] &&
+    parent.isInstanceOf[Parent] &&
+    !parent.isInstanceOf[Child] &&
+    !unrelated.isInstanceOf[AbstractParent] &&
+    !unrelated.isInstanceOf[Parent] &&
+    !unrelated.isInstanceOf[Child]
   }
 
   private def testMixinAll(o: Base): Boolean = {
@@ -49,10 +57,14 @@ object IsInstanceOfTest {
   private def testString(e: Any): Boolean = e.isInstanceOf[String]
 }
 
-class Parent extends Base {
+abstract class AbstractParent
+
+class Parent extends AbstractParent with Base {
   def foo(): Int = 5
 }
 class Child extends Parent
+
+class UnrelatedClass
 
 trait Base1
 trait Base2

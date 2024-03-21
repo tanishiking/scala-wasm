@@ -19,7 +19,7 @@ object Preprocessor {
 
     for (clazz <- classes) {
       collectAbstractMethodCalls(clazz)
-      if (!clazz.hasDirectInstances && clazz.hasInstanceTests)
+      if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
     }
   }
