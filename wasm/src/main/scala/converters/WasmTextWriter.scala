@@ -333,8 +333,8 @@ class WasmTextWriter {
     }
 
     instr match {
-      case _: BLOCK | _: LOOP | _: IF | ELSE => b.indent()
-      case _                                 => ()
+      case _: StructuredLabeledInstr | ELSE => b.indent()
+      case _                                => ()
     }
   }
 
