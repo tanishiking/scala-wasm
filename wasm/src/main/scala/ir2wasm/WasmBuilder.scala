@@ -103,6 +103,19 @@ class WasmBuilder {
       )
     val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
 
+    val cloneFunction = {
+      val nullref =
+        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmFunctionTypeName.cloneFunction)))
+      typeRef match {
+        case IRTypes.ClassRef(className) =>
+          val classInfo = ctx.getClassInfo(className)
+          if (classInfo.interfaces.contains(IRNames.CloneableClass))
+            REF_FUNC(FuncIdx(WasmFunctionName.clone(className)))
+          else nullref
+        case _ => nullref
+      }
+    }
+
     nameDataValue :::
       List(
         // kind
@@ -114,7 +127,9 @@ class WasmBuilder {
         // the classOf instance - initially `null`; filled in by the `createClassOf` helper
         REF_NULL(HeapType(WasmHeapType.ClassType)),
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
-        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)))
+        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData))),
+        // clonefFunction
+        cloneFunction
       )
   }
 

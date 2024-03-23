@@ -169,16 +169,18 @@ class WasmFunctionContext private (
 
   // Final result
 
+  def buildAndAddToContext(funcTy: WasmFunctionType): WasmFunction = {
+    val expr = WasmExpr(instrs.toList)
+    val func = WasmFunction(functionName, funcTy, locals.all, expr)
+    ctx.addFunction(func)
+    func
+  }
+
   def buildAndAddToContext(): WasmFunction = {
     val sig = WasmFunctionSignature(_receiverAndParams.map(_.typ), _resultTypes)
     val typeName = ctx.addFunctionType(sig)
     val functionType = WasmFunctionType(typeName, sig)
-
-    val expr = WasmExpr(instrs.toList)
-
-    val func = WasmFunction(functionName, functionType, locals.all, expr)
-    ctx.addFunction(func)
-    func
+    buildAndAddToContext(functionType)
   }
 }
 

@@ -344,6 +344,10 @@ object WasmImmediate {
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
   case class HeapType(val value: WasmHeapType) extends WasmImmediate
   case class StructFieldIdx(val value: Int) extends WasmImmediate
+  object StructFieldIdx {
+    val vtable = StructFieldIdx(0)
+    val itables = StructFieldIdx(1)
+  }
 
   /** `castflags` for `br_on_cast` and `br_on_cast_fail`.
     *

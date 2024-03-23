@@ -143,6 +143,10 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
       case t: IRTrees.Closure              => genClosure(t)
+      case t: IRTrees.Clone                => genClone(t)
+      case _: IRTrees.Throw =>
+        instrs += UNREACHABLE
+        IRTypes.NothingType
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -166,7 +170,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.WrapAsThrowable(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
-      // case IRTrees.Clone(pos) =>
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
       // case IRTrees.ForIn(pos) =>
@@ -1734,5 +1737,31 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(helper))
 
     IRTypes.AnyType
+  }
+
+  private def genClone(t: IRTrees.Clone): IRTypes.Type = {
+    val expr = fctx.addSyntheticLocal(TypeTransformer.transformType(t.expr.tpe)(ctx))
+    fctx.block(Types.WasmRefType(Types.WasmHeapType.ObjectType)) { ourObject =>
+      genTreeAuto(t.expr)
+      instrs += BR_ON_CAST(
+        CastFlags(false, false),
+        ourObject,
+        HeapType(Types.WasmHeapType.Simple.Any),
+        HeapType(Types.WasmHeapType.ObjectType)
+      )
+      instrs += UNREACHABLE
+    }
+    instrs += LOCAL_TEE(expr)
+    instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
+
+    instrs += LOCAL_GET(expr)
+    instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(IRNames.ObjectClass)), StructFieldIdx.vtable)
+    instrs += STRUCT_GET(
+      TypeIdx(WasmTypeName.WasmStructTypeName.typeData),
+      WasmFieldName.typeData.cloneFunctionIdx
+    )
+    // cloneFunction: (ref j.l.Object) -> ref j.l.Object
+    instrs += CALL_REF(TypeIdx(WasmTypeName.WasmFunctionTypeName.cloneFunction))
+    t.tpe
   }
 }

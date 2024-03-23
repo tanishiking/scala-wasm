@@ -452,6 +452,9 @@ object HelperFunctions {
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // name
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // classOf
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // arrayOf
+        instrs += REF_NULL(
+          HeapType(WasmHeapType.Type(WasmTypeName.WasmFunctionTypeName.cloneFunction))
+        ) // clone
         instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.typeData))
         instrs += LOCAL_TEE(typeDataParam)
 
@@ -782,6 +785,40 @@ object HelperFunctions {
     instrs += DROP
     instrs += LOCAL_GET(found)
     fctx.buildAndAddToContext()
+  }
+
+  def genCloneInstance(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    val info = ctx.getClassInfo(clazz.name.name)
+    if (info.interfaces.contains(IRNames.CloneableClass)) {
+      val heapType =
+        WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name))
+      val fctx = WasmFunctionContext(
+        Names.WasmFunctionName.clone(clazz.name.name),
+        List("from" -> WasmRefType(WasmHeapType.ObjectType)),
+        List(WasmRefType(WasmHeapType.ObjectType))
+      )
+      val List(fromParam) = fctx.paramIndices
+      import fctx.instrs
+
+      val result = fctx.addLocal(fctx.genSyntheticLocalName(), WasmRefNullType(heapType))
+
+      instrs += CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name)))
+      instrs += LOCAL_SET(result)
+      info.allFieldDefs.foreach { field =>
+        val fieldIdx = info.getFieldIdx(field.name.name)
+        instrs += LOCAL_GET(result)
+        instrs += LOCAL_GET(fromParam)
+        instrs += REF_CAST(HeapType(heapType))
+        instrs += STRUCT_GET(TypeIdx(WasmTypeName.WasmStructTypeName(clazz.name.name)), fieldIdx)
+        instrs += STRUCT_SET(TypeIdx(WasmTypeName.WasmStructTypeName(clazz.name.name)), fieldIdx)
+      }
+      instrs += LOCAL_GET(result)
+      instrs += REF_AS_NOT_NULL
+      // instrs += REF_CAST(HeapType(WasmHeapType.ObjectType))
+      fctx.buildAndAddToContext(WasmFunctionType.cloneFunction)
+    }
+    // assert(clazz.kind == ClassKind.Interface)
   }
 
 }

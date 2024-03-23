@@ -137,6 +137,8 @@ object Names {
       new WasmFunctionName("new", clazz.nameString)
     def instanceTest(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("instanceTest", clazz.nameString)
+    def clone(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("clone", clazz.nameString)
 
     val start = new WasmFunctionName("start", "start")
 
@@ -318,12 +320,18 @@ object Names {
         */
       val arrayOf = new WasmFieldName("arrayOf")
 
+      /** The function to clone the object of this type, a nullable function reference. This field
+        * is instantiated only with the classes that implement java.lang.Cloneable.
+        */
+      val cloneFunction = new WasmFieldName("clone")
+
       val nameDataIdx = WasmImmediate.StructFieldIdx(0)
       val kindIdx = WasmImmediate.StructFieldIdx(1)
       val componentTypeIdx = WasmImmediate.StructFieldIdx(2)
       val nameIdx = WasmImmediate.StructFieldIdx(3)
       val classOfIdx = WasmImmediate.StructFieldIdx(4)
       val arrayOfIdx = WasmImmediate.StructFieldIdx(5)
+      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(6)
     }
   }
 
@@ -359,6 +367,7 @@ object Names {
         extends WasmTypeName(name)
     object WasmFunctionTypeName {
       def apply(idx: Int) = new WasmFunctionTypeName(s"fun_type___$idx")
+      val cloneFunction = new WasmFunctionTypeName("clone_function_type")
     }
 
     /** Vtable type's name */
