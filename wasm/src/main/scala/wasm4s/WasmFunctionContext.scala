@@ -175,7 +175,6 @@ class WasmFunctionContext private (
     val functionType = WasmFunctionType(typeName, sig)
 
     val expr = WasmExpr(instrs.toList)
-
     val func = WasmFunction(functionName, functionType, locals.all, expr)
     ctx.addFunction(func)
     func

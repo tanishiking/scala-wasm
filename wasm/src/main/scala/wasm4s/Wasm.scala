@@ -87,7 +87,7 @@ object WasmStructType {
     * @see
     *   [[Names.WasmFieldName.typeData]], which contains documentation of what is in each field.
     */
-  val typeData: WasmStructType = WasmStructType(
+  def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
     WasmTypeName.WasmStructTypeName.typeData,
     List(
       WasmStructField(
@@ -119,13 +119,18 @@ object WasmStructType {
         WasmFieldName.typeData.arrayOf,
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
         isMutable = true
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.cloneFunction,
+        WasmRefNullType(WasmHeapType.Type(ctx.cloneFunctionTypeName)),
+        isMutable = false
       )
     ),
     None
   )
 
   // The number of fields of typeData, after which we find the vtable entries
-  val typeDataFieldCount = typeData.fields.size
+  def typeDataFieldCount(implicit ctx: ReadOnlyWasmContext) = typeData.fields.size
 }
 
 case class WasmArrayType(

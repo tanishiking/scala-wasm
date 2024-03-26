@@ -143,6 +143,10 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
       case t: IRTrees.Closure              => genClosure(t)
+      case t: IRTrees.Clone                => genClone(t)
+      case _: IRTrees.Throw =>
+        instrs += UNREACHABLE
+        IRTypes.NothingType
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -166,7 +170,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.WrapAsThrowable(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
-      // case IRTrees.Clone(pos) =>
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
       // case IRTrees.ForIn(pos) =>
@@ -563,7 +566,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmVTableTypeName(receiverClassName)),
-        StructFieldIdx(WasmStructType.typeDataFieldCount + methodIdx)
+        StructFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
@@ -1734,5 +1737,36 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(helper))
 
     IRTypes.AnyType
+  }
+
+  private def genClone(t: IRTrees.Clone): IRTypes.Type = {
+    val expr = fctx.addSyntheticLocal(TypeTransformer.transformType(t.expr.tpe)(ctx))
+    genTree(t.expr, IRTypes.ClassType(IRNames.CloneableClass))
+    instrs += REF_CAST(HeapType(Types.WasmHeapType.ObjectType))
+    instrs += LOCAL_TEE(expr)
+    instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
+
+    instrs += LOCAL_GET(expr)
+    instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(IRNames.ObjectClass)), StructFieldIdx.vtable)
+    instrs += STRUCT_GET(
+      TypeIdx(WasmTypeName.WasmStructTypeName.typeData),
+      WasmFieldName.typeData.cloneFunctionIdx
+    )
+    // cloneFunction: (ref j.l.Object) -> ref j.l.Object
+    instrs += CALL_REF(TypeIdx(ctx.cloneFunctionTypeName))
+
+    t.tpe match {
+      case ClassType(className) =>
+        val info = ctx.getClassInfo(className)
+        if (!info.isInterface) // if it's interface, no need to cast from j.l.Object
+          instrs += REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(className)))
+          )
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Clone result type must be a class type, but is ${t.tpe}"
+        )
+    }
+    t.tpe
   }
 }

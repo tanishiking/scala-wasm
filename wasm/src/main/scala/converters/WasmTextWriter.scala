@@ -40,7 +40,7 @@ class WasmTextWriter {
       t: WasmGCTypeDefinition
   )(implicit b: WatBuilder): Unit = {
     def writeField(field: WasmStructField): Unit = {
-      b.newLineList(
+      b.sameLineList(
         "field", {
           b.appendElement(field.name.show)
           if (field.isMutable)

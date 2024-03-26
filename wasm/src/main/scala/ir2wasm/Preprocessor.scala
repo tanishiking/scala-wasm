@@ -21,6 +21,7 @@ object Preprocessor {
       collectAbstractMethodCalls(clazz)
       if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
+      HelperFunctions.genCloneFunction(clazz)
     }
   }
 
