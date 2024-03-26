@@ -4,6 +4,8 @@ import org.scalajs.ir.{Names => IRNames}
 import Names._
 import Names.WasmTypeName._
 
+import wasm.ir2wasm.SpecialNames
+
 object Types {
   abstract sealed class WasmStorageType(
       private val name: String,
@@ -78,5 +80,7 @@ object Types {
 
     val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
     val ClassType = Type(WasmStructTypeName(IRNames.ClassClass))
+    val ThrowableType = Type(WasmStructTypeName(IRNames.ThrowableClass))
+    val JSExceptionType = Type(WasmStructTypeName(SpecialNames.JSExceptionClass))
   }
 }

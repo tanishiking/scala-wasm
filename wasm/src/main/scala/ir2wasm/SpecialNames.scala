@@ -16,4 +16,9 @@ object SpecialNames {
 
   // The constructor of java.lang.Class
   val ClassCtor = MethodName.constructor(List(ClassRef(ObjectClass)))
+
+  // js.JavaScriptException, for WrapAsThrowable and UnwrapFromThrowable
+  val JSExceptionClass = ClassName("scala.scalajs.js.JavaScriptException")
+  val JSExceptionCtor = MethodName.constructor(List(ClassRef(ObjectClass)))
+  val JSExceptionField = FieldName(JSExceptionClass, SimpleFieldName("exception"))
 }

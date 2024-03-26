@@ -13,8 +13,11 @@ package testsuite
   */
 object Assert {
   def ok(cond: Boolean): Unit =
-    if (!cond) null.toString() // Apply to Null should compile to unreachable
+    if (!cond) fail()
 
   def assertSame(expected: Any, actual: Any): Unit =
     ok(expected.asInstanceOf[AnyRef] eq actual.asInstanceOf[AnyRef])
+
+  def fail(): Unit =
+    null.toString() // Apply to Null should compile to unreachable
 }
