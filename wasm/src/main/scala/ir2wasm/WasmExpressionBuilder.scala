@@ -1741,16 +1741,8 @@ private class WasmExpressionBuilder private (
 
   private def genClone(t: IRTrees.Clone): IRTypes.Type = {
     val expr = fctx.addSyntheticLocal(TypeTransformer.transformType(t.expr.tpe)(ctx))
-    fctx.block(Types.WasmRefType(Types.WasmHeapType.ObjectType)) { ourObject =>
-      genTreeAuto(t.expr)
-      instrs += BR_ON_CAST(
-        CastFlags(false, false),
-        ourObject,
-        HeapType(Types.WasmHeapType.Simple.Any),
-        HeapType(Types.WasmHeapType.ObjectType)
-      )
-      instrs += UNREACHABLE
-    }
+    genTree(t.expr, IRTypes.ClassType(IRNames.ObjectClass))
+    instrs += REF_CAST(HeapType(Types.WasmHeapType.ObjectType))
     instrs += LOCAL_TEE(expr)
     instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
 
