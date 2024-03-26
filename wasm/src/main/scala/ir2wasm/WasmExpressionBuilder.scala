@@ -1762,6 +1762,19 @@ private class WasmExpressionBuilder private (
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
     instrs += CALL_REF(TypeIdx(WasmTypeName.WasmFunctionTypeName.cloneFunction))
+
+    t.tpe match {
+      case ClassType(className) =>
+        val info = ctx.getClassInfo(className)
+        if (!info.isInterface) // if it's interface, no need to cast from j.l.Object
+          instrs += REF_CAST(
+            HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(className)))
+          )
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Clone result type must be a class type, but is ${t.tpe}"
+        )
+    }
     t.tpe
   }
 }

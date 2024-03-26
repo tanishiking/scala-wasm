@@ -21,7 +21,7 @@ object Preprocessor {
       collectAbstractMethodCalls(clazz)
       if (!clazz.hasDirectInstances && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
-      HelperFunctions.genCloneInstance(clazz)
+      HelperFunctions.genCloneFunction(clazz)
     }
   }
 

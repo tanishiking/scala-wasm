@@ -109,7 +109,9 @@ class WasmBuilder {
       typeRef match {
         case IRTypes.ClassRef(className) =>
           val classInfo = ctx.getClassInfo(className)
-          if (classInfo.interfaces.contains(IRNames.CloneableClass))
+          // If the class implements the `java.lang.Cloneable`,
+          // `HelperFunctions.genCloneFunction` should've generated the clone function
+          if (classInfo.ancestors.contains(IRNames.CloneableClass))
             REF_FUNC(FuncIdx(WasmFunctionName.clone(className)))
           else nullref
         case _ => nullref
@@ -128,7 +130,7 @@ class WasmBuilder {
         REF_NULL(HeapType(WasmHeapType.ClassType)),
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
         REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData))),
-        // clonefFunction
+        // clonefFunction - will be invoked from `clone()` method invokaion on the class
         cloneFunction
       )
   }
