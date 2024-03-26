@@ -122,6 +122,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.New                 => genNew(t)
       case t: IRTrees.If                  => genIf(t, expectedType)
       case t: IRTrees.While               => genWhile(t)
+      case t: IRTrees.Throw               => genThrow(t)
       case t: IRTrees.Debugger            => IRTypes.NoType // ignore
       case t: IRTrees.Skip                => IRTypes.NoType
       case t: IRTrees.IdentityHashCode    => genIdentityHashCode(t)
@@ -146,9 +147,6 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
       case t: IRTrees.Closure              => genClosure(t)
       case t: IRTrees.Clone                => genClone(t)
-      case _: IRTrees.Throw =>
-        instrs += UNREACHABLE
-        IRTypes.NothingType
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -1326,6 +1324,13 @@ private class WasmExpressionBuilder private (
         }
         IRTypes.NoType
     }
+  }
+
+  private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
+    genTree(tree.expr, IRTypes.AnyType)
+    instrs += THROW(TagIdx(ctx.exceptionTagName))
+
+    IRTypes.NothingType
   }
 
   private def genBlock(t: IRTrees.Block, expectedType: IRTypes.Type): IRTypes.Type = {
