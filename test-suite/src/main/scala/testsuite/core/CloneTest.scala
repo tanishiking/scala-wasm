@@ -6,6 +6,7 @@ object CloneTest {
   def main(): Unit = {
     testDirect()
     testIndirectlyImpl()
+    testShallowCopyiny()
   }
 
   private def testDirect(): Unit = {
@@ -21,6 +22,15 @@ object CloneTest {
     Assert.ok(bar.x == copy.x)
     Assert.ok(bar.y == copy.y)
   }
+
+  private def testShallowCopyiny(): Unit = {
+    val foo = new Foo(0, "foo")
+    val bar = new Bar(1, "bar")
+    val baz = new Baz(foo, bar)
+    val copy = baz.clone().asInstanceOf[Baz]
+    Assert.assertSame(baz.foo, copy.foo)
+    Assert.assertSame(baz.bar, copy.bar)
+  }
 }
 
 class Foo(val x: Int, val y: String) extends Cloneable {
@@ -31,3 +41,7 @@ class Bar(
     override val x: Int,
     override val y: String
 ) extends Foo(x, y)
+
+class Baz(val foo: Foo, val bar: Bar) extends Cloneable {
+  override def clone(): Object = super.clone()
+}
