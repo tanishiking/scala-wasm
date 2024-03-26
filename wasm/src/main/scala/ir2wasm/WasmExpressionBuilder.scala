@@ -123,6 +123,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.If                  => genIf(t, expectedType)
       case t: IRTrees.While               => genWhile(t)
       case t: IRTrees.TryCatch            => genTryCatch(t)
+      case t: IRTrees.TryFinally          => genTryFinally(t)
       case t: IRTrees.Throw               => genThrow(t)
       case t: IRTrees.Debugger            => IRTypes.NoType // ignore
       case t: IRTrees.Skip                => IRTypes.NoType
@@ -165,7 +166,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.RecordSelect(tpe) =>
-      // case IRTrees.TryFinally(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
@@ -1342,6 +1342,46 @@ private class WasmExpressionBuilder private (
       instrs += LOCAL_SET(exceptionLocal)
       genTree(t.handler, t.tpe)
     } // end block $done
+
+    t.tpe
+  }
+
+  private def genTryFinally(t: IRTrees.TryFinally): IRTypes.Type = {
+    /* This implementation is rudimentary. It does not handle `Labeled/Return`
+     * pairs that cross its boundary. In case there is a `Return` inside the
+     * `try` block targeting a `Labeled` block around this `TryFinally`, the
+     * `finally` block is by-passed.
+     */
+
+    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+    val resultLocals = resultType.map(fctx.addSyntheticLocal(_))
+
+    fctx.block() { doneLabel =>
+      fctx.block(Types.WasmExnRef) { catchLabel =>
+        fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
+          // try block
+          genTree(t.block, t.tpe)
+
+          // store the result in locals during the finally block
+          for (resultLocal <- resultLocals.reverse)
+            instrs += LOCAL_SET(resultLocal)
+        }
+
+        // on success, push a `null_ref exn` on the stack
+        instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Exn))
+      } // end block $catch
+
+      // finally block (during which we leave the `(ref null exn)` on the stack)
+      genTree(t.finalizer, IRTypes.NoType)
+
+      // if the `exnref` is non-null, rethrow it
+      instrs += BR_ON_NULL(doneLabel)
+      instrs += THROW_REF
+    } // end block $done
+
+    // reload the result onto the stack
+    for (resultLocal <- resultLocals)
+      instrs += LOCAL_GET(resultLocal)
 
     t.tpe
   }
