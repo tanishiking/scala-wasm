@@ -6,7 +6,7 @@ object CloneTest {
   def main(): Unit = {
     testDirect()
     testIndirectlyImpl()
-    testShallowCopyiny()
+    testShallowCopying()
   }
 
   private def testDirect(): Unit = {
@@ -23,7 +23,7 @@ object CloneTest {
     Assert.ok(bar.y == copy.y)
   }
 
-  private def testShallowCopyiny(): Unit = {
+  private def testShallowCopying(): Unit = {
     val foo = new Foo(0, "foo")
     val bar = new Bar(1, "bar")
     val baz = new Baz(foo, bar)
