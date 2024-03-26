@@ -105,7 +105,7 @@ class WasmBuilder {
 
     val cloneFunction = {
       val nullref =
-        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmFunctionTypeName.cloneFunction)))
+        REF_NULL(HeapType(WasmHeapType.Type(ctx.cloneFunctionTypeName)))
       typeRef match {
         case IRTypes.ClassRef(className) =>
           val classInfo = ctx.getClassInfo(className)

@@ -453,7 +453,7 @@ object HelperFunctions {
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // classOf
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // arrayOf
         instrs += REF_NULL(
-          HeapType(WasmHeapType.Type(WasmTypeName.WasmFunctionTypeName.cloneFunction))
+          HeapType(WasmHeapType.Type(ctx.cloneFunctionTypeName))
         ) // clone
         instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.typeData))
         instrs += LOCAL_TEE(typeDataParam)
@@ -824,7 +824,8 @@ object HelperFunctions {
       }
       instrs += LOCAL_GET(result)
       instrs += REF_AS_NOT_NULL
-      fctx.buildAndAddToContext(WasmFunctionType.cloneFunction)
+      val fun = fctx.buildAndAddToContext()
+      // fun.typ
     }
   }
 

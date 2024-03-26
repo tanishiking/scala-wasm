@@ -566,7 +566,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmVTableTypeName(receiverClassName)),
-        StructFieldIdx(WasmStructType.typeDataFieldCount + methodIdx)
+        StructFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
       instrs += CALL_REF(
         TypeIdx(info.toWasmFunctionType()(ctx).name)
@@ -1753,7 +1753,7 @@ private class WasmExpressionBuilder private (
       WasmFieldName.typeData.cloneFunctionIdx
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
-    instrs += CALL_REF(TypeIdx(WasmTypeName.WasmFunctionTypeName.cloneFunction))
+    instrs += CALL_REF(TypeIdx(ctx.cloneFunctionTypeName))
 
     t.tpe match {
       case ClassType(className) =>

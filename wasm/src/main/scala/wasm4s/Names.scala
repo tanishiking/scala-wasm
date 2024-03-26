@@ -367,7 +367,7 @@ object Names {
         extends WasmTypeName(name)
     object WasmFunctionTypeName {
       def apply(idx: Int) = new WasmFunctionTypeName(s"fun_type___$idx")
-      val cloneFunction = new WasmFunctionTypeName("clone_function_type")
+      // val cloneFunction = new WasmFunctionTypeName("clone_function_type")
     }
 
     /** Vtable type's name */

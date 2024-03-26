@@ -27,6 +27,8 @@ trait ReadOnlyWasmContext {
   private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
   private val itablesCache = mutable.Map[IRNames.ClassName, WasmClassItables]()
 
+  val cloneFunctionTypeName: WasmFunctionTypeName
+
   def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
 
@@ -120,6 +122,14 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   def addFunction(fun: WasmFunction): Unit
   protected def addGlobal(g: WasmGlobal): Unit
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
+
+  val cloneFunctionTypeName =
+    addFunctionType(
+      WasmFunctionSignature(
+        List(WasmRefType(WasmHeapType.ObjectType)),
+        List(WasmRefType(WasmHeapType.ObjectType))
+      )
+    )
 
   def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
     functionSignatures.get(sig) match {
@@ -240,7 +250,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     module.addImport(WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typ)))
   }
 
-  addGCType(WasmStructType.typeData)
+  addGCType(WasmStructType.typeData(this))
 
   addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
 

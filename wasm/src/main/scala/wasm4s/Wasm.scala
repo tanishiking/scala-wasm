@@ -71,13 +71,6 @@ object WasmFunctionType {
   def apply(name: WasmFunctionTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
     WasmFunctionType(name, sig.params, sig.results)
   }
-  val cloneFunction = WasmFunctionType(
-    WasmFunctionTypeName.cloneFunction,
-    WasmFunctionSignature(
-      List(WasmRefType(WasmHeapType.ObjectType)),
-      List(WasmRefType(WasmHeapType.ObjectType))
-    )
-  )
 }
 
 sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmTypeName]
@@ -94,7 +87,7 @@ object WasmStructType {
     * @see
     *   [[Names.WasmFieldName.typeData]], which contains documentation of what is in each field.
     */
-  val typeData: WasmStructType = WasmStructType(
+  def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
     WasmTypeName.WasmStructTypeName.typeData,
     List(
       WasmStructField(
@@ -129,7 +122,7 @@ object WasmStructType {
       ),
       WasmStructField(
         WasmFieldName.typeData.cloneFunction,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmFunctionTypeName.cloneFunction)),
+        WasmRefNullType(WasmHeapType.Type(ctx.cloneFunctionTypeName)),
         isMutable = false
       )
     ),
@@ -137,7 +130,7 @@ object WasmStructType {
   )
 
   // The number of fields of typeData, after which we find the vtable entries
-  val typeDataFieldCount = typeData.fields.size
+  def typeDataFieldCount(implicit ctx: ReadOnlyWasmContext) = typeData.fields.size
 }
 
 case class WasmArrayType(
@@ -219,7 +212,7 @@ class WasmModule(
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
   def addElement(element: WasmElement): Unit = _elements.addOne(element)
 
-  def functionTypes = _functionTypes.toList ++ List(WasmFunctionType.cloneFunction)
+  def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
   def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array) ++ _arrayTypes.toList
   def imports = _imports.toList
