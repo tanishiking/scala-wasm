@@ -278,6 +278,14 @@ class WasmTextWriter {
         indices.map(i => "$" + i.value).mkString(" ")
       case WasmImmediate.TagIdx(name) =>
         name.show
+      case WasmImmediate.CatchClauseVector(clauses) =>
+        for (clause <- clauses) {
+          b.appendElement("(" + clause.mnemonic)
+          for (imm <- clause.immediates)
+            writeImmediate(imm, instr)
+          b.appendElement(")")
+        }
+        ""
       case i: WasmImmediate.CastFlags =>
         throw new UnsupportedOperationException(
           s"CastFlags $i must be handled directly in the instruction $instr"

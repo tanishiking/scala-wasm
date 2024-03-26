@@ -122,6 +122,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.New                 => genNew(t)
       case t: IRTrees.If                  => genIf(t, expectedType)
       case t: IRTrees.While               => genWhile(t)
+      case t: IRTrees.TryCatch            => genTryCatch(t)
       case t: IRTrees.Throw               => genThrow(t)
       case t: IRTrees.Debugger            => IRTypes.NoType // ignore
       case t: IRTrees.Skip                => IRTypes.NoType
@@ -171,7 +172,6 @@ private class WasmExpressionBuilder private (
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
       // case IRTrees.ForIn(pos) =>
-      // case tc: IRTrees.TryCatch => ???
       // case IRTrees.JSImportCall(pos) =>
     }
 
@@ -1324,6 +1324,26 @@ private class WasmExpressionBuilder private (
         }
         IRTypes.NoType
     }
+  }
+
+  private def genTryCatch(t: IRTrees.TryCatch): IRTypes.Type = {
+    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+
+    fctx.block(resultType) { doneLabel =>
+      fctx.block(Types.WasmAnyRef) { catchLabel =>
+        fctx.tryTable(resultType)(
+          List(CatchClause.Catch(TagIdx(ctx.exceptionTagName), catchLabel))
+        ) {
+          genTree(t.block, t.tpe)
+        }
+        instrs += BR(doneLabel)
+      } // end block $catch
+      val exceptionLocal = fctx.addLocal(t.errVar.name, Types.WasmAnyRef)
+      instrs += LOCAL_SET(exceptionLocal)
+      genTree(t.handler, t.tpe)
+    } // end block $done
+
+    t.tpe
   }
 
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {

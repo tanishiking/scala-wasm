@@ -12,6 +12,7 @@ object Defaults {
     case WasmInt32                 => I32_CONST(I32(0))
     case WasmAnyRef                => REF_NULL(HeapType(WasmHeapType.Simple.Any))
     case WasmExternRef             => REF_NULL(HeapType(WasmHeapType.Simple.NoExtern))
+    case WasmExnRef                => REF_NULL(HeapType(WasmHeapType.Simple.NoExn))
     case WasmRefType(_)            => nonDefaultable(t)
     case WasmFloat32               => F32_CONST(F32(0))
     case WasmFuncRef               => REF_NULL(HeapType(WasmHeapType.Simple.Func))
