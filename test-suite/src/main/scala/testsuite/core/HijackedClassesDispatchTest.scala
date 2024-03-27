@@ -14,6 +14,9 @@ object HijackedClassesDispatchTest {
         testToString(obj, "Test class") &&
         testToStringStartsWith(obj2, "testsuite.core.HijackedClassesDispatchTest$Test2@") &&
         testToString('A', "A") &&
+        testToStringStartsWith(new Array[Int](1), "[I@") &&
+        testToStringStartsWith(new Array[String](1), "[Ljava.lang.String;@") &&
+        testToStringStartsWith(new Array[Array[AnyRef]](1), "[[Ljava.lang.Object;@") &&
         testHashCode(true, 1231) &&
         testHashCode(54321, 54321) &&
         testHashCode("foo", 101574) &&
