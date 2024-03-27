@@ -1114,9 +1114,12 @@ private class WasmExpressionBuilder private (
               )
         }
 
-      case IRTypes.ArrayType(_) =>
-        println(tree)
-        ???
+      case IRTypes.ArrayType(arrayTypeRef) =>
+        /* TODO This is not correct for reference array types. It treats
+         * every reference array type as if it were Array[jl.Object].
+         */
+        val structTypeName = WasmStructTypeName(arrayTypeRef)
+        instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
       case testType: IRTypes.RecordType =>
         throw new AssertionError(s"Illegal type in IsInstanceOf: $testType")
@@ -1174,9 +1177,9 @@ private class WasmExpressionBuilder private (
             }
           }
 
-        case IRTypes.ArrayType(_) =>
-          println(tree)
-          ???
+        case IRTypes.ArrayType(arrayTypeRef) =>
+          val structTypeName = WasmStructTypeName(arrayTypeRef)
+          instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
         case targetTpe: IRTypes.RecordType =>
           throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
