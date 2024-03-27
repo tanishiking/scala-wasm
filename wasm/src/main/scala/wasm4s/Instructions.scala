@@ -204,12 +204,10 @@ object WasmInstr {
   case class CALL(i: FuncIdx) extends WasmInstr("call", 0x10, List(i))
   case class CALL_INDIRECT(i: TableIdx, t: TypeIdx)
       extends WasmInstr("call_indirect", 0x11, List(i, t))
-  case class TRY(i: BlockType) extends WasmInstr("try", 0x06, List(i))
-  case class CATCH(i: TagIdx) extends WasmInstr("catch", 0x07, List(i))
-  case object CATCH_ALL extends WasmInstr("catch_all", 0x19)
-  case class DELEGATE(i: LabelIdx) extends WasmInstr("delegate", 0x18, List(i))
   case class THROW(i: TagIdx) extends WasmInstr("throw", 0x08, List(i))
-  case class RETHROW(i: LabelIdx) extends WasmInstr("rethrow", 0x09)
+  case object THROW_REF extends WasmInstr("throw_ref", 0x0A)
+  case class TRY_TABLE(i: BlockType, cs: CatchClauseVector, label: Option[LabelIdx] = None)
+      extends StructuredLabeledInstr("try_table", 0x1F, List(i, cs))
 
   // Parametric instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#parametric-instructions
@@ -339,15 +337,18 @@ object WasmImmediate {
   case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
   case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
-  case class TagIdx(val value: Int) extends WasmImmediate
+  case class TagIdx(val value: WasmTagName) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
   case class HeapType(val value: WasmHeapType) extends WasmImmediate
+
   case class StructFieldIdx(val value: Int) extends WasmImmediate
   object StructFieldIdx {
     val vtable = StructFieldIdx(0)
     val itables = StructFieldIdx(1)
   }
+
+  case class CatchClauseVector(val value: List[CatchClause]) extends WasmImmediate
 
   /** `castflags` for `br_on_cast` and `br_on_cast_fail`.
     *
@@ -355,4 +356,17 @@ object WasmImmediate {
     *   https://webassembly.github.io/gc/core/binary/instructions.html#control-instructions
     */
   case class CastFlags(nullable1: Boolean, nullable2: Boolean) extends WasmImmediate
+
+  sealed abstract class CatchClause(
+      val mnemonic: String,
+      val opcode: Int,
+      val immediates: List[WasmImmediate]
+  )
+
+  object CatchClause {
+    case class Catch(x: TagIdx, l: LabelIdx) extends CatchClause("catch", 0x00, List(x, l))
+    case class CatchRef(x: TagIdx, l: LabelIdx) extends CatchClause("catch_ref", 0x01, List(x, l))
+    case class CatchAll(l: LabelIdx) extends CatchClause("catch_all", 0x02, List(l))
+    case class CatchAllRef(l: LabelIdx) extends CatchClause("catch_all_ref", 0x03, List(l))
+  }
 }

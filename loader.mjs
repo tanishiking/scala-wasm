@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 // Specified by java.lang.String.hashCode()
 function stringHashCode(s) {
   var res = 0;
@@ -170,9 +168,17 @@ const scalaJSHelpers = {
 }
 
 export async function load(wasmFileName) {
-  const wasmBuffer = readFileSync(wasmFileName);
-  const wasmModule = await WebAssembly.instantiate(wasmBuffer, {
+  const importsObj = {
     "__scalaJSHelpers": scalaJSHelpers,
-  });
+  };
+  var wasmModulePromise;
+  if (typeof process !== "undefined") {
+    wasmModulePromise = import("node:fs").then((fs) => {
+      return WebAssembly.instantiate(fs.readFileSync(wasmFileName), importsObj);
+    });
+  } else {
+    wasmModulePromise = WebAssembly.instantiateStreaming(fetch(wasmFileName), importsObj);
+  }
+  const wasmModule = await wasmModulePromise;
   return wasmModule.instance.exports;
 }

@@ -131,6 +131,8 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       )
     )
 
+  val exceptionTagName: WasmTagName
+
   def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
     functionSignatures.get(sig) match {
       case None =>
@@ -239,6 +241,14 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
     classInfo.put(name, info)
+
+  val exceptionTagName: WasmTagName = WasmTagName("exception")
+
+  locally {
+    val exceptionSig = WasmFunctionSignature(List(WasmAnyRef), Nil)
+    val exceptionFunType = addFunctionType(exceptionSig)
+    module.addTag(WasmTag(exceptionTagName, exceptionFunType))
+  }
 
   private def addHelperImport(
       name: WasmFunctionName,

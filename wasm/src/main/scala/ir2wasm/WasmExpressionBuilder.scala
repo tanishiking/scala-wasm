@@ -100,31 +100,36 @@ private class WasmExpressionBuilder private (
 
   def genTree(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit = {
     val generatedType: IRTypes.Type = tree match {
-      case t: IRTrees.Literal          => genLiteral(t)
-      case t: IRTrees.UnaryOp          => genUnaryOp(t)
-      case t: IRTrees.BinaryOp         => genBinaryOp(t)
-      case t: IRTrees.VarRef           => genVarRef(t)
-      case t: IRTrees.LoadModule       => genLoadModule(t)
-      case t: IRTrees.StoreModule      => genStoreModule(t)
-      case t: IRTrees.This             => genThis(t)
-      case t: IRTrees.ApplyStatically  => genApplyStatically(t)
-      case t: IRTrees.Apply            => genApply(t)
-      case t: IRTrees.ApplyStatic      => genApplyStatic(t)
-      case t: IRTrees.IsInstanceOf     => genIsInstanceOf(t)
-      case t: IRTrees.AsInstanceOf     => genAsInstanceOf(t)
-      case t: IRTrees.GetClass         => genGetClass(t)
-      case t: IRTrees.Block            => genBlock(t, expectedType)
-      case t: IRTrees.Labeled          => genLabeled(t, expectedType)
-      case t: IRTrees.Return           => genReturn(t)
-      case t: IRTrees.Select           => genSelect(t)
-      case t: IRTrees.Assign           => genAssign(t)
-      case t: IRTrees.VarDef           => genVarDef(t)
-      case t: IRTrees.New              => genNew(t)
-      case t: IRTrees.If               => genIf(t, expectedType)
-      case t: IRTrees.While            => genWhile(t)
-      case t: IRTrees.Debugger         => IRTypes.NoType // ignore
-      case t: IRTrees.Skip             => IRTypes.NoType
-      case t: IRTrees.IdentityHashCode => genIdentityHashCode(t)
+      case t: IRTrees.Literal             => genLiteral(t)
+      case t: IRTrees.UnaryOp             => genUnaryOp(t)
+      case t: IRTrees.BinaryOp            => genBinaryOp(t)
+      case t: IRTrees.VarRef              => genVarRef(t)
+      case t: IRTrees.LoadModule          => genLoadModule(t)
+      case t: IRTrees.StoreModule         => genStoreModule(t)
+      case t: IRTrees.This                => genThis(t)
+      case t: IRTrees.ApplyStatically     => genApplyStatically(t)
+      case t: IRTrees.Apply               => genApply(t)
+      case t: IRTrees.ApplyStatic         => genApplyStatic(t)
+      case t: IRTrees.IsInstanceOf        => genIsInstanceOf(t)
+      case t: IRTrees.AsInstanceOf        => genAsInstanceOf(t)
+      case t: IRTrees.GetClass            => genGetClass(t)
+      case t: IRTrees.Block               => genBlock(t, expectedType)
+      case t: IRTrees.Labeled             => genLabeled(t, expectedType)
+      case t: IRTrees.Return              => genReturn(t)
+      case t: IRTrees.Select              => genSelect(t)
+      case t: IRTrees.Assign              => genAssign(t)
+      case t: IRTrees.VarDef              => genVarDef(t)
+      case t: IRTrees.New                 => genNew(t)
+      case t: IRTrees.If                  => genIf(t, expectedType)
+      case t: IRTrees.While               => genWhile(t)
+      case t: IRTrees.TryCatch            => genTryCatch(t)
+      case t: IRTrees.TryFinally          => genTryFinally(t)
+      case t: IRTrees.Throw               => genThrow(t)
+      case t: IRTrees.Debugger            => IRTypes.NoType // ignore
+      case t: IRTrees.Skip                => IRTypes.NoType
+      case t: IRTrees.IdentityHashCode    => genIdentityHashCode(t)
+      case t: IRTrees.WrapAsThrowable     => genWrapAsThrowable(t)
+      case t: IRTrees.UnwrapFromThrowable => genUnwrapFromThrowable(t)
 
       // JavaScript expressions
       case t: IRTrees.JSNew                => genJSNew(t)
@@ -144,9 +149,6 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
       case t: IRTrees.Closure              => genClosure(t)
       case t: IRTrees.Clone                => genClone(t)
-      case _: IRTrees.Throw =>
-        instrs += UNREACHABLE
-        IRTypes.NothingType
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -158,22 +160,18 @@ private class WasmExpressionBuilder private (
         ???
 
       // case select: IRTrees.JSPrivateSelect => ???
-      // case v: IRTrees.UnwrapFromThrowable => ???
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSNewTarget(pos) =>
       // case IRTrees.SelectStatic(tpe) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.RecordSelect(tpe) =>
-      // case IRTrees.TryFinally(pos) =>
       // case IRTrees.JSImportMeta(pos) =>
       // case IRTrees.JSSuperSelect(pos) =>
-      // case IRTrees.WrapAsThrowable(pos) =>
       // case IRTrees.JSSuperConstructorCall(pos) =>
       // case IRTrees.CreateJSClass(pos) =>
       // case IRTrees.Transient(pos) =>
       // case IRTrees.ForIn(pos) =>
-      // case tc: IRTrees.TryCatch => ???
       // case IRTrees.JSImportCall(pos) =>
     }
 
@@ -1328,6 +1326,73 @@ private class WasmExpressionBuilder private (
     }
   }
 
+  private def genTryCatch(t: IRTrees.TryCatch): IRTypes.Type = {
+    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+
+    fctx.block(resultType) { doneLabel =>
+      fctx.block(Types.WasmAnyRef) { catchLabel =>
+        fctx.tryTable(resultType)(
+          List(CatchClause.Catch(TagIdx(ctx.exceptionTagName), catchLabel))
+        ) {
+          genTree(t.block, t.tpe)
+        }
+        instrs += BR(doneLabel)
+      } // end block $catch
+      val exceptionLocal = fctx.addLocal(t.errVar.name, Types.WasmAnyRef)
+      instrs += LOCAL_SET(exceptionLocal)
+      genTree(t.handler, t.tpe)
+    } // end block $done
+
+    t.tpe
+  }
+
+  private def genTryFinally(t: IRTrees.TryFinally): IRTypes.Type = {
+    /* This implementation is rudimentary. It does not handle `Labeled/Return`
+     * pairs that cross its boundary. In case there is a `Return` inside the
+     * `try` block targeting a `Labeled` block around this `TryFinally`, the
+     * `finally` block is by-passed.
+     */
+
+    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+    val resultLocals = resultType.map(fctx.addSyntheticLocal(_))
+
+    fctx.block() { doneLabel =>
+      fctx.block(Types.WasmExnRef) { catchLabel =>
+        fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
+          // try block
+          genTree(t.block, t.tpe)
+
+          // store the result in locals during the finally block
+          for (resultLocal <- resultLocals.reverse)
+            instrs += LOCAL_SET(resultLocal)
+        }
+
+        // on success, push a `null_ref exn` on the stack
+        instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Exn))
+      } // end block $catch
+
+      // finally block (during which we leave the `(ref null exn)` on the stack)
+      genTree(t.finalizer, IRTypes.NoType)
+
+      // if the `exnref` is non-null, rethrow it
+      instrs += BR_ON_NULL(doneLabel)
+      instrs += THROW_REF
+    } // end block $done
+
+    // reload the result onto the stack
+    for (resultLocal <- resultLocals)
+      instrs += LOCAL_GET(resultLocal)
+
+    t.tpe
+  }
+
+  private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
+    genTree(tree.expr, IRTypes.AnyType)
+    instrs += THROW(TagIdx(ctx.exceptionTagName))
+
+    IRTypes.NothingType
+  }
+
   private def genBlock(t: IRTrees.Block, expectedType: IRTypes.Type): IRTypes.Type = {
     for (stat <- t.stats.init)
       genTree(stat, IRTypes.NoType)
@@ -1432,6 +1497,73 @@ private class WasmExpressionBuilder private (
     instrs += I32_CONST(I32(42))
 
     IRTypes.IntType
+  }
+
+  private def genWrapAsThrowable(tree: IRTrees.WrapAsThrowable): IRTypes.Type = {
+    val throwableClassType = IRTypes.ClassType(IRNames.ThrowableClass)
+    val throwableTyp = TypeTransformer.transformType(throwableClassType)(ctx)
+
+    val jsExceptionClassType = IRTypes.ClassType(SpecialNames.JSExceptionClass)
+    val jsExceptionTyp = TypeTransformer.transformType(jsExceptionClassType)(ctx)
+
+    fctx.block(throwableTyp) { doneLabel =>
+      genTree(tree.expr, IRTypes.AnyType)
+
+      // if expr.isInstanceOf[Throwable], then br $done
+      instrs += BR_ON_CAST(
+        CastFlags(true, false),
+        doneLabel,
+        HeapType(Types.WasmHeapType.Simple.Any),
+        HeapType(Types.WasmHeapType.ThrowableType)
+      )
+
+      // otherwise, wrap in a new JavaScriptException
+
+      val exprLocal = fctx.addSyntheticLocal(Types.WasmAnyRef)
+      val instanceLocal = fctx.addSyntheticLocal(jsExceptionTyp)
+
+      instrs += LOCAL_SET(exprLocal)
+      instrs += CALL(FuncIdx(WasmFunctionName.newDefault(SpecialNames.JSExceptionClass)))
+      instrs += LOCAL_TEE(instanceLocal)
+      instrs += LOCAL_GET(exprLocal)
+      instrs += CALL(
+        FuncIdx(
+          WasmFunctionName(
+            IRTrees.MemberNamespace.Constructor,
+            SpecialNames.JSExceptionClass,
+            SpecialNames.JSExceptionCtor
+          )
+        )
+      )
+      instrs += LOCAL_GET(instanceLocal)
+    }
+
+    throwableClassType
+  }
+
+  private def genUnwrapFromThrowable(tree: IRTrees.UnwrapFromThrowable): IRTypes.Type = {
+    fctx.block(Types.WasmAnyRef) { doneLabel =>
+      genTree(tree.expr, IRTypes.ClassType(IRNames.ThrowableClass))
+
+      instrs += REF_AS_NOT_NULL
+
+      // if !expr.isInstanceOf[js.JavaScriptException], then br $done
+      instrs += BR_ON_CAST_FAIL(
+        CastFlags(false, false),
+        doneLabel,
+        HeapType(Types.WasmHeapType.ThrowableType),
+        HeapType(Types.WasmHeapType.JSExceptionType)
+      )
+
+      // otherwise, unwrap the JavaScriptException by reading its field
+
+      val idx =
+        ctx.getClassInfo(SpecialNames.JSExceptionClass).getFieldIdx(SpecialNames.JSExceptionField)
+
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(SpecialNames.JSExceptionClass)), idx)
+    }
+
+    IRTypes.AnyType
   }
 
   private def genJSNew(tree: IRTrees.JSNew): IRTypes.Type = {

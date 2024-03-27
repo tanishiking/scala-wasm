@@ -4,6 +4,8 @@ import org.scalajs.ir.{Names => IRNames}
 import Names._
 import Names.WasmTypeName._
 
+import wasm.ir2wasm.SpecialNames
+
 object Types {
   abstract sealed class WasmStorageType(
       private val name: String,
@@ -33,6 +35,7 @@ object Types {
   // https://github.com/WebAssembly/gc/blob/main/proposals/gc/MVP.md#reference-types-1
   case object WasmFuncRef extends WasmType("funcref", 0x70)
   case object WasmExternRef extends WasmType("externref", 0x6F)
+  case object WasmExnRef extends WasmType("exnref", 0x69)
 
   /** shorthand for (ref null any) */
   case object WasmAnyRef extends WasmType("anyref", 0x6E)
@@ -71,12 +74,16 @@ object Types {
       object Any extends Simple("any", 0x6E)
       object Eq extends Simple("eq", 0x6D)
       object Array extends Simple("array", 0x6A)
+      object Exn extends Simple("exn", 0x69)
       object Struct extends Simple("struct", 0x6B)
       object None extends Simple("none", 0x71)
       object NoExtern extends Simple("noextern", 0x72)
+      object NoExn extends Simple("noexn", 0x74)
     }
 
     val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
     val ClassType = Type(WasmStructTypeName(IRNames.ClassClass))
+    val ThrowableType = Type(WasmStructTypeName(IRNames.ThrowableClass))
+    val JSExceptionType = Type(WasmStructTypeName(SpecialNames.JSExceptionClass))
   }
 }

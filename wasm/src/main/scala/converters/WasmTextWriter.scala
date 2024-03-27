@@ -27,6 +27,7 @@ class WasmTextWriter {
         )
         module.imports.foreach(writeImport)
         module.definedFunctions.foreach(writeFunction)
+        module.tags.foreach(writeTag)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
         module.startFunction.foreach(writeStart)
@@ -123,6 +124,13 @@ class WasmTextWriter {
                 writeSig(typ.params, typ.results)
               }
             )
+          case WasmImportDesc.Tag(id, typ) =>
+            b.sameLineList(
+              "tag", {
+                b.appendElement(id.show)
+                writeSig(typ.params, typ.results)
+              }
+            )
         }
       }
     )
@@ -169,6 +177,15 @@ class WasmTextWriter {
           nonParams.foreach(writeLocal)
         }
         f.body.instr.foreach(writeInstr)
+      }
+    )
+  }
+
+  private def writeTag(tag: WasmTag)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "tag", {
+        b.appendElement(tag.name.show)
+        b.sameLineListOne("type", tag.typ.show)
       }
     )
   }
@@ -259,6 +276,16 @@ class WasmTextWriter {
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
       case WasmImmediate.LabelIdxVector(indices) =>
         indices.map(i => "$" + i.value).mkString(" ")
+      case WasmImmediate.TagIdx(name) =>
+        name.show
+      case WasmImmediate.CatchClauseVector(clauses) =>
+        for (clause <- clauses) {
+          b.appendElement("(" + clause.mnemonic)
+          for (imm <- clause.immediates)
+            writeImmediate(imm, instr)
+          b.appendElement(")")
+        }
+        ""
       case i: WasmImmediate.CastFlags =>
         throw new UnsupportedOperationException(
           s"CastFlags $i must be handled directly in the instruction $instr"
@@ -281,8 +308,8 @@ class WasmTextWriter {
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
-      case END | ELSE | _: CATCH => b.deindent()
-      case _                     => ()
+      case END | ELSE => b.deindent()
+      case _          => ()
     }
     b.newLine()
     b.appendElement(instr.mnemonic)
@@ -314,8 +341,8 @@ class WasmTextWriter {
     }
 
     instr match {
-      case _: BLOCK | _: LOOP | _: IF | ELSE | _: CATCH | _: TRY => b.indent()
-      case _                                                     => ()
+      case _: StructuredLabeledInstr | ELSE => b.indent()
+      case _                                => ()
     }
   }
 

@@ -28,6 +28,7 @@ sealed abstract class WasmImportDesc
 
 object WasmImportDesc {
   final case class Func(id: WasmFunctionName, typ: WasmFunctionType) extends WasmImportDesc
+  final case class Tag(id: WasmTagName, typ: WasmFunctionType) extends WasmImportDesc
 }
 
 /** @see
@@ -48,6 +49,9 @@ case class WasmLocal(
     val typ: WasmType,
     val isParameter: Boolean // for text
 ) extends WasmNamedDefinitionField[WasmLocalName]
+
+final case class WasmTag(val name: WasmTagName, val typ: WasmFunctionTypeName)
+    extends WasmNamedDefinitionField[WasmTagName]
 
 case class WasmGlobal(
     val name: WasmGlobalName,
@@ -193,6 +197,7 @@ class WasmModule(
     private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer(),
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
+    private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer(),
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
     private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
     private var _startFunction: Option[WasmFunctionName] = None,
@@ -207,6 +212,7 @@ class WasmModule(
   def addArrayType(typ: WasmArrayType): Unit = _arrayTypes.addOne(typ)
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
+  def addTag(tag: WasmTag): Unit = _tags.addOne(tag)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
   def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
@@ -217,6 +223,7 @@ class WasmModule(
   def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array) ++ _arrayTypes.toList
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
+  def tags: List[WasmTag] = _tags.toList
   def globals = _globals.toList
   def exports = _exports.toList
   def startFunction: Option[WasmFunctionName] = _startFunction

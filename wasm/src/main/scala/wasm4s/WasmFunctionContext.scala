@@ -167,6 +167,34 @@ class WasmFunctionContext private (
     }
   }
 
+  def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
+    instrs += TRY_TABLE(blockType, WasmImmediate.CatchClauseVector(clauses))
+    val result = body
+    instrs += END
+    result
+  }
+
+  def tryTable[A](resultType: WasmType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+    tryTable(BlockType.ValueType(resultType))(clauses)(body)
+
+  def tryTable[A]()(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+    tryTable(BlockType.ValueType())(clauses)(body)
+
+  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[WasmImmediate.CatchClause])(
+      body: => A
+  ): A =
+    tryTable(BlockType.FunctionType(ctx.addFunctionType(sig)))(clauses)(body)
+
+  def tryTable[A](
+      resultTypes: List[WasmType]
+  )(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
+    resultTypes match {
+      case Nil           => tryTable()(clauses)(body)
+      case single :: Nil => tryTable(single)(clauses)(body)
+      case _             => tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
+    }
+  }
+
   // Final result
 
   def buildAndAddToContext(): WasmFunction = {

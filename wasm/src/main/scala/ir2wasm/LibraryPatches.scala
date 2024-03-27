@@ -31,8 +31,13 @@ object LibraryPatches {
       }
     }
 
+    val leanerJSExceptionIRFile =
+      org.scalajs.linker.backend.emitter.PrivateLibHolder.files.find { irFile =>
+        IRFileImpl.fromIRFile(irFile).path.contains("JavaScriptException")
+      }.get
+
     derivedIRFiles.map { derived =>
-      derived.flatten ++ Seq(StackTraceIRFile) ++ irFiles
+      derived.flatten ++ Seq(StackTraceIRFile, leanerJSExceptionIRFile) ++ irFiles
     }
   }
 
