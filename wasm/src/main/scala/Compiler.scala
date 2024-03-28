@@ -67,7 +67,7 @@ object Compiler {
        * subclasses, then tie-break by name for stability.
        */
       val sortedClasses = onlyModule.classDefs.sortWith { (a, b) =>
-        val cmp = a.ancestors.sizeCompare(b.ancestors)
+        val cmp = Integer.compare(a.ancestors.size, b.ancestors.size)
         if (cmp != 0) cmp < 0
         else a.className.compareTo(b.className) < 0
       }

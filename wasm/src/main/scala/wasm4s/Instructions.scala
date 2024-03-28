@@ -64,8 +64,8 @@ object WasmInstr {
   case object I64_EXTEND8_S extends WasmInstr("i64.extend8_s", 0xC2)
   case object I64_EXTEND16_S extends WasmInstr("i64.extend16_s", 0xC3)
   case object I64_EXTEND32_S extends WasmInstr("i64.extend32_s", 0xC4)
-  case object I32_TRUNC_SAT_F64_S extends WasmInstr("i32.trunc_sat_f64_s", 0xFC_02)
-  case object I64_TRUNC_SAT_F64_S extends WasmInstr("i64.trunc_sat_f64_s", 0xFC_06)
+  case object I32_TRUNC_SAT_F64_S extends WasmInstr("i32.trunc_sat_f64_s", 0xFC02)
+  case object I64_TRUNC_SAT_F64_S extends WasmInstr("i64.trunc_sat_f64_s", 0xFC06)
 
   // Binary operations
   case object I32_EQ extends WasmInstr("i32.eq", 0x46)
@@ -248,9 +248,9 @@ object WasmInstr {
     def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
   }
 
-  case object REF_I31 extends WasmInstr("ref.i31", 0xFB_1C)
-  case object I31_GET_S extends WasmInstr("i31.get_s", 0xFB_1D)
-  case object I31_GET_U extends WasmInstr("i31.get_u", 0xFB_1E)
+  case object REF_I31 extends WasmInstr("ref.i31", 0xFB1C)
+  case object I31_GET_S extends WasmInstr("i31.get_s", 0xFB1D)
+  case object I31_GET_U extends WasmInstr("i31.get_u", 0xFB1E)
 
   // ============================================================
   // Typed Function References
@@ -263,43 +263,42 @@ object WasmInstr {
 
   // ============================================================
   // gc
-  case class STRUCT_NEW(i: TypeIdx) extends WasmInstr("struct.new", 0xFB_00, List(i))
+  case class STRUCT_NEW(i: TypeIdx) extends WasmInstr("struct.new", 0xFB00, List(i))
   object STRUCT_NEW {
     def apply(i: WasmTypeName): STRUCT_NEW = STRUCT_NEW(WasmImmediate.TypeIdx(i))
   }
-  case class STRUCT_NEW_DEFAULT(i: TypeIdx)
-      extends WasmInstr("struct.new_default", 0xFB_01, List(i))
+  case class STRUCT_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("struct.new_default", 0xFB01, List(i))
   case class STRUCT_GET(tyidx: TypeIdx, fidx: StructFieldIdx)
-      extends WasmInstr("struct.get", 0xFB_02, List(tyidx, fidx))
+      extends WasmInstr("struct.get", 0xFB02, List(tyidx, fidx))
   // STRUCT_GET_S
   // STRUCT_GET_U
   case class STRUCT_SET(tyidx: TypeIdx, fidx: StructFieldIdx)
-      extends WasmInstr("struct.set", 0xFB_05, List(tyidx, fidx))
+      extends WasmInstr("struct.set", 0xFB05, List(tyidx, fidx))
 
-  case class ARRAY_NEW(i: TypeIdx) extends WasmInstr("array.new", 0xFB_06, List(i))
-  case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xFB_07, List(i))
+  case class ARRAY_NEW(i: TypeIdx) extends WasmInstr("array.new", 0xFB06, List(i))
+  case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xFB07, List(i))
   case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32)
-      extends WasmInstr("array.new_fixed", 0xFB_08, List(i, size))
-  case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xFB_0B, List(i))
-  case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xFB_0C, List(i))
-  case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xFB_0D, List(i))
-  case class ARRAY_SET(i: TypeIdx) extends WasmInstr("array.set", 0xFB_0E, List(i))
-  case object ARRAY_LEN extends WasmInstr("array.len", 0xFB_0F)
+      extends WasmInstr("array.new_fixed", 0xFB08, List(i, size))
+  case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xFB0B, List(i))
+  case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xFB0C, List(i))
+  case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xFB0D, List(i))
+  case class ARRAY_SET(i: TypeIdx) extends WasmInstr("array.set", 0xFB0E, List(i))
+  case object ARRAY_LEN extends WasmInstr("array.len", 0xFB0F)
   // ARRAY_FILL,
   // ARRAY_COPY
   // ARRAY_NEW_DATA
   // array_NEW_FIXED
 
   case object REF_EQ extends WasmInstr("ref.eq", 0xD3)
-  case class REF_TEST(i: HeapType) extends WasmInstr("ref.test", 0xFB_14, List(i))
-  case class REF_TEST_NULL(i: HeapType) extends WasmInstr("ref.test", 0xFB_15, List(i))
-  case class REF_CAST(i: HeapType) extends WasmInstr("ref.cast", 0xFB_16, List(i))
-  case class REF_CAST_NULL(i: HeapType) extends WasmInstr("ref.cast", 0xFB_17, List(i))
+  case class REF_TEST(i: HeapType) extends WasmInstr("ref.test", 0xFB14, List(i))
+  case class REF_TEST_NULL(i: HeapType) extends WasmInstr("ref.test", 0xFB15, List(i))
+  case class REF_CAST(i: HeapType) extends WasmInstr("ref.cast", 0xFB16, List(i))
+  case class REF_CAST_NULL(i: HeapType) extends WasmInstr("ref.cast", 0xFB17, List(i))
 
   case class BR_ON_CAST(castFlags: CastFlags, label: LabelIdx, from: HeapType, to: HeapType)
-      extends WasmInstr("br_on_cast", 0xFB_18, List(castFlags, label, from, to))
+      extends WasmInstr("br_on_cast", 0xFB18, List(castFlags, label, from, to))
   case class BR_ON_CAST_FAIL(castFlags: CastFlags, label: LabelIdx, from: HeapType, to: HeapType)
-      extends WasmInstr("br_on_cast_fail", 0xFB_19, List(castFlags, label, from, to))
+      extends WasmInstr("br_on_cast_fail", 0xFB19, List(castFlags, label, from, to))
 }
 
 abstract sealed trait WasmImmediate

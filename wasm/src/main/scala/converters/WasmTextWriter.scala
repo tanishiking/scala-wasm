@@ -113,8 +113,8 @@ class WasmTextWriter {
   private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "import", {
-        b.appendElement(s"\"${i.module}\"")
-        b.appendElement(s"\"${i.name}\"")
+        b.appendElement("\"" + i.module + "\"")
+        b.appendElement("\"" + i.name + "\"")
 
         i.desc match {
           case WasmImportDesc.Func(id, typ) =>
@@ -205,7 +205,7 @@ class WasmTextWriter {
       b: WatBuilder
   ) = b.newLineList(
     "export", {
-      b.appendElement(s"\"${e.name}\"")
+      b.appendElement("\"" + e.name + "\"")
       e match {
         case fun: WasmExport.Function =>
           b.sameLineList(

@@ -1,7 +1,7 @@
 import org.scalajs.linker.interface.ESVersion
 import org.scalajs.linker.interface.OutputPatterns
 
-val scalaV = "2.13.12"
+val scalaV = "2.12.19"
 
 inThisBuild(Def.settings(
   scalacOptions ++= Seq(
