@@ -31,13 +31,13 @@ lazy val cli = project
     ),
   )
   .dependsOn(
-    wasm,
+    wasm.js,
     // tests // for TestSuites constant
   )
 
-lazy val wasm = project
+lazy val wasm = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
   .in(file("wasm"))
-  .enablePlugins(ScalaJSPlugin)
   .settings(
     name := "wasm",
     version := "0.1.0-SNAPSHOT",
