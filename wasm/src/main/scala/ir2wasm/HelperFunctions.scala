@@ -31,7 +31,7 @@ object HelperFunctions {
     import WasmImmediate._
     import WasmTypeName.WasmArrayTypeName
 
-    val dataType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.u16Array))
+    val dataType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.i16Array))
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.createStringFromData,
@@ -75,7 +75,7 @@ object HelperFunctions {
       instrs += LOCAL_GET(resultLocal)
       instrs += LOCAL_GET(dataParam)
       instrs += LOCAL_GET(iLocal)
-      instrs += ARRAY_GET_U(TypeIdx(WasmArrayTypeName.u16Array))
+      instrs += ARRAY_GET_U(TypeIdx(WasmArrayTypeName.i16Array))
       instrs += CALL(FuncIdx(WasmFunctionName.charToString))
       instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
       instrs += LOCAL_SET(resultLocal)
@@ -110,9 +110,9 @@ object HelperFunctions {
     import WasmTypeName._
 
     val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
-    val nameDataType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.u16Array))
+    val nameDataType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.i16Array))
 
-    val u16ArrayIdx = TypeIdx(WasmArrayTypeName.u16Array)
+    val u16ArrayIdx = TypeIdx(WasmArrayTypeName.i16Array)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.typeDataName,
@@ -397,43 +397,34 @@ object HelperFunctions {
     fctx.buildAndAddToContext()
   }
 
-  /** `arrayTypeData: (ref typeData), i32 -> (ref typeData)`.
+  /** `arrayTypeData: (ref typeData), i32 -> (ref $java.lang.Object___vtable)`.
     *
-    * Returns the typeData of an array with `dims` dimensions over the given typeData.
+    * Returns the typeData/vtable of an array with `dims` dimensions over the given typeData. `dims`
+    * must be be strictly positive.
     */
   private def genArrayTypeData()(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val objectVTableType = WasmRefType(
+      WasmHeapType.Type(WasmTypeName.WasmVTableTypeName.ObjectVTable)
+    )
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.arrayTypeData,
       List("typeData" -> typeDataType, "dims" -> WasmInt32),
-      List(typeDataType)
+      List(objectVTableType)
     )
 
     val List(typeDataParam, dimsParam) = fctx.paramIndices
 
     import fctx.instrs
 
+    val arrayTypeDataLocal = fctx.addLocal("arrayTypeData", objectVTableType)
+
     fctx.loop() { loopLabel =>
-      // if dims == 0 then
-      //   return typeData
-      instrs += LOCAL_GET(dimsParam)
-      instrs += I32_EQZ
-      fctx.ifThen() {
-        instrs += LOCAL_GET(typeDataParam)
-        instrs += RETURN
-      }
-
-      // dims := dims - 1
-      instrs += LOCAL_GET(dimsParam)
-      instrs += I32_CONST(I32(1))
-      instrs += I32_SUB
-      instrs += LOCAL_SET(dimsParam)
-
-      fctx.block(typeDataType) { arrayOfIsNonNullLabel =>
+      fctx.block(objectVTableType) { arrayOfIsNonNullLabel =>
         // br_on_non_null $arrayOfIsNonNull typeData.arrayOf
         instrs += LOCAL_GET(typeDataParam)
         instrs += STRUCT_GET(
@@ -455,8 +446,11 @@ object HelperFunctions {
         instrs += REF_NULL(
           HeapType(WasmHeapType.Type(ctx.cloneFunctionTypeName))
         ) // clone
-        instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.typeData))
-        instrs += LOCAL_TEE(typeDataParam)
+        instrs ++= ctx
+          .calculateGlobalVTable(IRNames.ObjectClass)
+          .map(method => WasmInstr.REF_FUNC(method.name))
+        instrs += STRUCT_NEW(TypeIdx(WasmTypeName.WasmVTableTypeName.ObjectVTable))
+        instrs += LOCAL_TEE(arrayTypeDataLocal)
 
         // <old typeData>.arrayOf := typeData
         instrs += STRUCT_SET(
@@ -464,9 +458,22 @@ object HelperFunctions {
           WasmFieldName.typeData.arrayOfIdx
         )
 
-        // loop back to the beginning
-        instrs += BR(loopLabel)
+        // put arrayTypeData back on the stack
+        instrs += LOCAL_GET(arrayTypeDataLocal)
       } // end block $arrayOfIsNonNullLabel
+
+      // dims := dims - 1 -- leave dims on the stack
+      instrs += LOCAL_GET(dimsParam)
+      instrs += I32_CONST(I32(1))
+      instrs += I32_SUB
+      instrs += LOCAL_TEE(dimsParam)
+
+      // if dims == 0 then
+      //   return typeData.arrayOf (which is on the stack)
+      instrs += I32_EQZ
+      fctx.ifThen(WasmFunctionSignature(List(objectVTableType), List(objectVTableType))) {
+        instrs += RETURN
+      }
 
       // typeData := typeData.arrayOf (which is on the stack), then loop back to the beginning
       instrs += LOCAL_SET(typeDataParam)

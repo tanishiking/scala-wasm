@@ -241,17 +241,28 @@ private class WasmExpressionBuilder private (
         instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
       case sel: IRTrees.ArraySelect =>
-        val typeName = sel.array.tpe match {
-          case arrTy: IRTypes.ArrayType => WasmArrayTypeName(arrTy.arrayTypeRef)
+        genTreeAuto(sel.array)
+        sel.array.tpe match {
+          case IRTypes.ArrayType(arrayTypeRef) =>
+            // Get the underlying array; implicit trap on null
+            instrs += STRUCT_GET(
+              TypeIdx(WasmStructTypeName(arrayTypeRef)),
+              StructFieldIdx.uniqueRegularField
+            )
+            genTree(sel.index, IRTypes.IntType)
+            genTree(t.rhs, sel.tpe)
+            instrs += ARRAY_SET(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
+          case IRTypes.NothingType =>
+            // unreachable
+            ()
+          case IRTypes.NullType =>
+            instrs += UNREACHABLE
           case _ =>
             throw new IllegalArgumentException(
               s"ArraySelect.array must be an array type, but has type ${sel.array.tpe}"
             )
         }
-        genTreeAuto(sel.array)
-        genTree(sel.index, IRTypes.IntType)
-        genTree(t.rhs, t.lhs.tpe)
-        instrs += ARRAY_SET(TypeIdx(typeName))
+
       case assign: IRTrees.RecordSelect    => ??? // struct.set
       case assign: IRTrees.JSPrivateSelect => ???
 
@@ -314,13 +325,15 @@ private class WasmExpressionBuilder private (
     val receiverClassName = t.receiver.tpe match {
       case ClassType(className) => className
       case IRTypes.AnyType      => IRNames.ObjectClass
+      case IRTypes.ArrayType(_) => IRNames.ObjectClass
       case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
     /* Similar to transformType(t.receiver.tpe), but:
-     * - it is non-null, and
-     * - ancestors of hijacked classes are not treated specially.
+     * - it is non-null,
+     * - ancestors of hijacked classes are not treated specially,
+     * - array types are treated as j.l.Object.
      *
      * This is used in the code paths where we have already ruled out `null`
      * values and primitive values (that implement hijacked classes).
@@ -516,7 +529,7 @@ private class WasmExpressionBuilder private (
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
         TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
-        StructFieldIdx(1)
+        StructFieldIdx.itables
       )
       instrs += I32_CONST(I32(itableIdx))
       instrs += ARRAY_GET(
@@ -560,7 +573,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmStructTypeName(receiverClassName)),
-        StructFieldIdx(0)
+        StructFieldIdx.vtable
       )
       instrs += STRUCT_GET(
         TypeIdx(WasmVTableTypeName(receiverClassName)),
@@ -656,14 +669,12 @@ private class WasmExpressionBuilder private (
           case typeRef: IRTypes.NonArrayTypeRef =>
             genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
 
-          case IRTypes.ArrayTypeRef(base, dimensions) =>
+          case typeRef: IRTypes.ArrayTypeRef =>
             val typeDataType =
               Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
             val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
 
-            instrs += getNonArrayTypeDataInstr(base)
-            instrs += I32_CONST(I32(dimensions))
-            instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+            genLoadArrayTypeData(typeRef)
             instrs += LOCAL_SET(typeDataLocal)
             genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
         }
@@ -674,6 +685,12 @@ private class WasmExpressionBuilder private (
 
   private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
     GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(typeRef)))
+
+  private def genLoadArrayTypeData(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
+    instrs += getNonArrayTypeDataInstr(arrayTypeRef.base)
+    instrs += I32_CONST(I32(arrayTypeRef.dimensions))
+    instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+  }
 
   private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
     fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
@@ -1097,9 +1114,12 @@ private class WasmExpressionBuilder private (
               )
         }
 
-      case IRTypes.ArrayType(_) =>
-        println(tree)
-        ???
+      case IRTypes.ArrayType(arrayTypeRef) =>
+        /* TODO This is not correct for reference array types. It treats
+         * every reference array type as if it were Array[jl.Object].
+         */
+        val structTypeName = WasmStructTypeName(arrayTypeRef)
+        instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
       case testType: IRTypes.RecordType =>
         throw new AssertionError(s"Illegal type in IsInstanceOf: $testType")
@@ -1157,9 +1177,9 @@ private class WasmExpressionBuilder private (
             }
           }
 
-        case IRTypes.ArrayType(_) =>
-          println(tree)
-          ???
+        case IRTypes.ArrayType(arrayTypeRef) =>
+          val structTypeName = WasmStructTypeName(arrayTypeRef)
+          instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
         case targetTpe: IRTypes.RecordType =>
           throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
@@ -1189,12 +1209,12 @@ private class WasmExpressionBuilder private (
         // TODO Handle null
         val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
         instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
+        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
       case IRTypes.LongType =>
         // TODO Handle null
         val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
         instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx(2))
+        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
       case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
         throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
       case _ =>
@@ -1228,7 +1248,7 @@ private class WasmExpressionBuilder private (
       val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
 
       genTreeAuto(tree.expr)
-      instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0)) // implicit trap on null
+      instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx.vtable) // implicit trap on null
       instrs += LOCAL_SET(typeDataLocal)
       genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
     } else {
@@ -1481,7 +1501,10 @@ private class WasmExpressionBuilder private (
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(boxClassName)))
     instrs += LOCAL_TEE(LocalIdx(instanceLocal.name))
     instrs += LOCAL_GET(LocalIdx(primLocal.name))
-    instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(boxClassName)), StructFieldIdx(2))
+    instrs += STRUCT_SET(
+      TypeIdx(WasmStructTypeName(boxClassName)),
+      StructFieldIdx.uniqueRegularField
+    )
     instrs += LOCAL_GET(LocalIdx(instanceLocal.name))
 
     boxClassType
@@ -1744,51 +1767,146 @@ private class WasmExpressionBuilder private (
   // ===============================================================================
   private def genArrayLength(t: IRTrees.ArrayLength): IRTypes.Type = {
     genTreeAuto(t.array)
-    instrs += ARRAY_LEN
-    IRTypes.IntType
+
+    t.array.tpe match {
+      case IRTypes.ArrayType(arrayTypeRef) =>
+        // Get the underlying array; implicit trap on null
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName(arrayTypeRef)),
+          StructFieldIdx.uniqueRegularField
+        )
+        // Get the length
+        instrs += ARRAY_LEN
+        IRTypes.IntType
+
+      case IRTypes.NothingType =>
+        // unreachable
+        IRTypes.NothingType
+      case IRTypes.NullType =>
+        instrs += UNREACHABLE
+        IRTypes.NothingType
+      case _ =>
+        throw new IllegalArgumentException(
+          s"ArraySelect.array must be an array type, but has type ${t.array.tpe}"
+        )
+    }
   }
 
   private def genNewArray(t: IRTrees.NewArray): IRTypes.Type = {
-    if (t.lengths.isEmpty || t.lengths.sizeIs > t.typeRef.dimensions)
+    val arrayTypeRef = t.typeRef
+
+    if (t.lengths.isEmpty || t.lengths.sizeIs > arrayTypeRef.dimensions)
       throw new AssertionError(
-        s"invalid lengths ${t.lengths} for array type ${t.typeRef.displayName}"
+        s"invalid lengths ${t.lengths} for array type ${arrayTypeRef.displayName}"
       )
+
     if (t.lengths.size == 1) {
-      val arrTy = ctx.getArrayType(t.typeRef)
-      val zero = Defaults.defaultValue(arrTy.field.typ)
-      ctx.inferTypeFromTypeRef(t.typeRef.base)
-      instrs += zero
+      genLoadVTableAndITableForArray(arrayTypeRef)
+
+      // Create the underlying array
       genTree(t.lengths.head, IRTypes.IntType)
-      instrs += ARRAY_NEW(TypeIdx(arrTy.name))
+      val underlyingArrayType = WasmArrayTypeName.underlyingOf(arrayTypeRef)
+      instrs += ARRAY_NEW_DEFAULT(TypeIdx(underlyingArrayType))
+
+      // Create the array object
+      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
     } else ??? // TODO support multi dimensional arrays
+
     t.tpe
+  }
+
+  /** Gen code to load the vtable and the itable of the given array type. */
+  private def genLoadVTableAndITableForArray(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
+    // Load the typeData of the resulting array type. It is the vtable of the resulting object.
+    genLoadArrayTypeData(arrayTypeRef)
+
+    // Load the itables for the array type
+    // TODO: this should not be null because of Serializable and Cloneable
+    instrs += REF_NULL(HeapType(Types.WasmHeapType.Type(WasmArrayType.itables.name)))
   }
 
   /** For getting element from an array, array.set should be generated by transformation of
     * `Assign(ArraySelect(...), ...)`
     */
   private def genArraySelect(t: IRTrees.ArraySelect): IRTypes.Type = {
-    val irArrType = t.array.tpe match {
-      case t: IRTypes.ArrayType => t
+    genTreeAuto(t.array)
+
+    t.array.tpe match {
+      case IRTypes.ArrayType(arrayTypeRef) =>
+        // Get the underlying array; implicit trap on null
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName(arrayTypeRef)),
+          StructFieldIdx.uniqueRegularField
+        )
+
+        // Load the index
+        genTree(t.index, IRTypes.IntType)
+
+        // Use the appropriate variant of array.get for sign extension
+        val typeIdx = TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef))
+        arrayTypeRef match {
+          case IRTypes.ArrayTypeRef(IRTypes.BooleanRef | IRTypes.CharRef, 1) =>
+            instrs += ARRAY_GET_U(typeIdx)
+          case IRTypes.ArrayTypeRef(IRTypes.ByteRef | IRTypes.ShortRef, 1) =>
+            instrs += ARRAY_GET_S(typeIdx)
+          case _ =>
+            instrs += ARRAY_GET(typeIdx)
+        }
+
+        /* If it is a reference array type whose element type does not translate
+         * to `anyref`, we must cast down the result.
+         */
+        arrayTypeRef match {
+          case IRTypes.ArrayTypeRef(_: IRTypes.PrimRef, 1) =>
+            // a primitive array type always has the correct
+            ()
+          case _ =>
+            TypeTransformer.transformType(t.tpe)(ctx) match {
+              case Types.WasmAnyRef =>
+                // nothing to do
+                ()
+              case Types.WasmRefNullType(heapType) =>
+                instrs += REF_CAST_NULL(HeapType(heapType))
+              case Types.WasmRefType(heapType) =>
+                instrs += REF_CAST(HeapType(heapType))
+              case typ =>
+                throw new AssertionError(s"Unexpected result type for reference array: $typ")
+            }
+        }
+
+        t.tpe
+
+      case IRTypes.NothingType =>
+        // unreachable
+        IRTypes.NothingType
+      case IRTypes.NullType =>
+        instrs += UNREACHABLE
+        IRTypes.NothingType
       case _ =>
         throw new IllegalArgumentException(
           s"ArraySelect.array must be an array type, but has type ${t.array.tpe}"
         )
     }
-    genTreeAuto(t.array)
-    genTree(t.index, IRTypes.IntType)
-    instrs += ARRAY_GET(TypeIdx(ctx.getArrayType(irArrType.arrayTypeRef).name))
-
-    val typeRef = irArrType.arrayTypeRef
-    if (typeRef.dimensions > 1)
-      IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
-    else ctx.inferTypeFromTypeRef(typeRef.base)
   }
 
   private def genArrayValue(t: IRTrees.ArrayValue): IRTypes.Type = {
-    val arrTy = ctx.getArrayType(t.typeRef)
-    t.elems.foreach(genTreeAuto)
-    instrs += ARRAY_NEW_FIXED(TypeIdx(arrTy.name), I32(t.elems.size))
+    val arrayTypeRef = t.typeRef
+
+    genLoadVTableAndITableForArray(arrayTypeRef)
+
+    val expectedElemType = arrayTypeRef match {
+      case IRTypes.ArrayTypeRef(base: IRTypes.PrimRef, 1) => base.tpe
+      case _                                              => IRTypes.AnyType
+    }
+
+    // Create the underlying array
+    t.elems.foreach(genTree(_, expectedElemType))
+    val underlyingArrayType = WasmArrayTypeName.underlyingOf(arrayTypeRef)
+    instrs += ARRAY_NEW_FIXED(TypeIdx(underlyingArrayType), I32(t.elems.size))
+
+    // Create the array object
+    instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+
     t.tpe
   }
 

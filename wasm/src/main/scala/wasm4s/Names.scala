@@ -258,7 +258,7 @@ object Names {
     val vtable = new WasmFieldName("vtable")
     val itable = new WasmFieldName("itable")
     val itables = new WasmFieldName("itables")
-    val u16Array = new WasmFieldName("u16Array")
+    val arrayItem = new WasmFieldName("array_item")
     val arrayField = new WasmFieldName("array_field")
 
     // Fields of the typeData structs
@@ -311,7 +311,7 @@ object Names {
         */
       val classOfValue = new WasmFieldName("classOf")
 
-      /** The typeData of an array of this type, a nullable `typeData`, lazily initialized.
+      /** The typeData/vtable of an array of this type, a nullable `typeData`, lazily initialized.
         *
         * This field is initialized by the `arrayTypeData` helper.
         *
@@ -352,16 +352,69 @@ object Names {
       )
 
       val typeData = new WasmStructTypeName("typeData")
+
+      // Array types -- they extend j.l.Object
+      val BooleanArray = new WasmStructTypeName("Array_Boolean")
+      val CharArray = new WasmStructTypeName("Array_Char")
+      val ByteArray = new WasmStructTypeName("Array_Byte")
+      val ShortArray = new WasmStructTypeName("Array_Short")
+      val IntArray = new WasmStructTypeName("Array_Int")
+      val LongArray = new WasmStructTypeName("Array_Long")
+      val FloatArray = new WasmStructTypeName("Array_Float")
+      val DoubleArray = new WasmStructTypeName("Array_Double")
+      val ObjectArray = new WasmStructTypeName("Array_Object")
+
+      def apply(arrayTypeRef: IRTypes.ArrayTypeRef): WasmStructTypeName = {
+        if (arrayTypeRef.dimensions > 1) {
+          ObjectArray
+        } else {
+          arrayTypeRef.base match {
+            case IRTypes.BooleanRef => BooleanArray
+            case IRTypes.CharRef    => CharArray
+            case IRTypes.ByteRef    => ByteArray
+            case IRTypes.ShortRef   => ShortArray
+            case IRTypes.IntRef     => IntArray
+            case IRTypes.LongRef    => LongArray
+            case IRTypes.FloatRef   => FloatArray
+            case IRTypes.DoubleRef  => DoubleArray
+            case _                  => ObjectArray
+          }
+        }
+      }
     }
 
     /** Array type's name */
     final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmArrayTypeName {
-      def apply(typeRef: IRTypes.ArrayTypeRef) =
-        new WasmArrayTypeName(s"arrayOf_${typeRef.base.displayName}_${typeRef.dimensions}")
       val itables = new WasmArrayTypeName("itable")
-      val u16Array = new WasmArrayTypeName("u16Array")
+
+      // primitive array types, underlying the Array[T] classes
+      val i8Array = new WasmArrayTypeName("i8Array")
+      val i16Array = new WasmArrayTypeName("i16Array")
+      val i32Array = new WasmArrayTypeName("i32Array")
+      val i64Array = new WasmArrayTypeName("i64Array")
+      val f32Array = new WasmArrayTypeName("f32Array")
+      val f64Array = new WasmArrayTypeName("f64Array")
+      val anyArray = new WasmArrayTypeName("anyArray")
+
+      def underlyingOf(arrayTypeRef: IRTypes.ArrayTypeRef): WasmArrayTypeName = {
+        if (arrayTypeRef.dimensions > 1) {
+          anyArray
+        } else {
+          arrayTypeRef.base match {
+            case IRTypes.BooleanRef => i8Array
+            case IRTypes.CharRef    => i16Array
+            case IRTypes.ByteRef    => i8Array
+            case IRTypes.ShortRef   => i16Array
+            case IRTypes.IntRef     => i32Array
+            case IRTypes.LongRef    => i64Array
+            case IRTypes.FloatRef   => f32Array
+            case IRTypes.DoubleRef  => f64Array
+            case _                  => anyArray
+          }
+        }
+      }
     }
 
     final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)
@@ -376,6 +429,8 @@ object Names {
         extends WasmTypeName(name)
     object WasmVTableTypeName {
       def apply(ir: IRNames.ClassName) = new WasmVTableTypeName(ir.nameString)
+
+      val ObjectVTable = apply(IRNames.ObjectClass)
     }
 
     final case class WasmITableTypeName private (override private[wasm4s] val name: String)

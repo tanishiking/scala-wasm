@@ -270,7 +270,7 @@ class WasmTextWriter {
       case WasmImmediate.FuncIdx(name)                => name.show
       case WasmImmediate.TypeIdx(name)                => name.show
       case WasmImmediate.StructFieldIdx(v)            => v.toString
-      case WasmImmediate.BlockType.FunctionType(name) => name.show
+      case WasmImmediate.BlockType.FunctionType(name) => s"(type ${name.show})"
       case WasmImmediate.BlockType.ValueType(optTy) =>
         optTy.fold("") { ty => s"(result ${ty.show})" }
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid

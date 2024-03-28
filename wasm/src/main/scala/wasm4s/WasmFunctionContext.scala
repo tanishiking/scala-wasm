@@ -114,6 +114,9 @@ class WasmFunctionContext private (
     instrs += END
   }
 
+  def ifThen(sig: WasmFunctionSignature)(thenp: => Unit): Unit =
+    ifThen(BlockType.FunctionType(ctx.addFunctionType(sig)))(thenp)
+
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
 

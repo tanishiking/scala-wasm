@@ -346,6 +346,7 @@ object WasmImmediate {
   object StructFieldIdx {
     val vtable = StructFieldIdx(0)
     val itables = StructFieldIdx(1)
+    val uniqueRegularField = StructFieldIdx(2)
   }
 
   case class CatchClauseVector(val value: List[CatchClause]) extends WasmImmediate

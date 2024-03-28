@@ -199,17 +199,6 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
     WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
   }
 
-  def getArrayType(typeRef: IRTypes.ArrayTypeRef): WasmArrayType = {
-    val elemTy = TypeTransformer.transformType(extractArrayElemType(typeRef))(this)
-    val arrTyName = Names.WasmTypeName.WasmArrayTypeName(typeRef)
-    val arrTy = WasmArrayType(
-      arrTyName,
-      WasmStructField(Names.WasmFieldName.arrayField, elemTy, isMutable = true)
-    )
-    module.addArrayType(arrTy)
-    arrTy
-  }
-
   private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
     if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
     else inferTypeFromTypeRef(typeRef.base)

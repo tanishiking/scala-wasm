@@ -96,7 +96,7 @@ object WasmStructType {
     List(
       WasmStructField(
         WasmFieldName.typeData.nameData,
-        WasmRefNullType(WasmHeapType.Type(WasmArrayTypeName.u16Array)),
+        WasmRefNullType(WasmHeapType.Type(WasmArrayTypeName.i16Array)),
         isMutable = false
       ),
       WasmStructField(
@@ -121,7 +121,7 @@ object WasmStructType {
       ),
       WasmStructField(
         WasmFieldName.typeData.arrayOf,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmVTableTypeName.ObjectVTable)),
         isMutable = true
       ),
       WasmStructField(
@@ -149,10 +149,46 @@ object WasmArrayType {
     WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
   )
 
-  /** array u16 */
-  val u16Array = WasmArrayType(
-    WasmArrayTypeName.u16Array,
-    WasmStructField(WasmFieldName.u16Array, WasmInt16, false)
+  /** array i8 */
+  val i8Array = WasmArrayType(
+    WasmArrayTypeName.i8Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmInt8, true)
+  )
+
+  /** array i16 */
+  val i16Array = WasmArrayType(
+    WasmArrayTypeName.i16Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmInt16, true)
+  )
+
+  /** array i32 */
+  val i32Array = WasmArrayType(
+    WasmArrayTypeName.i32Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmInt32, true)
+  )
+
+  /** array i64 */
+  val i64Array = WasmArrayType(
+    WasmArrayTypeName.i64Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmInt64, true)
+  )
+
+  /** array f32 */
+  val f32Array = WasmArrayType(
+    WasmArrayTypeName.f32Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmFloat32, true)
+  )
+
+  /** array f64 */
+  val f64Array = WasmArrayType(
+    WasmArrayTypeName.f64Array,
+    WasmStructField(WasmFieldName.arrayItem, WasmFloat64, true)
+  )
+
+  /** array anyref */
+  val anyArray = WasmArrayType(
+    WasmArrayTypeName.anyArray,
+    WasmStructField(WasmFieldName.arrayItem, WasmAnyRef, true)
   )
 }
 
@@ -218,9 +254,21 @@ class WasmModule(
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
   def addElement(element: WasmElement): Unit = _elements.addOne(element)
 
+  locally {
+    addArrayType(WasmArrayType.itables)
+
+    addArrayType(WasmArrayType.i8Array)
+    addArrayType(WasmArrayType.i16Array)
+    addArrayType(WasmArrayType.i32Array)
+    addArrayType(WasmArrayType.i64Array)
+    addArrayType(WasmArrayType.f32Array)
+    addArrayType(WasmArrayType.f64Array)
+    addArrayType(WasmArrayType.anyArray)
+  }
+
   def functionTypes = _functionTypes.toList
   def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = List(WasmArrayType.itables, WasmArrayType.u16Array) ++ _arrayTypes.toList
+  def arrayTypes = _arrayTypes.toList
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def tags: List[WasmTag] = _tags.toList

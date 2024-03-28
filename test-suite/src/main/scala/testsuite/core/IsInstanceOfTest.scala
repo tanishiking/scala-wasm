@@ -18,6 +18,8 @@ object IsInstanceOfTest {
     ok(!testInt(new Child()))
     ok(testString("foo"))
     ok(!testString(new Child()))
+
+    testArrays()
   }
 
   private def testInheritance(): Boolean = {
@@ -48,6 +50,51 @@ object IsInstanceOfTest {
     !base2.isInstanceOf[Base1] &&
     base2.isInstanceOf[Base2] &&
     !base2.isInstanceOf[Base]
+  }
+
+  private def testArrays(): Unit = {
+    val child: Any = new Child
+    val booleanArray: Any = new Array[Boolean](1)
+    val intArray: Any = new Array[Int](1)
+    val stringArray: Any = new Array[String](1)
+    val intArrayArray: Any = new Array[Array[Int]](1)
+    val stringArrayArray: Any = new Array[Array[String]](1)
+    val objectArray: Any = new Array[Object](1)
+
+    // direct instances
+    ok(booleanArray.isInstanceOf[Array[Boolean]])
+    ok(intArray.isInstanceOf[Array[Int]])
+    ok(stringArray.isInstanceOf[Array[String]])
+    ok(intArrayArray.isInstanceOf[Array[Array[Int]]])
+    ok(stringArrayArray.isInstanceOf[Array[Array[String]]])
+    ok(objectArray.isInstanceOf[Array[Object]])
+
+    // primitive arrays are not instances of any other type
+    ok(!booleanArray.isInstanceOf[Array[Int]])
+    ok(!booleanArray.isInstanceOf[Child])
+    ok(!booleanArray.isInstanceOf[Array[Array[Boolean]]])
+    ok(!booleanArray.isInstanceOf[Array[Object]])
+
+    // different dimensions
+    ok(!intArray.isInstanceOf[Array[Array[Int]]])
+    ok(!intArrayArray.isInstanceOf[Array[Int]])
+    // TODO ok(!intArrayArray.isInstanceOf[Array[Array[Array[Int]]]])
+    // TODO ok(!stringArrayArray.isInstanceOf[Array[String]])
+    // TODO ok(!stringArrayArray.isInstanceOf[Array[Array[Array[String]]]])
+    // TODO ok(!objectArrayArray.isInstanceOf[Array[Array[Object]]])
+
+    // reference array types are covariant at run-time (IR and JVM semantics)
+    ok(stringArray.isInstanceOf[Array[Object]])
+    ok(intArrayArray.isInstanceOf[Array[Object]])
+    // TODO ok(!objectArray.isInstanceOf[Array[String]])
+
+    // non-arrays are not instances of any array type
+    ok(!child.isInstanceOf[Array[Boolean]])
+    ok(!child.isInstanceOf[Array[Int]])
+    ok(!child.isInstanceOf[Array[String]])
+    ok(!child.isInstanceOf[Array[Array[Int]]])
+    ok(!child.isInstanceOf[Array[Array[String]]])
+    ok(!child.isInstanceOf[Array[Object]])
   }
 
   private def testPrimitiveIsInstanceOfBase(p: Any): Boolean =

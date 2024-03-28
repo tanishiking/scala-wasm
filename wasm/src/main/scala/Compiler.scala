@@ -80,6 +80,8 @@ object Compiler {
       sortedClasses.foreach { clazz =>
         builder.transformClassDef(clazz)
       }
+      // Array classes extend j.l.Object, so they must come after transformClassDef's
+      builder.genArrayClasses()
       onlyModule.topLevelExports.foreach { tle =>
         builder.transformTopLevelExport(tle)
       }

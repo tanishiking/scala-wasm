@@ -47,6 +47,21 @@ object GetClassTest {
     assertSame(classOf[java.lang.Float], getClassOf(Double.NegativeInfinity))
     assertSame(classOf[java.lang.Float], getClassOf(Double.NaN))
 
+    assertSame(classOf[Array[Int]], getClassOf(new Array[Int](3)))
+    assertSame(classOf[Array[Int]], getClassOf(Array(1, 2, 3)))
+
+    assertSame(classOf[Array[Boolean]], getClassOf(new Array[Boolean](3)))
+    assertSame(classOf[Array[Boolean]], getClassOf(Array(false, true)))
+
+    assertSame(classOf[Array[AnyRef]], getClassOf(new Array[AnyRef](3)))
+    assertSame(classOf[Array[AnyRef]], getClassOf(Array(null): Array[AnyRef]))
+
+    assertSame(classOf[Array[String]], getClassOf(new Array[String](3)))
+    assertSame(classOf[Array[String]], getClassOf(Array("foo", "bar")))
+
+    assertSame(classOf[Array[Array[Int]]], getClassOf(new Array[Array[Int]](3)))
+    assertSame(classOf[Array[Array[Int]]], getClassOf(Array(Array(1, 2, 3))))
+
     assertSame(null, getClassOf(scala.scalajs.js.Math))
   }
 }

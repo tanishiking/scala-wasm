@@ -62,6 +62,48 @@ class WasmBuilder {
     }
   }
 
+  def genArrayClasses()(implicit ctx: WasmContext): Unit = {
+    import WasmTypeName.WasmStructTypeName
+
+    // The super type is always j.l.Object
+    val superType = WasmTypeName.WasmVTableTypeName(IRNames.ObjectClass)
+
+    // The vtable type is always the same as j.l.Object
+    val vtableTypeName = Names.WasmTypeName.WasmVTableTypeName.ObjectVTable
+    val vtableField = WasmStructField(
+      Names.WasmFieldName.vtable,
+      WasmRefType(WasmHeapType.Type(vtableTypeName)),
+      isMutable = false
+    )
+
+    val typeRefsWithArrays: List[(WasmStructTypeName, WasmArrayType)] = List(
+      (WasmStructTypeName.BooleanArray, WasmArrayType.i8Array),
+      (WasmStructTypeName.CharArray, WasmArrayType.i16Array),
+      (WasmStructTypeName.ByteArray, WasmArrayType.i8Array),
+      (WasmStructTypeName.ShortArray, WasmArrayType.i16Array),
+      (WasmStructTypeName.IntArray, WasmArrayType.i32Array),
+      (WasmStructTypeName.LongArray, WasmArrayType.i64Array),
+      (WasmStructTypeName.FloatArray, WasmArrayType.f32Array),
+      (WasmStructTypeName.DoubleArray, WasmArrayType.f64Array),
+      (WasmStructTypeName.ObjectArray, WasmArrayType.anyArray)
+    )
+
+    for ((structTypeName, underlyingArrayType) <- typeRefsWithArrays) {
+      val underlyingArrayField = WasmStructField(
+        WasmFieldName.arrayField,
+        WasmRefType(WasmHeapType.Type(underlyingArrayType.name)),
+        isMutable = false
+      )
+
+      val structType = WasmStructType(
+        structTypeName,
+        List(vtableField, WasmStructField.itables, underlyingArrayField),
+        Some(Names.WasmTypeName.WasmStructTypeName(IRNames.ObjectClass))
+      )
+      ctx.addGCType(structType)
+    }
+  }
+
   def transformTopLevelExport(
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {
@@ -98,7 +140,7 @@ class WasmBuilder {
     val nameDataValueItems = nameStr.toList.map(c => I32_CONST(I32(c.toInt)))
     val nameDataValueArrayNew =
       ARRAY_NEW_FIXED(
-        TypeIdx(WasmTypeName.WasmArrayTypeName.u16Array),
+        TypeIdx(WasmTypeName.WasmArrayTypeName.i16Array),
         I32(nameDataValueItems.size)
       )
     val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
@@ -129,7 +171,7 @@ class WasmBuilder {
         // the classOf instance - initially `null`; filled in by the `createClassOf` helper
         REF_NULL(HeapType(WasmHeapType.ClassType)),
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
-        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData))),
+        REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmVTableTypeName.ObjectVTable))),
         // clonefFunction - will be invoked from `clone()` method invokaion on the class
         cloneFunction
       )
