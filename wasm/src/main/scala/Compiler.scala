@@ -1,5 +1,8 @@
 package wasm
 
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+
 import wasm.ir2wasm._
 import wasm.wasm4s._
 
@@ -8,19 +11,17 @@ import org.scalajs.ir.{Names => IRNames}
 
 import org.scalajs.linker.interface._
 import org.scalajs.linker.standard._
+import org.scalajs.linker.interface.unstable.OutputDirectoryImpl
 
 import org.scalajs.logging.{Level, ScalaConsoleLogger}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation._
-import scala.scalajs.js.typedarray._
-
 object Compiler {
   def compileIRFiles(
       irFiles: Seq[IRFile],
       moduleInitializers: List[ModuleInitializer],
+      output: OutputDirectory,
       outputName: String
   )(implicit ec: ExecutionContext): Future[Unit] = {
     val module = new WasmModule
@@ -52,7 +53,7 @@ object Compiler {
 
     val logger = new ScalaConsoleLogger(Level.Info)
 
-    for {
+    val result = for {
       patchedIRFiles <- LibraryPatches.patchIRFiles(irFiles)
       moduleSet <- linkerFrontend.link(
         patchedIRFiles,
@@ -91,12 +92,18 @@ object Compiler {
 
       context.complete(moduleInitializers, classesWithStaticInit)
 
-      val textOutput = new converters.WasmTextWriter().write(module)
-      FS.writeFileSync(s"./target/$outputName.wat", textOutput.getBytes().toTypedArray)
+      val outputImpl = OutputDirectoryImpl.fromOutputDirectory(output)
 
+      val textOutput = new converters.WasmTextWriter().write(module)
+      val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
       val binaryOutput = new converters.WasmBinaryWriter(module).write()
-      FS.writeFileSync(s"./target/$outputName.wasm", binaryOutput.toTypedArray)
+
+      outputImpl.writeFull(s"$outputName.wat", ByteBuffer.wrap(textOutputBytes)).flatMap { _ =>
+        outputImpl.writeFull(s"$outputName.wasm", ByteBuffer.wrap(binaryOutput))
+      }
     }
+
+    result.flatten
   }
 
   private def showLinkedClass(clazz: LinkedClass): Unit = {
@@ -148,10 +155,5 @@ object Compiler {
         "}"
       )
     }
-  }
-
-  private object FS {
-    @js.native @JSImport("fs")
-    def writeFileSync(file: String, data: Int8Array): Unit = js.native
   }
 }
