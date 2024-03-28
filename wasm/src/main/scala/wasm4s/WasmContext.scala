@@ -1,6 +1,7 @@
 package wasm.wasm4s
 
 import scala.collection.mutable
+import scala.collection.mutable.LinkedHashMap
 
 import Names._
 import Names.WasmTypeName._
@@ -9,10 +10,10 @@ import Types._
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
-import org.scalajs.ir.ClassKind
+import org.scalajs.ir.{ClassKind, Position}
 
-import scala.collection.mutable.LinkedHashMap
 import wasm.ir2wasm.TypeTransformer
+import wasm.ir2wasm.WasmExpressionBuilder
 
 import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
@@ -208,7 +209,6 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
-  private val _startInstructions: mutable.ListBuffer[WasmInstr] = new mutable.ListBuffer()
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
@@ -350,11 +350,29 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     addHelperImport(name, List(WasmAnyRef, WasmAnyRef), List(resultType))
   }
 
-  def addStartInstructions(instrs: List[WasmInstr]): Unit =
-    _startInstructions ++= instrs
-
   def complete(moduleInitializers: List[ModuleInitializer]): Unit = {
-    val instrs = _startInstructions
+    /* Before generating the string globals in `genStartFunction()`, make sure
+     * to allocate the ones that will be required by the module initializers.
+     */
+    for (init <- moduleInitializers) {
+      ModuleInitializerImpl.fromInitializer(init.initializer) match {
+        case ModuleInitializerImpl.MainMethodWithArgs(_, _, args) =>
+          args.foreach(addConstantStringGlobal(_))
+        case ModuleInitializerImpl.VoidMainMethod(_, _) =>
+          () // nothing to do
+      }
+    }
+
+    genStartFunction(moduleInitializers)
+    genDeclarativeElements()
+  }
+
+  private def genStartFunction(moduleInitializers: List[ModuleInitializer]): Unit = {
+    val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
+
+    import fctx.instrs
+
+    // Initialize the constant string globals
 
     for ((str, globalName) <- constantStringGlobals) {
       instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.emptyString))
@@ -365,37 +383,49 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       }
       instrs += WasmInstr.GLOBAL_SET(WasmImmediate.GlobalIdx(globalName))
     }
+
+    // Emit the module initializers
+
     moduleInitializers.foreach { init =>
-      ModuleInitializerImpl.fromInitializer(init.initializer) match {
-        case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
-          () // TODO: but we don't use args yet in scala-wasm
-        case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
-          instrs +=
-            WasmInstr.CALL(
-              WasmImmediate.FuncIdx(
-                WasmFunctionName(
-                  IRTrees.MemberNamespace.PublicStatic,
-                  className,
-                  encodedMainMethodName
-                )
-              )
-            )
+      def genCallStatic(className: IRNames.ClassName, methodName: IRNames.MethodName): Unit = {
+        val functionName =
+          WasmFunctionName(IRTrees.MemberNamespace.PublicStatic, className, methodName)
+        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(functionName))
       }
+      implicit val noPos: Position = Position.NoPosition
+
+      val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.BoxedStringClass), 1)
+
+      val callTree = ModuleInitializerImpl.fromInitializer(init.initializer) match {
+        case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
+          IRTrees.ApplyStatic(
+            IRTrees.ApplyFlags.empty,
+            className,
+            IRTrees.MethodIdent(encodedMainMethodName),
+            List(IRTrees.ArrayValue(stringArrayTypeRef, args.map(IRTrees.StringLiteral(_))))
+          )(IRTypes.NoType)
+
+        case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
+          IRTrees.ApplyStatic(
+            IRTrees.ApplyFlags.empty,
+            className,
+            IRTrees.MethodIdent(encodedMainMethodName),
+            Nil
+          )(IRTypes.NoType)
+      }
+
+      WasmExpressionBuilder.generateIRBody(callTree, IRTypes.NoType)(this, fctx)
     }
 
-    if (_startInstructions.nonEmpty) {
-      val sig = WasmFunctionSignature(Nil, Nil)
-      val funTypeName = addFunctionType(sig)
-      val startFunction = WasmFunction(
-        WasmFunctionName.start,
-        WasmFunctionType(funTypeName, sig),
-        Nil,
-        WasmExpr(_startInstructions.toList)
-      )
-      addFunction(startFunction)
+    // Finish the start function
+
+    if (instrs.nonEmpty) {
+      fctx.buildAndAddToContext()
       module.setStartFunction(WasmFunctionName.start)
     }
+  }
 
+  private def genDeclarativeElements(): Unit = {
     // Aggregated Elements
 
     if (_funcDeclarations.nonEmpty) {
