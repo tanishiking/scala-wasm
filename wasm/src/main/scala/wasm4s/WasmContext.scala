@@ -212,7 +212,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
-  def addExport(exprt: WasmExport[_]): Unit = module.addExport(exprt)
+  def addExport(exprt: WasmExport): Unit = module.addExport(exprt)
   def addFunction(fun: WasmFunction): Unit = {
     module.addFunction(fun)
     functions.define(fun)
