@@ -149,6 +149,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
       case t: IRTrees.Closure              => genClosure(t)
       case t: IRTrees.Clone                => genClone(t)
+      case t: IRTrees.Match                => genMatch(t)
 
       // array
       case t: IRTrees.ArrayLength => genArrayLength(t)
@@ -2018,5 +2019,51 @@ private class WasmExpressionBuilder private (
         )
     }
     t.tpe
+  }
+
+  private def genMatch(tree: IRTrees.Match): IRTypes.Type = {
+    val IRTrees.Match(selector, cases, defaultBody) = tree
+    val selectorLocal = fctx.addSyntheticLocal(TypeTransformer.transformType(selector.tpe)(ctx))
+    genTreeAuto(selector)
+    instrs += LOCAL_SET(selectorLocal)
+
+    fctx.block(TypeTransformer.transformType(tree.tpe)(ctx)) { doneLabel =>
+      fctx.block() { defaultLabel =>
+        val caseLabels = cases.map(c => c._1 -> fctx.genLabel())
+        for (caseLabel <- caseLabels)
+          instrs += BLOCK(BlockType.ValueType(), Some(caseLabel._2))
+
+        for {
+          caseLabel <- caseLabels
+          matchableLiteral <- caseLabel._1
+        } {
+          val label = caseLabel._2
+          instrs += LOCAL_GET(selectorLocal)
+          matchableLiteral match {
+            case IRTrees.IntLiteral(value) =>
+              instrs += I32_CONST(I32(value))
+              instrs += I32_EQ
+              instrs += BR_IF(label)
+            case IRTrees.StringLiteral(value) =>
+              instrs += ctx.getConstantStringInstr(value)
+              instrs += CALL(FuncIdx(WasmFunctionName.is))
+              instrs += BR_IF(label)
+            case IRTrees.Null() =>
+              instrs += REF_IS_NULL
+              instrs += BR_IF(label)
+          }
+        }
+        instrs += BR(defaultLabel)
+
+        for ((caseLabel, caze) <- caseLabels.zip(cases).reverse) {
+          instrs += END
+          genTree(caze._2, tree.tpe)
+          instrs += BR(doneLabel)
+        }
+      }
+      genTree(defaultBody, tree.tpe)
+    }
+
+    tree.tpe
   }
 }
