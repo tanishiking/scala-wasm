@@ -1,7 +1,7 @@
 import org.scalajs.linker.interface.ESVersion
 import org.scalajs.linker.interface.OutputPatterns
 
-val scalaV = "2.13.12"
+val scalaV = "2.12.19"
 
 inThisBuild(Def.settings(
   scalacOptions ++= Seq(
@@ -31,13 +31,13 @@ lazy val cli = project
     ),
   )
   .dependsOn(
-    wasm,
+    wasm.js,
     // tests // for TestSuites constant
   )
 
-lazy val wasm = project
+lazy val wasm = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
   .in(file("wasm"))
-  .enablePlugins(ScalaJSPlugin)
   .settings(
     name := "wasm",
     version := "0.1.0-SNAPSHOT",
@@ -45,12 +45,7 @@ lazy val wasm = project
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-linker" % "1.16.0"
     ),
-    scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.CommonJSModule),
-    }
   )
-//   .enablePlugins(ScalaJSPlugin)
 
 lazy val sample = project
   .in(file("sample"))
