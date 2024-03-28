@@ -350,7 +350,10 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     addHelperImport(name, List(WasmAnyRef, WasmAnyRef), List(resultType))
   }
 
-  def complete(moduleInitializers: List[ModuleInitializer]): Unit = {
+  def complete(
+      moduleInitializers: List[ModuleInitializer],
+      classesWithStaticInit: List[IRNames.ClassName]
+  ): Unit = {
     /* Before generating the string globals in `genStartFunction()`, make sure
      * to allocate the ones that will be required by the module initializers.
      */
@@ -363,11 +366,14 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       }
     }
 
-    genStartFunction(moduleInitializers)
+    genStartFunction(moduleInitializers, classesWithStaticInit)
     genDeclarativeElements()
   }
 
-  private def genStartFunction(moduleInitializers: List[ModuleInitializer]): Unit = {
+  private def genStartFunction(
+      moduleInitializers: List[ModuleInitializer],
+      classesWithStaticInit: List[IRNames.ClassName]
+  ): Unit = {
     val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
 
     import fctx.instrs
@@ -382,6 +388,17 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringConcat))
       }
       instrs += WasmInstr.GLOBAL_SET(WasmImmediate.GlobalIdx(globalName))
+    }
+
+    // Emit the static initializers
+
+    for (className <- classesWithStaticInit) {
+      val funcName = WasmFunctionName(
+        IRTrees.MemberNamespace.StaticConstructor,
+        className,
+        IRNames.StaticInitializerName
+      )
+      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(funcName))
     }
 
     // Emit the module initializers

@@ -53,6 +53,21 @@ class WasmBuilder {
       ctx.addGlobal(typeDataGlobal)
     }
 
+    // Declare static fields
+    for {
+      field @ IRTrees.FieldDef(flags, name, _, ftpe) <- clazz.fields
+      if flags.namespace.isStatic
+    } {
+      val typ = transformType(ftpe)
+      val global = WasmGlobal(
+        WasmGlobalName.WasmGlobalStaticFieldName(name.name),
+        typ,
+        WasmExpr(List(Defaults.defaultValue(typ))),
+        isMutable = true
+      )
+      ctx.addGlobal(global)
+    }
+
     clazz.kind match {
       case ClassKind.ModuleClass   => transformModuleClass(clazz)
       case ClassKind.Class         => transformClass(clazz)
@@ -108,7 +123,7 @@ class WasmBuilder {
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {
     topLevelExport.tree match {
-      case d: IRTrees.TopLevelFieldExportDef   => ???
+      case d: IRTrees.TopLevelFieldExportDef   => () // TODO ignored for now to test static fields
       case d: IRTrees.TopLevelJSClassExportDef => ???
       case d: IRTrees.TopLevelMethodExportDef  => transformToplevelMethodExportDef(d)
       case d: IRTrees.TopLevelModuleExportDef  => ???
