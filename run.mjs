@@ -1,5 +1,7 @@
 import { load } from "./loader.mjs";
 
-const { test } = await load("./target/output.wasm");
-const o = test(7);
+const moduleExports = await load("./target/output.wasm");
+console.log(moduleExports.field);
+const o = moduleExports.test(7);
 console.log(o);
+console.log(moduleExports.field);

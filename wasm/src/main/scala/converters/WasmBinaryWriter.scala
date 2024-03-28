@@ -185,14 +185,14 @@ final class WasmBinaryWriter(module: WasmModule) {
 
   private def writeExportSection(buf: Buffer): Unit = {
     buf.vec(module.exports) { exp =>
-      buf.name(exp.name)
+      buf.name(exp.exportName)
       exp match {
-        case exp: WasmExport.Function =>
+        case WasmExport.Function(_, funcName) =>
           buf.byte(0x00)
-          writeFuncIdx(buf, exp.field.name)
-        case exp: WasmExport.Global =>
+          writeFuncIdx(buf, funcName)
+        case WasmExport.Global(_, globalName) =>
           buf.byte(0x03)
-          writeGlobalIdx(buf, exp.field.name)
+          writeGlobalIdx(buf, globalName)
       }
     }
   }

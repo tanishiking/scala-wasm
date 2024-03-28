@@ -8,18 +8,13 @@ import Names.WasmTypeName._
 
 sealed case class WasmExpr(instr: List[WasmInstr])
 
-sealed abstract class WasmExport[T <: WasmNamedDefinitionField[_]](
-    val name: String,
-    val field: T,
-    val kind: Byte,
-    val keyword: String
-)
+sealed abstract class WasmExport {
+  val exportName: String
+}
 
 object WasmExport {
-  class Function(name: String, field: WasmFunction)
-      extends WasmExport[WasmFunction](name, field, 0x0, "func")
-  class Global(name: String, field: WasmGlobal)
-      extends WasmExport[WasmGlobal](name, field, 0x3, "global")
+  final case class Function(exportName: String, funcName: WasmFunctionName) extends WasmExport
+  final case class Global(exportName: String, globalName: WasmGlobalName) extends WasmExport
 }
 
 final case class WasmImport(module: String, name: String, desc: WasmImportDesc)
@@ -235,7 +230,7 @@ class WasmModule(
     // val memories: List[WasmMemory] = Nil,
     private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer(),
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
-    private val _exports: mutable.ListBuffer[WasmExport[_]] = new mutable.ListBuffer(),
+    private val _exports: mutable.ListBuffer[WasmExport] = new mutable.ListBuffer(),
     private var _startFunction: Option[WasmFunctionName] = None,
     private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
     // val tags: List[WasmTag] = Nil,
@@ -250,7 +245,7 @@ class WasmModule(
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
   def addTag(tag: WasmTag): Unit = _tags.addOne(tag)
   def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
-  def addExport(exprt: WasmExport[_]) = _exports.addOne(exprt)
+  def addExport(exprt: WasmExport) = _exports.addOne(exprt)
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
   def addElement(element: WasmElement): Unit = _elements.addOne(element)
 
