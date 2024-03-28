@@ -4,6 +4,7 @@ import scala.scalajs.js
 
 import wasm.Compiler
 
+import org.scalajs.linker.NodeOutputDirectory
 import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
@@ -26,6 +27,8 @@ object Main {
       case _                                       => "compile"
     }
 
+    val output = NodeOutputDirectory("./target/")
+
     val result =
       if (mode == "testsuite") {
         for {
@@ -36,7 +39,8 @@ object Main {
               Compiler.compileIRFiles(
                 irFiles,
                 List(moduleInitializer),
-                s"$className"
+                output,
+                className
               )
             }
           }
@@ -47,7 +51,7 @@ object Main {
       } else {
         for {
           irFiles <- new CliReader(classpath).irFiles
-          _ <- Compiler.compileIRFiles(irFiles, Nil, s"output")
+          _ <- Compiler.compileIRFiles(irFiles, Nil, output, "output")
         } yield {
           println("Module successfully initialized")
           ()
