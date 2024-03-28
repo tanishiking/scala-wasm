@@ -45,12 +45,7 @@ lazy val wasm = project
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-linker" % "1.16.0"
     ),
-    scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.CommonJSModule),
-    }
   )
-//   .enablePlugins(ScalaJSPlugin)
 
 lazy val sample = project
   .in(file("sample"))
