@@ -23,6 +23,7 @@ object TestSuites {
     TestSuite("testsuite.core.StaticMethodTest"),
     TestSuite("testsuite.core.ThrowablesTest"),
     TestSuite("testsuite.core.ToStringTest"),
+    TestSuite("testsuite.core.MatchTest"),
     TestSuite("testsuite.core.WrapUnwrapThrowableTest")
   )
 }
