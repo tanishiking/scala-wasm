@@ -92,8 +92,10 @@ private class WasmExpressionBuilder private (
   //   // )
   // }
 
-  def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit =
-    trees.lazyZip(expectedTypes).foreach(genTree(_, _))
+  def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit = {
+    for ((tree, expectedType) <- trees.zip(expectedTypes))
+      genTree(tree, expectedType)
+  }
 
   def genTreeAuto(tree: IRTrees.Tree): Unit =
     genTree(tree, tree.tpe)
@@ -627,7 +629,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
-    for ((arg, paramTypeRef) <- args.lazyZip(methodName.paramTypeRefs)) {
+    for ((arg, paramTypeRef) <- args.zip(methodName.paramTypeRefs)) {
       val paramType = ctx.inferTypeFromTypeRef(paramTypeRef)
       genTree(arg, paramType)
     }
@@ -1790,7 +1792,7 @@ private class WasmExpressionBuilder private (
   private def genNewArray(t: IRTrees.NewArray): IRTypes.Type = {
     val arrayTypeRef = t.typeRef
 
-    if (t.lengths.isEmpty || t.lengths.sizeIs > arrayTypeRef.dimensions)
+    if (t.lengths.isEmpty || t.lengths.size > arrayTypeRef.dimensions)
       throw new AssertionError(
         s"invalid lengths ${t.lengths} for array type ${arrayTypeRef.displayName}"
       )

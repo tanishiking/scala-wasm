@@ -242,16 +242,16 @@ class WasmModule(
     // val data: List[WasmData] = Nil,
     // val dataCount: Boolean = true
 ) {
-  def addImport(imprt: WasmImport): Unit = _imports.addOne(imprt)
-  def addFunction(function: WasmFunction): Unit = _definedFunctions.addOne(function)
-  def addArrayType(typ: WasmArrayType): Unit = _arrayTypes.addOne(typ)
-  def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes.addOne(typ)
-  def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes.addOne(typ)
-  def addTag(tag: WasmTag): Unit = _tags.addOne(tag)
-  def addGlobal(typ: WasmGlobal): Unit = _globals.addOne(typ)
-  def addExport(exprt: WasmExport) = _exports.addOne(exprt)
+  def addImport(imprt: WasmImport): Unit = _imports += imprt
+  def addFunction(function: WasmFunction): Unit = _definedFunctions += function
+  def addArrayType(typ: WasmArrayType): Unit = _arrayTypes += typ
+  def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes += typ
+  def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes += typ
+  def addTag(tag: WasmTag): Unit = _tags += tag
+  def addGlobal(typ: WasmGlobal): Unit = _globals += typ
+  def addExport(exprt: WasmExport): Unit = _exports += exprt
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
-  def addElement(element: WasmElement): Unit = _elements.addOne(element)
+  def addElement(element: WasmElement): Unit = _elements += element
 
   locally {
     addArrayType(WasmArrayType.itables)

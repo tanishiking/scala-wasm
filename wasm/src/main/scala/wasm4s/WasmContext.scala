@@ -83,10 +83,10 @@ trait ReadOnlyWasmContext {
     val vtableType = calculateVtableType(name)
     // Do not include abstract methods when calculating vtable instance,
     // all slots should be filled with the function reference to the concrete methods
-    val methods = collectMethods(name, includeAbstractMethods = false)
+    val methodsReverse = collectMethods(name, includeAbstractMethods = false).reverse
     vtableType.functions.map { slot =>
-      methods
-        .findLast(_.name.simpleName == slot.name.simpleName)
+      methodsReverse
+        .find(_.name.simpleName == slot.name.simpleName)
         .getOrElse(throw new Error(s"No implementation found for ${slot.name} in ${name}"))
     }
   }
