@@ -18,15 +18,10 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 class CoreTests extends munit.FunSuite {
   cli.TestSuites.suites.map { suite =>
     test(suite.className) {
-      CoreTests.load(s"./target/${suite.className}/main.wasm").toFuture.map { _ =>
+      js.`import`[js.Any](s"../../../../target/${suite.className}/main.mjs").toFuture.map { _ =>
         ()
       }
     }
   }
 
-}
-
-object CoreTests {
-  @js.native @JSImport("../../../../loader.mjs")
-  def load(wasmFile: String): js.Promise[js.Dynamic] = js.native
 }

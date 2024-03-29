@@ -29,7 +29,9 @@ object Main {
     val linkerConfig = StandardConfig()
       .withESFeatures(_.withESVersion(ESVersion.ES2016)) // to be able to link `**`
       .withSemantics(_.optimized) // because that's the only thing we actually support at the moment
+      .withModuleKind(ModuleKind.ESModule)
       .withOptimizer(false)
+      .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs"))
 
     val logger = new ScalaConsoleLogger(Level.Info)
 

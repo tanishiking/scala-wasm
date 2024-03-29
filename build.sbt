@@ -97,7 +97,7 @@ lazy val tests = project
       "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1" % Test
     ),
     scalaJSLinkerConfig ~= {
-      // Generate CoreTests as an ES module so that it can import the loader.mjs
+      // Generate CoreTests as an ES module so that it can import the main.mjs files
       // Give it an `.mjs` extension so that Node.js actually interprets it as an ES module
       _.withModuleKind(ModuleKind.ESModule)
         .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs")),

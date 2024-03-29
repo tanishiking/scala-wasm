@@ -23,6 +23,10 @@ final class WebAssemblyLinkerBackend(
     val coreSpec: CoreSpec
 ) extends LinkerBackend {
   require(
+    linkerConfig.moduleKind == ModuleKind.ESModule,
+    s"The WebAssembly backend only supports ES modules; was ${linkerConfig.moduleKind}."
+  )
+  require(
     !linkerConfig.optimizer,
     "The WebAssembly backend does not support the optimizer yet."
   )
@@ -89,24 +93,62 @@ final class WebAssemblyLinkerBackend(
 
     val outputImpl = OutputDirectoryImpl.fromOutputDirectory(output)
 
+    val watFileName = s"$moduleID.wat"
+    val wasmFileName = s"$moduleID.wasm"
+    val jsFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, moduleID)
+    val loaderJSFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, "__loader")
+
     val textOutput = new converters.WasmTextWriter().write(wasmModule)
     val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
     val binaryOutput = new converters.WasmBinaryWriter(wasmModule).write()
+    val loaderOutput = LoaderContent.bytesContent
+    val jsFileOutput = buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName)
+    val jsFileOutputBytes = jsFileOutput.getBytes(StandardCharsets.UTF_8)
 
-    val filesToProduce = Set(s"$moduleID.wat", s"$moduleID.wasm")
+    val filesToProduce = Set(
+      watFileName,
+      wasmFileName,
+      loaderJSFileName,
+      jsFileName
+    )
+
     for {
       existingFiles <- outputImpl.listFiles()
       _ <- Future.sequence(existingFiles.filterNot(filesToProduce).map(outputImpl.delete(_)))
-      _ <- outputImpl.writeFull(s"$moduleID.wat", ByteBuffer.wrap(textOutputBytes))
-      _ <- outputImpl.writeFull(s"$moduleID.wasm", ByteBuffer.wrap(binaryOutput))
+      _ <- outputImpl.writeFull(watFileName, ByteBuffer.wrap(textOutputBytes))
+      _ <- outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
+      _ <- outputImpl.writeFull(loaderJSFileName, ByteBuffer.wrap(loaderOutput))
+      _ <- outputImpl.writeFull(jsFileName, ByteBuffer.wrap(jsFileOutputBytes))
     } yield {
       val reportModule = new ReportImpl.ModuleImpl(
         moduleID,
-        s"$moduleID.wasm",
+        jsFileName,
         None,
         linkerConfig.moduleKind
       )
       new ReportImpl(List(reportModule))
     }
+  }
+
+  private def buildJSFileOutput(
+      module: ModuleSet.Module,
+      loaderJSFileName: String,
+      wasmFileName: String
+  ): String = {
+    /* TODO This is not correct for exported *vars*, since they won't receive
+     * updates from mutations after loading.
+     */
+    val reExportStats = for {
+      exportName <- module.topLevelExports.map(_.exportName)
+    } yield {
+      s"export let $exportName = __exports.$exportName;"
+    }
+
+    s"""
+      |import { load as __load } from './${loaderJSFileName}';
+      |const __exports = await __load('./${wasmFileName}');
+      |
+      |${reExportStats.mkString("\n")}
+    """.stripMargin.trim() + "\n"
   }
 }
