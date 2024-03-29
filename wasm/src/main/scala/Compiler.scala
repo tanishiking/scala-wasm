@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets
 import wasm.ir2wasm._
 import wasm.wasm4s._
 
-import org.scalajs.ir
 import org.scalajs.ir.{Names => IRNames}
 
 import org.scalajs.linker.interface._
@@ -73,7 +72,7 @@ object Compiler {
         else a.className.compareTo(b.className) < 0
       }
 
-      // sortedClasses.foreach(showLinkedClass(_))
+      // sortedClasses.foreach(cls => println(utils.LinkedClassPrinters.showLinkedClass(cls)))
 
       Preprocessor.preprocess(sortedClasses)(context)
       HelperFunctions.genGlobalHelpers()
@@ -110,56 +109,5 @@ object Compiler {
     }
 
     result.flatten
-  }
-
-  private def showLinkedClass(clazz: LinkedClass): Unit = {
-    val writer = new java.io.PrintWriter(System.out)
-    val printer = new LinkedClassPrinter(writer)
-    printer.print(clazz)
-    printer.println()
-    writer.flush()
-  }
-
-  private class LinkedClassPrinter(_out: java.io.Writer) extends ir.Printers.IRTreePrinter(_out) {
-    def print(clazz: LinkedClass): Unit = {
-      print("linked ")
-      print(clazz.kind.toString())
-      print(" ")
-      print(clazz.className)
-      clazz.superClass.foreach { cls =>
-        print(" extends ")
-        print(cls)
-        clazz.jsSuperClass.foreach { tree =>
-          print(" (via ")
-          print(tree)
-          print(")")
-        }
-      }
-      if (clazz.interfaces.nonEmpty) {
-        print(" implements ")
-        var rest = clazz.interfaces
-        while (rest.nonEmpty) {
-          print(rest.head)
-          rest = rest.tail
-          if (rest.nonEmpty)
-            print(", ")
-        }
-      }
-      clazz.jsNativeLoadSpec.foreach { spec =>
-        print(" loadfrom ")
-        print(spec)
-      }
-      print(" ")
-      printColumn(
-        clazz.fields
-          ::: clazz.methods
-          ::: clazz.jsConstructorDef.toList
-          ::: clazz.exportedMembers
-          ::: clazz.jsNativeMembers,
-        "{",
-        "",
-        "}"
-      )
-    }
   }
 }
