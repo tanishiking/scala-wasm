@@ -201,18 +201,22 @@ class WasmTextWriter {
       }
     )
 
-  private def writeExport(e: WasmExport[_])(implicit
+  private def writeExport(e: WasmExport)(implicit
       b: WatBuilder
   ) = b.newLineList(
     "export", {
-      b.appendElement(s"\"${e.name}\"")
+      b.appendElement(s"\"${e.exportName}\"")
       e match {
-        case fun: WasmExport.Function =>
+        case WasmExport.Function(_, funcName) =>
           b.sameLineList(
             "func",
-            { b.appendElement(fun.field.name.show) }
+            { b.appendElement(funcName.show) }
           )
-        case _: WasmExport.Global => ???
+        case WasmExport.Global(_, globalName) =>
+          b.sameLineList(
+            "global",
+            { b.appendElement(globalName.show) }
+          )
       }
     }
   )

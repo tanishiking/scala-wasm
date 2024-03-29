@@ -32,8 +32,8 @@ object Preprocessor {
           case None      => Nil
           case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
         }
-        val myFieldDefs = clazz.fields.map {
-          case fd: IRTrees.FieldDef =>
+        val myFieldDefs = clazz.fields.collect {
+          case fd: IRTrees.FieldDef if !fd.flags.namespace.isStatic =>
             fd
           case fd: IRTrees.JSFieldDef =>
             throw new AssertionError(s"Illegal $fd in Scala class ${clazz.className}")

@@ -117,6 +117,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.Labeled             => genLabeled(t, expectedType)
       case t: IRTrees.Return              => genReturn(t)
       case t: IRTrees.Select              => genSelect(t)
+      case t: IRTrees.SelectStatic        => genSelectStatic(t)
       case t: IRTrees.Assign              => genAssign(t)
       case t: IRTrees.VarDef              => genVarDef(t)
       case t: IRTrees.New                 => genNew(t)
@@ -163,7 +164,6 @@ private class WasmExpressionBuilder private (
       // case select: IRTrees.JSPrivateSelect => ???
       // case IRTrees.RecordValue(pos) =>
       // case IRTrees.JSNewTarget(pos) =>
-      // case IRTrees.SelectStatic(tpe) =>
       // case IRTrees.JSSuperMethodCall(pos) =>
       // case IRTrees.Match(tpe) =>
       // case IRTrees.RecordSelect(tpe) =>
@@ -231,15 +231,11 @@ private class WasmExpressionBuilder private (
         genTree(t.rhs, t.lhs.tpe)
         instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
-      case sel: IRTrees.SelectStatic => // OK?
-        val className = sel.field.name.className
-        val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
-        instrs += GLOBAL_GET(
-          GlobalIdx(Names.WasmGlobalName.WasmModuleInstanceName.fromIR(className))
+      case sel: IRTrees.SelectStatic =>
+        genTree(t.rhs, sel.tpe)
+        instrs += GLOBAL_SET(
+          GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(sel.field.name))
         )
-        genTree(t.rhs, t.lhs.tpe)
-        instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
 
       case sel: IRTrees.ArraySelect =>
         genTreeAuto(sel.array)
@@ -715,6 +711,13 @@ private class WasmExpressionBuilder private (
 
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(className)), idx)
     sel.tpe
+  }
+
+  private def genSelectStatic(tree: IRTrees.SelectStatic): IRTypes.Type = {
+    instrs += GLOBAL_GET(
+      GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(tree.field.name))
+    )
+    tree.tpe
   }
 
   private def genStoreModule(t: IRTrees.StoreModule): IRTypes.Type = {

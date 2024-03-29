@@ -15,6 +15,7 @@ object Names {
         case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName         => "g_itable"
         case _: WasmGlobalName.WasmGlobalConstantStringName => "str_const"
+        case _: WasmGlobalName.WasmGlobalStaticFieldName    => "f_static"
         case _: WasmFunctionName                            => "fun"
         case _: WasmFieldName                               => "field"
         case _: WasmTagName                                 => "tag"
@@ -91,6 +92,14 @@ object Names {
     object WasmGlobalConstantStringName {
       def apply(index: Int): WasmGlobalConstantStringName =
         new WasmGlobalConstantStringName(s"conststring___$index")
+    }
+
+    final case class WasmGlobalStaticFieldName private (
+        override private[wasm4s] val name: String
+    ) extends WasmGlobalName(name)
+    object WasmGlobalStaticFieldName {
+      def apply(fieldName: IRNames.FieldName): WasmGlobalStaticFieldName =
+        new WasmGlobalStaticFieldName(s"static___${fieldName.nameString}")
     }
   }
 

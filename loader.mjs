@@ -180,5 +180,21 @@ export async function load(wasmFileName) {
     wasmModulePromise = WebAssembly.instantiateStreaming(fetch(wasmFileName), importsObj);
   }
   const wasmModule = await wasmModulePromise;
-  return wasmModule.instance.exports;
+  const exports = wasmModule.instance.exports;
+
+  const userExports = Object.create(null);
+  for (const exportName of Object.getOwnPropertyNames(exports)) {
+    const exportValue = exports[exportName];
+    if (exportValue instanceof WebAssembly.Global) {
+      Object.defineProperty(userExports, exportName, {
+        configurable: true,
+        enumerable: true,
+        get: () => exportValue.value,
+      });
+    } else {
+      userExports[exportName] = exportValue;
+    }
+  }
+  Object.freeze(userExports);
+  return userExports;
 }

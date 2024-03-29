@@ -86,7 +86,10 @@ object Compiler {
         builder.transformTopLevelExport(tle)
       }
 
-      context.complete(moduleInitializers)
+      val classesWithStaticInit =
+        sortedClasses.filter(_.hasStaticInitializer).map(_.className)
+
+      context.complete(moduleInitializers, classesWithStaticInit)
 
       val textOutput = new converters.WasmTextWriter().write(module)
       FS.writeFileSync(s"./target/$outputName.wat", textOutput.getBytes().toTypedArray)
