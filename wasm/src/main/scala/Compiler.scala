@@ -21,8 +21,7 @@ object Compiler {
   def compileIRFiles(
       irFiles: Seq[IRFile],
       moduleInitializers: List[ModuleInitializer],
-      output: OutputDirectory,
-      outputName: String
+      output: OutputDirectory
   )(implicit ec: ExecutionContext): Future[Unit] = {
     val module = new WasmModule
     val builder = new WasmBuilder()
@@ -63,6 +62,7 @@ object Compiler {
       )
     } yield {
       val onlyModule = moduleSet.modules.head
+      val moduleID = onlyModule.id.id
 
       /* Sort by ancestor count so that superclasses always appear before
        * subclasses, then tie-break by name for stability.
@@ -98,8 +98,14 @@ object Compiler {
       val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
       val binaryOutput = new converters.WasmBinaryWriter(module).write()
 
-      outputImpl.writeFull(s"$outputName.wat", ByteBuffer.wrap(textOutputBytes)).flatMap { _ =>
-        outputImpl.writeFull(s"$outputName.wasm", ByteBuffer.wrap(binaryOutput))
+      val filesToProduce = Set(s"$moduleID.wat", s"$moduleID.wasm")
+      for {
+        existingFiles <- outputImpl.listFiles()
+        _ <- Future.sequence(existingFiles.filterNot(filesToProduce).map(outputImpl.delete(_)))
+        _ <- outputImpl.writeFull(s"$moduleID.wat", ByteBuffer.wrap(textOutputBytes))
+        _ <- outputImpl.writeFull(s"$moduleID.wasm", ByteBuffer.wrap(binaryOutput))
+      } yield {
+        ()
       }
     }
 

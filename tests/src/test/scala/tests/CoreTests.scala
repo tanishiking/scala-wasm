@@ -18,7 +18,7 @@ import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 class CoreTests extends munit.FunSuite {
   cli.TestSuites.suites.map { suite =>
     test(suite.className) {
-      CoreTests.load(s"./target/${suite.className}/${suite.className}.wasm").toFuture.map { _ =>
+      CoreTests.load(s"./target/${suite.className}/main.wasm").toFuture.map { _ =>
         ()
       }
     }

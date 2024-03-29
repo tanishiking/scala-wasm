@@ -41,8 +41,7 @@ object Main {
               Compiler.compileIRFiles(
                 irFiles,
                 List(moduleInitializer),
-                output,
-                className
+                output
               )
             }
           }
@@ -57,7 +56,7 @@ object Main {
 
         for {
           irFiles <- new CliReader(classpath).irFiles
-          _ <- Compiler.compileIRFiles(irFiles, Nil, output, "output")
+          _ <- Compiler.compileIRFiles(irFiles, Nil, output)
         } yield {
           println("Module successfully initialized")
           ()
