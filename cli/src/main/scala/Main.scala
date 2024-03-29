@@ -1,6 +1,7 @@
 package cli
 
 import scala.scalajs.js
+import scala.scalajs.js.annotation._
 
 import wasm.Compiler
 
@@ -27,8 +28,6 @@ object Main {
       case _                                       => "compile"
     }
 
-    val output = NodeOutputDirectory("./target/")
-
     val result =
       if (mode == "testsuite") {
         for {
@@ -36,6 +35,9 @@ object Main {
           _ <- Future.sequence {
             TestSuites.suites.map { case TestSuites.TestSuite(className, methodName) =>
               val moduleInitializer = ModuleInitializer.mainMethod(className, methodName)
+              val outputDir = s"./target/$className/"
+              createDir(outputDir)
+              val output = NodeOutputDirectory(outputDir)
               Compiler.compileIRFiles(
                 irFiles,
                 List(moduleInitializer),
@@ -49,6 +51,10 @@ object Main {
           ()
         }
       } else {
+        val outputDir = "./target/sample/"
+        createDir(outputDir)
+        val output = NodeOutputDirectory(outputDir)
+
         for {
           irFiles <- new CliReader(classpath).irFiles
           _ <- Compiler.compileIRFiles(irFiles, Nil, output, "output")
@@ -64,4 +70,11 @@ object Main {
       js.Dynamic.global.process.exit(1)
     }
   }
+
+  def createDir(dir: String): Unit =
+    mkdirSync(dir, js.Dynamic.literal(recursive = true))
+
+  @js.native
+  @JSImport("node:fs")
+  def mkdirSync(path: String, options: js.Object = js.native): Unit = js.native
 }
