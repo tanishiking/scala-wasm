@@ -362,14 +362,14 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   def complete(
-      moduleInitializers: List[ModuleInitializer],
+      moduleInitializers: List[ModuleInitializer.Initializer],
       classesWithStaticInit: List[IRNames.ClassName]
   ): Unit = {
     /* Before generating the string globals in `genStartFunction()`, make sure
      * to allocate the ones that will be required by the module initializers.
      */
     for (init <- moduleInitializers) {
-      ModuleInitializerImpl.fromInitializer(init.initializer) match {
+      ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.MainMethodWithArgs(_, _, args) =>
           args.foreach(addConstantStringGlobal(_))
         case ModuleInitializerImpl.VoidMainMethod(_, _) =>
@@ -382,7 +382,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   private def genStartFunction(
-      moduleInitializers: List[ModuleInitializer],
+      moduleInitializers: List[ModuleInitializer.Initializer],
       classesWithStaticInit: List[IRNames.ClassName]
   ): Unit = {
     val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
@@ -444,7 +444,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
       val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.BoxedStringClass), 1)
 
-      val callTree = ModuleInitializerImpl.fromInitializer(init.initializer) match {
+      val callTree = ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
           IRTrees.ApplyStatic(
             IRTrees.ApplyFlags.empty,

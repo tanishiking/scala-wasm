@@ -3,10 +3,13 @@ package cli
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
 
-import wasm.Compiler
+import wasm.WebAssemblyLinkerImpl
 
 import org.scalajs.linker.NodeOutputDirectory
-import org.scalajs.linker.interface.ModuleInitializer
+import org.scalajs.linker.interface._
+
+import org.scalajs.logging._
+
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
 import scala.concurrent.Future
@@ -23,6 +26,13 @@ object Main {
         throw new IllegalArgumentException("The classpath was not provided.")
     }
 
+    val linkerConfig = StandardConfig()
+      .withESFeatures(_.withESVersion(ESVersion.ES2016)) // to be able to link `**`
+      .withSemantics(_.optimized) // because that's the only thing we actually support at the moment
+      .withOptimizer(false)
+
+    val logger = new ScalaConsoleLogger(Level.Info)
+
     val mode = (modeEnvVar: Any) match {
       case modeEnvVar if modeEnvVar == "testsuite" => "testsuite"
       case _                                       => "compile"
@@ -34,14 +44,16 @@ object Main {
           irFiles <- new CliReader(classpath).irFiles
           _ <- Future.sequence {
             TestSuites.suites.map { case TestSuites.TestSuite(className, methodName) =>
+              val linker = WebAssemblyLinkerImpl.linker(linkerConfig)
               val moduleInitializer = ModuleInitializer.mainMethod(className, methodName)
               val outputDir = s"./target/$className/"
               createDir(outputDir)
               val output = NodeOutputDirectory(outputDir)
-              Compiler.compileIRFiles(
+              linker.link(
                 irFiles,
                 List(moduleInitializer),
-                output
+                output,
+                logger
               )
             }
           }
@@ -50,13 +62,14 @@ object Main {
           ()
         }
       } else {
+        val linker = WebAssemblyLinkerImpl.linker(linkerConfig)
         val outputDir = "./target/sample/"
         createDir(outputDir)
         val output = NodeOutputDirectory(outputDir)
 
         for {
           irFiles <- new CliReader(classpath).irFiles
-          _ <- Compiler.compileIRFiles(irFiles, Nil, output)
+          _ <- linker.link(irFiles, Nil, output, logger)
         } yield {
           println("Module successfully initialized")
           ()
