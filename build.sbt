@@ -3,6 +3,10 @@ import org.scalajs.linker.interface.OutputPatterns
 
 val scalaV = "2.12.19"
 
+// Include wasm.jvm on the classpath used to dynamically load Scala.js linkers
+Global / scalaJSLinkerImpl / fullClasspath :=
+  (wasm.jvm / Compile / fullClasspath).value
+
 inThisBuild(Def.settings(
   scalacOptions ++= Seq(
     "-encoding",
@@ -49,22 +53,10 @@ lazy val wasm = crossProject(JVMPlatform, JSPlatform)
 
 lazy val sample = project
   .in(file("sample"))
-  .enablePlugins(ScalaJSPlugin)
+  .enablePlugins(WasmLinkerPlugin)
   .settings(
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,
-    Compile / jsEnv := {
-      import org.scalajs.jsenv.nodejs.NodeJSEnv
-      val cp = Attributed
-        .data((Compile / fullClasspath).value)
-        .mkString(";")
-      val env = Map(
-        "SCALAJS_CLASSPATH" -> cp,
-        "SCALAJS_MODE" -> "sample",
-      )
-      new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
-    },
-    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
 
 lazy val testSuite = project

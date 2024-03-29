@@ -35,47 +35,30 @@ object Main {
 
     val logger = new ScalaConsoleLogger(Level.Info)
 
-    val mode = (modeEnvVar: Any) match {
-      case modeEnvVar if modeEnvVar == "testsuite" => "testsuite"
-      case _                                       => "compile"
-    }
+    if ((modeEnvVar: Any) != "testsuite")
+      throw new IllegalArgumentException("The cli linker only supports the 'testsuite' mode")
 
     val result =
-      if (mode == "testsuite") {
-        for {
-          irFiles <- new CliReader(classpath).irFiles
-          _ <- Future.sequence {
-            TestSuites.suites.map { case TestSuites.TestSuite(className, methodName) =>
-              val linker = WebAssemblyLinkerImpl.linker(linkerConfig)
-              val moduleInitializer = ModuleInitializer.mainMethod(className, methodName)
-              val outputDir = s"./target/$className/"
-              createDir(outputDir)
-              val output = NodeOutputDirectory(outputDir)
-              linker.link(
-                irFiles,
-                List(moduleInitializer),
-                output,
-                logger
-              )
-            }
+      for {
+        irFiles <- new CliReader(classpath).irFiles
+        _ <- Future.sequence {
+          TestSuites.suites.map { case TestSuites.TestSuite(className, methodName) =>
+            val linker = WebAssemblyLinkerImpl.linker(linkerConfig)
+            val moduleInitializer = ModuleInitializer.mainMethod(className, methodName)
+            val outputDir = s"./target/$className/"
+            createDir(outputDir)
+            val output = NodeOutputDirectory(outputDir)
+            linker.link(
+              irFiles,
+              List(moduleInitializer),
+              output,
+              logger
+            )
           }
-        } yield {
-          println("Module successfully initialized")
-          ()
         }
-      } else {
-        val linker = WebAssemblyLinkerImpl.linker(linkerConfig)
-        val outputDir = "./target/sample/"
-        createDir(outputDir)
-        val output = NodeOutputDirectory(outputDir)
-
-        for {
-          irFiles <- new CliReader(classpath).irFiles
-          _ <- linker.link(irFiles, Nil, output, logger)
-        } yield {
-          println("Module successfully initialized")
-          ()
-        }
+      } yield {
+        println("Module successfully initialized")
+        ()
       }
 
     result.recover { case th: Throwable =>

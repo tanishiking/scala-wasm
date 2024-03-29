@@ -26,7 +26,5 @@ jobs:
         run: sbt tests/test
       - name: Run the Sample
         run: sbt sample/run
-      - name: Compile wasmJVM
-        run: sbt wasmJVM/compile
       - name: Format
         run: sbt scalafmtCheckAll
