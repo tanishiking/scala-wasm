@@ -72,9 +72,9 @@ const scalaJSHelpers = {
 
   // Closure
   closure: (f, data) => f.bind(void 0, data),
-  closureThis: (f, data) => function(...args) { return f(this, data, ...args); },
+  closureThis: (f, data) => function(...args) { return f(data, this, ...args); },
   closureRest: (f, data, n) => ((...args) => f(data, ...args.slice(0, n), args.slice(n))),
-  closureThisRest: (f, data, n) => function(...args) { return f(this, data, ...args.slice(0, n), args.slice(n)); },
+  closureThisRest: (f, data, n) => function(...args) { return f(data, this, ...args.slice(0, n), args.slice(n)); },
 
   // Strings
   emptyString: () => "",

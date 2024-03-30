@@ -17,22 +17,24 @@ class WasmFunctionContext private (
     ctx: TypeDefinableWasmContext,
     val enclosingClassName: Option[IRNames.ClassName],
     val functionName: WasmFunctionName,
-    _receiver: Option[WasmLocal],
     _params: List[WasmLocal],
+    _receiverStorage: Option[WasmFunctionContext.VarStorage],
+    _paramsEnv: WasmFunctionContext.Env,
     _resultTypes: List[WasmType]
 ) {
+  import WasmFunctionContext._
+
   private var cnt = 0
   private var labelIdx = 0
   private var innerFuncIdx = 0
+  private var currentEnv: Env = _paramsEnv
 
-  val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
+  private val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
 
-  private val _receiverAndParams = _receiver.toList ::: _params
+  _params.foreach(locals.define(_))
 
-  _receiverAndParams.foreach(locals.define(_))
-
-  def receiver: WasmLocal =
-    _receiver.getOrElse(throw new Error("Cannot access to the receiver in this context."))
+  def receiverStorage: VarStorage =
+    _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
   def paramIndices: List[LocalIdx] = _params.map(p => LocalIdx(p.name))
 
@@ -71,8 +73,24 @@ class WasmFunctionContext private (
   def addLocal(name: String, typ: WasmType): LocalIdx =
     addLocal(WasmLocalName(name), typ)
 
-  def addLocal(name: IRNames.LocalName, typ: WasmType): LocalIdx =
+  private def addLocal(name: IRNames.LocalName, typ: WasmType): LocalIdx =
     addLocal(WasmLocalName.fromIR(name), typ)
+
+  def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: LocalIdx => A): A = {
+    val savedEnv = currentEnv
+    val local = addLocal(name, typ)
+    currentEnv = currentEnv.updated(name, VarStorage.Local(local))
+    try body(local)
+    finally currentEnv = savedEnv
+  }
+
+  def lookupLocal(name: IRNames.LocalName): VarStorage = {
+    currentEnv.getOrElse(
+      name, {
+        throw new AssertionError(s"Cannot find binding for '${name.nameString}'")
+      }
+    )
+  }
 
   private def genSyntheticLocalName(): WasmLocalName = {
     val name = WasmLocalName.synthetic(cnt)
@@ -201,7 +219,7 @@ class WasmFunctionContext private (
   // Final result
 
   def buildAndAddToContext(): WasmFunction = {
-    val sig = WasmFunctionSignature(_receiverAndParams.map(_.typ), _resultTypes)
+    val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
     val typeName = ctx.addFunctionType(sig)
     val functionType = WasmFunctionType(typeName, sig)
 
@@ -213,17 +231,91 @@ class WasmFunctionContext private (
 }
 
 object WasmFunctionContext {
+  sealed abstract class VarStorage
+
+  object VarStorage {
+    final case class Local(idx: LocalIdx) extends VarStorage
+
+    final case class StructField(
+        structIdx: LocalIdx,
+        structTypeName: WasmTypeName,
+        fieldIdx: WasmImmediate.StructFieldIdx
+    ) extends VarStorage
+  }
+
+  private type Env = Map[IRNames.LocalName, VarStorage]
+
+  def apply(
+      enclosingClassName: Option[IRNames.ClassName],
+      name: WasmFunctionName,
+      captureParamDefs: Option[List[IRTrees.ParamDef]],
+      receiverTyp: Option[WasmType],
+      paramDefs: List[IRTrees.ParamDef],
+      resultTypes: List[WasmType]
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+    val (captureDataParamList, captureParamsEnv) = captureParamDefs match {
+      case None =>
+        (Nil, Map.empty: Env)
+
+      case Some(captureParamDefs) =>
+        val dataStructType = ctx.getClosureDataStructType(captureParamDefs.map(_.ptpe))
+        val local = WasmLocal(
+          WasmLocalName("__captureData"),
+          Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
+          isParameter = true
+        )
+        val localIdx = LocalIdx(local.name)
+        val env: Env = captureParamDefs.zipWithIndex.map { case (paramDef, idx) =>
+          val storage = VarStorage.StructField(
+            localIdx,
+            dataStructType.name,
+            WasmImmediate.StructFieldIdx(idx)
+          )
+          paramDef.name.name -> storage
+        }.toMap
+        (local :: Nil, env)
+    }
+
+    val receiver = receiverTyp.map { typ =>
+      WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
+    }
+    val receiverList = receiver.toList
+    val receiverStorage = receiver.map(local => VarStorage.Local(LocalIdx(local.name)))
+
+    val normalParams = paramDefsToWasmParams(paramDefs)
+    val normalParamsEnv = paramDefs.zip(normalParams).map { case (paramDef, param) =>
+      paramDef.name.name -> VarStorage.Local(LocalIdx(param.name))
+    }
+
+    val allParams = captureDataParamList ::: receiverList ::: normalParams
+    val fullEnv = captureParamsEnv ++ normalParamsEnv
+
+    new WasmFunctionContext(
+      ctx,
+      enclosingClassName,
+      name,
+      allParams,
+      receiverStorage,
+      fullEnv,
+      resultTypes
+    )
+  }
+
   def apply(
       enclosingClassName: Option[IRNames.ClassName],
       name: WasmFunctionName,
       receiverTyp: Option[WasmType],
-      params: List[WasmLocal],
+      paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
-    val receiver = receiverTyp.map { typ =>
-      WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
-    }
-    new WasmFunctionContext(ctx, enclosingClassName, name, receiver, params, resultTypes)
+    apply(
+      enclosingClassName,
+      name,
+      captureParamDefs = None,
+      receiverTyp,
+      paramDefs,
+      resultTypes
+    )
   }
 
   def apply(
@@ -237,7 +329,7 @@ object WasmFunctionContext {
       enclosingClassName,
       name,
       receiverTyp,
-      paramDefsToWasmParams(paramDefs),
+      paramDefs,
       TypeTransformer.transformResultType(resultType)
     )
   }
@@ -250,7 +342,7 @@ object WasmFunctionContext {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
-    apply(enclosingClassName = None, name, receiverTyp = None, paramLocals, resultTypes)
+    new WasmFunctionContext(ctx, None, name, paramLocals, None, Map.empty, resultTypes)
   }
 
   def paramDefsToWasmParams(
