@@ -176,7 +176,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   }
 
   def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
-    closureDataTypes.getOrElse(
+    closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
         val fields: List[WasmStructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
