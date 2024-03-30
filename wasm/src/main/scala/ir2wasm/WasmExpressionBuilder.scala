@@ -345,12 +345,8 @@ private class WasmExpressionBuilder private (
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
-    val receiverLocalForDispatch: WasmLocalName = {
-      val name = fctx.genSyntheticLocalName()
-      val typ = Types.WasmRefType(heapTypeForDispatch)
-      fctx.locals.define(WasmLocal(name, typ, isParameter = false))
-      name
-    }
+    val receiverLocalForDispatch =
+      fctx.addSyntheticLocal(Types.WasmRefType(heapTypeForDispatch))
 
     /* Gen loading of the receiver and check that it is non-null.
      * After this codegen, the non-null receiver is on the stack.
@@ -376,7 +372,7 @@ private class WasmExpressionBuilder private (
     if (!receiverClassInfo.isAncestorOfHijackedClass) {
       // Standard dispatch codegen
       genReceiverNotNull()
-      instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_TEE(receiverLocalForDispatch)
       genArgs(t.args, t.method.name)
       genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
     } else {
@@ -438,7 +434,7 @@ private class WasmExpressionBuilder private (
             WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
             WasmImmediate.HeapType(heapTypeForDispatch)
           )
-          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+          instrs += LOCAL_TEE(receiverLocalForDispatch)
           pushArgs(argsLocals)
           genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
           instrs += BR(labelDone)
@@ -500,7 +496,7 @@ private class WasmExpressionBuilder private (
   def genTableDispatch(
       receiverClassInfo: WasmContext.WasmClassInfo,
       methodName: IRNames.MethodName,
-      receiverLocalForDispatch: WasmLocalName
+      receiverLocalForDispatch: LocalIdx
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
@@ -514,7 +510,7 @@ private class WasmExpressionBuilder private (
 
       val methodInfo = receiverClassInfo.methods(methodIdx)
 
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
@@ -557,7 +553,7 @@ private class WasmExpressionBuilder private (
       // struct.get $classType 0 ;; get vtable
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += REF_CAST(
         HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
       )
@@ -920,12 +916,8 @@ private class WasmExpressionBuilder private (
          */
 
         // A local for a copy of the receiver that we will use to resolve dispatch
-        val receiverLocalForDispatch: WasmLocalName = {
-          val name = fctx.genSyntheticLocalName()
-          val typ = Types.WasmRefType(Types.WasmHeapType.ObjectType)
-          fctx.locals.define(WasmLocal(name, typ, isParameter = false))
-          name
-        }
+        val receiverLocalForDispatch =
+          fctx.addSyntheticLocal(Types.WasmRefType(Types.WasmHeapType.ObjectType))
 
         val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
 
@@ -949,7 +941,7 @@ private class WasmExpressionBuilder private (
             fctx.block() { labelIsNull =>
               genTreeAuto(tree)
               instrs += BR_ON_NULL(labelIsNull)
-              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
               instrs += BR_ON_NON_NULL(labelDone)
             }
@@ -985,7 +977,7 @@ private class WasmExpressionBuilder private (
                 WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
                 WasmImmediate.HeapType(Types.WasmHeapType.ObjectType)
               )
-              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
               instrs += BR_ON_NON_NULL(labelDone)
               instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Any))
@@ -1437,17 +1429,10 @@ private class WasmExpressionBuilder private (
   }
 
   private def genNew(n: IRTrees.New): IRTypes.Type = {
-    val localInstance = WasmLocal(
-      fctx.genSyntheticLocalName(),
-      TypeTransformer.transformType(n.tpe)(ctx),
-      isParameter = false
-    )
-    fctx.locals.define(localInstance)
+    val localInstance = fctx.addSyntheticLocal(TypeTransformer.transformType(n.tpe)(ctx))
 
-    // REF_NULL(HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(n.className)))),
-    // LOCAL_TEE(LocalIdx(localInstance.name))
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
-    instrs += LOCAL_TEE(LocalIdx(localInstance.name))
+    instrs += LOCAL_TEE(localInstance)
     genArgs(n.args, n.ctor.name)
     instrs += CALL(
       FuncIdx(
@@ -1458,7 +1443,7 @@ private class WasmExpressionBuilder private (
         )
       )
     )
-    instrs += LOCAL_GET(LocalIdx(localInstance.name))
+    instrs += LOCAL_GET(localInstance)
     n.tpe
   }
 
@@ -1469,13 +1454,11 @@ private class WasmExpressionBuilder private (
   ): IRTypes.Type = {
     // `primTyp` is `i32` for `char` (containing a `u16` value) or `i64` for `long`.
     val primTyp = TypeTransformer.transformType(primType)(ctx)
-    val primLocal = WasmLocal(fctx.genSyntheticLocalName(), primTyp, isParameter = false)
-    fctx.locals.define(primLocal)
+    val primLocal = fctx.addSyntheticLocal(primTyp)
 
     val boxClassType = IRTypes.ClassType(boxClassName)
     val boxTyp = TypeTransformer.transformType(boxClassType)(ctx)
-    val instanceLocal = WasmLocal(fctx.genSyntheticLocalName(), boxTyp, isParameter = false)
-    fctx.locals.define(instanceLocal)
+    val instanceLocal = fctx.addSyntheticLocal(boxTyp)
 
     /* The generated code is as follows. Before the codegen, the stack contains
      * a value of the primitive type. After, it contains the reference to box instance.
@@ -1494,15 +1477,15 @@ private class WasmExpressionBuilder private (
      * what the constructor would do anyway (so we're basically inlining it).
      */
 
-    instrs += LOCAL_SET(LocalIdx(primLocal.name))
+    instrs += LOCAL_SET(primLocal)
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(boxClassName)))
-    instrs += LOCAL_TEE(LocalIdx(instanceLocal.name))
-    instrs += LOCAL_GET(LocalIdx(primLocal.name))
+    instrs += LOCAL_TEE(instanceLocal)
+    instrs += LOCAL_GET(primLocal)
     instrs += STRUCT_SET(
       TypeIdx(WasmStructTypeName(boxClassName)),
       StructFieldIdx.uniqueRegularField
     )
-    instrs += LOCAL_GET(LocalIdx(instanceLocal.name))
+    instrs += LOCAL_GET(instanceLocal)
 
     boxClassType
   }
@@ -1687,20 +1670,19 @@ private class WasmExpressionBuilder private (
         /* Here we need to implement the short-circuiting behavior, with a
          * condition based on the truthy value of the left-hand-side.
          */
-        val lhsLocal = fctx.genSyntheticLocalName()
-        fctx.locals.define(WasmLocal(lhsLocal, Types.WasmAnyRef, isParameter = false))
+        val lhsLocal = fctx.addSyntheticLocal(Types.WasmAnyRef)
         genTree(tree.lhs, IRTypes.AnyType)
-        instrs += LOCAL_TEE(LocalIdx(lhsLocal))
+        instrs += LOCAL_TEE(lhsLocal)
         instrs += CALL(FuncIdx(WasmFunctionName.jsIsTruthy))
         instrs += IF(BlockType.ValueType(Types.WasmAnyRef))
         if (tree.op == JSBinaryOp.||) {
-          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+          instrs += LOCAL_GET(lhsLocal)
           instrs += ELSE
           genTree(tree.rhs, IRTypes.AnyType)
         } else {
           genTree(tree.rhs, IRTypes.AnyType)
           instrs += ELSE
-          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+          instrs += LOCAL_GET(lhsLocal)
         }
         instrs += END
 
@@ -1917,9 +1899,9 @@ private class WasmExpressionBuilder private (
     // Define the function where captures are reified as a `__captureData` argument.
     val closureFuncName = fctx.genInnerFuncName()
     locally {
-      val receiverParam =
+      val receiverTyp =
         if (!hasThis) None
-        else Some(WasmLocal(WasmLocalName.receiver, Types.WasmAnyRef, isParameter = true))
+        else Some(Types.WasmAnyRef)
 
       val captureDataParam = WasmLocal(
         WasmLocalName("__captureData"),
@@ -1936,7 +1918,7 @@ private class WasmExpressionBuilder private (
       implicit val fctx = WasmFunctionContext(
         enclosingClassName = None,
         closureFuncName,
-        receiverParam,
+        receiverTyp,
         captureDataParam :: paramLocals,
         resultTyps
       )

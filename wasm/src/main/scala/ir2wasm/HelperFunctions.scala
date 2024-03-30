@@ -779,8 +779,8 @@ object HelperFunctions {
       val List(fromParam) = fctx.paramIndices
       import fctx.instrs
 
-      val from = fctx.addLocal(fctx.genSyntheticLocalName(), WasmRefNullType(heapType))
-      val result = fctx.addLocal(fctx.genSyntheticLocalName(), WasmRefNullType(heapType))
+      val from = fctx.addSyntheticLocal(WasmRefNullType(heapType))
+      val result = fctx.addSyntheticLocal(WasmRefNullType(heapType))
 
       instrs += LOCAL_GET(fromParam)
       instrs += REF_CAST(HeapType(heapType))

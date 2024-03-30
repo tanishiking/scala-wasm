@@ -62,7 +62,7 @@ class WasmFunctionContext private (
     )
   }
 
-  def addLocal(name: WasmLocalName, typ: WasmType): LocalIdx = {
+  private def addLocal(name: WasmLocalName, typ: WasmType): LocalIdx = {
     val local = WasmLocal(name, typ, isParameter = false)
     locals.define(local)
     LocalIdx(name)
@@ -74,7 +74,7 @@ class WasmFunctionContext private (
   def addLocal(name: IRNames.LocalName, typ: WasmType): LocalIdx =
     addLocal(WasmLocalName.fromIR(name), typ)
 
-  def genSyntheticLocalName(): WasmLocalName = {
+  private def genSyntheticLocalName(): WasmLocalName = {
     val name = WasmLocalName.synthetic(cnt)
     cnt += 1
     name
@@ -216,10 +216,13 @@ object WasmFunctionContext {
   def apply(
       enclosingClassName: Option[IRNames.ClassName],
       name: WasmFunctionName,
-      receiver: Option[WasmLocal],
+      receiverTyp: Option[WasmType],
       params: List[WasmLocal],
       resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+    val receiver = receiverTyp.map { typ =>
+      WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
+    }
     new WasmFunctionContext(ctx, enclosingClassName, name, receiver, params, resultTypes)
   }
 
@@ -230,21 +233,11 @@ object WasmFunctionContext {
       paramDefs: List[IRTrees.ParamDef],
       resultType: IRTypes.Type
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
-    val receiver = receiverTyp.map { typ =>
-      WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
-    }
-    val params = paramDefs.map { paramDef =>
-      WasmLocal(
-        WasmLocalName.fromIR(paramDef.name.name),
-        TypeTransformer.transformType(paramDef.ptpe),
-        isParameter = true
-      )
-    }
     apply(
       enclosingClassName,
       name,
-      receiver,
-      params,
+      receiverTyp,
+      paramDefsToWasmParams(paramDefs),
       TypeTransformer.transformResultType(resultType)
     )
   }
@@ -257,6 +250,18 @@ object WasmFunctionContext {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
-    apply(enclosingClassName = None, name, receiver = None, paramLocals, resultTypes)
+    apply(enclosingClassName = None, name, receiverTyp = None, paramLocals, resultTypes)
+  }
+
+  def paramDefsToWasmParams(
+      paramDefs: List[IRTrees.ParamDef]
+  )(implicit ctx: TypeDefinableWasmContext): List[WasmLocal] = {
+    paramDefs.map { paramDef =>
+      WasmLocal(
+        WasmLocalName.fromIR(paramDef.name.name),
+        TypeTransformer.transformType(paramDef.ptpe),
+        isParameter = true
+      )
+    }
   }
 }
