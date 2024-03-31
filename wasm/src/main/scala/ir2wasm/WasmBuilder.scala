@@ -175,9 +175,9 @@ class WasmBuilder {
       typeRef match {
         case IRTypes.ClassRef(className) =>
           val classInfo = ctx.getClassInfo(className)
-          // If the class implements the `java.lang.Cloneable`,
+          // If the class is concrete and implements the `java.lang.Cloneable`,
           // `HelperFunctions.genCloneFunction` should've generated the clone function
-          if (classInfo.ancestors.contains(IRNames.CloneableClass))
+          if (!classInfo.isAbstract && classInfo.ancestors.contains(IRNames.CloneableClass))
             REF_FUNC(FuncIdx(WasmFunctionName.clone(className)))
           else nullref
         case _ => nullref

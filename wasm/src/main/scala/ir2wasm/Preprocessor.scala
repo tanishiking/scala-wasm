@@ -58,6 +58,7 @@ object Preprocessor {
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
         clazz.ancestors,
+        !clazz.hasDirectInstances,
         clazz.jsNativeLoadSpec,
         clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
       )

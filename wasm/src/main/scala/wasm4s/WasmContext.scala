@@ -571,6 +571,7 @@ object WasmContext {
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
+      val isAbstract: Boolean,
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
       val jsNativeMembers: Map[IRNames.MethodName, IRTrees.JSNativeLoadSpec]
   ) {
