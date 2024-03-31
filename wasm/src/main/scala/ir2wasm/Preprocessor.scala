@@ -43,9 +43,15 @@ object Preprocessor {
         Nil
       }
 
-    val infos = clazz.methods
-      .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
-      .map(method => makeWasmFunctionInfo(clazz, method))
+    val classMethodInfos = {
+      if (clazz.kind.isClass || clazz.kind == ClassKind.HijackedClass) {
+        clazz.methods
+          .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
+          .map(method => makeWasmFunctionInfo(clazz, method))
+      } else {
+        Nil
+      }
+    }
 
     ctx.putClassInfo(
       clazz.name.name,
@@ -53,7 +59,7 @@ object Preprocessor {
         clazz.name.name,
         clazz.kind,
         clazz.jsClassCaptures,
-        infos,
+        classMethodInfos,
         allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
