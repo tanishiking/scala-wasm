@@ -1189,6 +1189,9 @@ private class WasmExpressionBuilder private (
                 println(tree)
                 ???
             }
+          } else if (info.isInterface) {
+            if (!info.isAncestorOfHijackedClass)
+              instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.ObjectType))
           }
 
         case IRTypes.ArrayType(arrayTypeRef) =>
