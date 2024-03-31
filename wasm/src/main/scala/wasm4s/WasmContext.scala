@@ -100,7 +100,7 @@ trait ReadOnlyWasmContext {
             .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
               acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
                 case i if i < 0 => acc :+ m
-                case i          => acc.updated(i, m)
+                case i          => if (m.isAbstract) acc else acc.updated(i, m)
               }
             }
             .toList
