@@ -53,6 +53,9 @@ object Types {
 
     /** Non-null `anyref`. */
     val any: WasmRefType = WasmRefType(WasmHeapType.Simple.Any)
+
+    /** Non-null `func`. */
+    val func: WasmRefType = WasmRefType(WasmHeapType.Simple.Func)
   }
 
   sealed trait WasmHeapType {

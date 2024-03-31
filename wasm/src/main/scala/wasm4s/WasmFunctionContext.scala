@@ -18,7 +18,7 @@ class WasmFunctionContext private (
     val enclosingClassName: Option[IRNames.ClassName],
     val functionName: WasmFunctionName,
     _params: List[WasmLocal],
-    _receiverStorage: Option[WasmFunctionContext.VarStorage],
+    _receiverStorage: Option[WasmFunctionContext.VarStorage.Local],
     _paramsEnv: WasmFunctionContext.Env,
     _resultTypes: List[WasmType]
 ) {
@@ -33,7 +33,7 @@ class WasmFunctionContext private (
 
   _params.foreach(locals.define(_))
 
-  def receiverStorage: VarStorage =
+  def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
   def paramIndices: List[LocalIdx] = _params.map(p => LocalIdx(p.name))
@@ -90,6 +90,12 @@ class WasmFunctionContext private (
         throw new AssertionError(s"Cannot find binding for '${name.nameString}'")
       }
     )
+  }
+
+  def lookupLocalAssertLocalStorage(name: IRNames.LocalName): LocalIdx = {
+    (lookupLocal(name): @unchecked) match {
+      case VarStorage.Local(local) => local
+    }
   }
 
   private def genSyntheticLocalName(): WasmLocalName = {
@@ -249,31 +255,51 @@ object WasmFunctionContext {
       enclosingClassName: Option[IRNames.ClassName],
       name: WasmFunctionName,
       captureParamDefs: Option[List[IRTrees.ParamDef]],
+      preSuperVarDefs: Option[List[IRTrees.VarDef]],
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
-    val (captureDataParamList, captureParamsEnv) = captureParamDefs match {
-      case None =>
-        (Nil, Map.empty: Env)
+    def makeCaptureLikeParamListAndEnv(
+        captureParamName: String,
+        captureLikes: Option[List[(IRNames.LocalName, IRTypes.Type)]]
+    ): (List[WasmLocal], Env) = {
+      captureLikes match {
+        case None =>
+          (Nil, Map.empty)
 
-      case Some(captureParamDefs) =>
-        val dataStructType = ctx.getClosureDataStructType(captureParamDefs.map(_.ptpe))
-        val local = WasmLocal(
-          WasmLocalName("__captureData"),
-          Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
-          isParameter = true
-        )
-        val localIdx = LocalIdx(local.name)
-        val env: Env = captureParamDefs.zipWithIndex.map { case (paramDef, idx) =>
-          val storage = VarStorage.StructField(
-            localIdx,
-            dataStructType.name,
-            WasmImmediate.StructFieldIdx(idx)
+        case Some(captureLikes) =>
+          val dataStructType = ctx.getClosureDataStructType(captureLikes.map(_._2))
+          val local = WasmLocal(
+            WasmLocalName(captureParamName),
+            Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
+            isParameter = true
           )
-          paramDef.name.name -> storage
-        }.toMap
-        (local :: Nil, env)
+          val localIdx = LocalIdx(local.name)
+          val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
+            val storage = VarStorage.StructField(
+              localIdx,
+              dataStructType.name,
+              WasmImmediate.StructFieldIdx(idx)
+            )
+            captureLike._1 -> storage
+          }.toMap
+          (local :: Nil, env)
+      }
+    }
+
+    val (captureDataParamList, captureParamsEnv) = {
+      makeCaptureLikeParamListAndEnv(
+        "__captureData",
+        captureParamDefs.map(_.map(p => p.name.name -> p.ptpe))
+      )
+    }
+
+    val (preSuperEnvParamList, preSuperEnvEnv) = {
+      makeCaptureLikeParamListAndEnv(
+        "__preSuperEnv",
+        preSuperVarDefs.map(_.map(p => p.name.name -> p.vtpe))
+      )
     }
 
     val receiver = receiverTyp.map { typ =>
@@ -287,8 +313,8 @@ object WasmFunctionContext {
       paramDef.name.name -> VarStorage.Local(LocalIdx(param.name))
     }
 
-    val allParams = captureDataParamList ::: receiverList ::: normalParams
-    val fullEnv = captureParamsEnv ++ normalParamsEnv
+    val allParams = captureDataParamList ::: preSuperEnvParamList ::: receiverList ::: normalParams
+    val fullEnv = captureParamsEnv ++ preSuperEnvEnv ++ normalParamsEnv
 
     new WasmFunctionContext(
       ctx,
@@ -297,6 +323,25 @@ object WasmFunctionContext {
       allParams,
       receiverStorage,
       fullEnv,
+      resultTypes
+    )
+  }
+
+  def apply(
+      enclosingClassName: Option[IRNames.ClassName],
+      name: WasmFunctionName,
+      captureParamDefs: Option[List[IRTrees.ParamDef]],
+      receiverTyp: Option[WasmType],
+      paramDefs: List[IRTrees.ParamDef],
+      resultTypes: List[WasmType]
+  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+    apply(
+      enclosingClassName,
+      name,
+      captureParamDefs,
+      None,
+      receiverTyp,
+      paramDefs,
       resultTypes
     )
   }

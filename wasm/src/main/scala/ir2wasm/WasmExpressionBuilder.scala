@@ -28,6 +28,14 @@ object WasmExpressionBuilder {
     builder.genBody(tree, resultType)
   }
 
+  def generateBlockStats[A](stats: List[IRTrees.Tree])(inner: => A)(implicit
+      ctx: TypeDefinableWasmContext,
+      fctx: WasmFunctionContext
+  ): A = {
+    val builder = new WasmExpressionBuilder(ctx, fctx)
+    builder.genBlockStats(stats)(inner)
+  }
+
   private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
   private val BoxedStringRef = IRTypes.ClassRef(IRNames.BoxedStringClass)
   private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
@@ -159,23 +167,20 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.NewArray    => genNewArray(t)
       case t: IRTrees.ArraySelect => genArraySelect(t)
       case t: IRTrees.ArrayValue  => genArrayValue(t)
-      case _ =>
-        println(tree)
-        ???
 
-      // case select: IRTrees.JSPrivateSelect => ???
-      // case IRTrees.RecordValue(pos) =>
-      // case IRTrees.JSNewTarget(pos) =>
-      // case IRTrees.JSSuperMethodCall(pos) =>
-      // case IRTrees.Match(tpe) =>
-      // case IRTrees.RecordSelect(tpe) =>
-      // case IRTrees.JSImportMeta(pos) =>
-      // case IRTrees.JSSuperSelect(pos) =>
-      // case IRTrees.JSSuperConstructorCall(pos) =>
-      // case IRTrees.CreateJSClass(pos) =>
-      // case IRTrees.Transient(pos) =>
-      // case IRTrees.ForIn(pos) =>
-      // case IRTrees.JSImportCall(pos) =>
+      // Non-native JS classes
+      case t: IRTrees.CreateJSClass     => genCreateJSClass(t)
+      case t: IRTrees.JSPrivateSelect   => genJSPrivateSelect(t)
+      case t: IRTrees.JSSuperSelect     => genJSSuperSelect(t)
+      case t: IRTrees.JSSuperMethodCall => genJSSuperMethodCall(t)
+
+      case _: IRTrees.JSNewTarget | _: IRTrees.JSImportMeta | _: IRTrees.JSImportCall |
+          _: IRTrees.ForIn | _: IRTrees.ApplyDynamicImport =>
+        throw new NotImplementedError(tree.toString())
+
+      case _: IRTrees.RecordSelect | _: IRTrees.RecordValue | _: IRTrees.Transient |
+          _: IRTrees.JSSuperConstructorCall =>
+        throw new AssertionError(s"Invalid tree: $tree")
     }
 
     genAdapt(generatedType, expectedType)
@@ -262,8 +267,11 @@ private class WasmExpressionBuilder private (
             )
         }
 
-      case assign: IRTrees.RecordSelect    => ??? // struct.set
-      case assign: IRTrees.JSPrivateSelect => ???
+      case sel: IRTrees.JSPrivateSelect =>
+        genTree(sel.qualifier, IRTypes.AnyType)
+        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(sel.field.name)))
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
       case assign: IRTrees.JSSelect =>
         genTree(assign.qualifier, IRTypes.AnyType)
@@ -271,7 +279,12 @@ private class WasmExpressionBuilder private (
         genTree(t.rhs, IRTypes.AnyType)
         instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
-      case assign: IRTrees.JSSuperSelect => ???
+      case assign: IRTrees.JSSuperSelect =>
+        genTree(assign.superClass, IRTypes.AnyType)
+        genTree(assign.receiver, IRTypes.AnyType)
+        genTree(assign.item, IRTypes.AnyType)
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSuperSet))
 
       case assign: IRTrees.JSGlobalRef =>
         genLiteral(IRTrees.StringLiteral(assign.name)(assign.pos))
@@ -289,6 +302,9 @@ private class WasmExpressionBuilder private (
             genTree(t.rhs, t.lhs.tpe)
             instrs += STRUCT_SET(TypeIdx(structTypeName), fieldIdx)
         }
+
+      case assign: IRTrees.RecordSelect =>
+        throw new AssertionError(s"Invalid tree: $t")
     }
 
     IRTypes.NoType
@@ -1635,18 +1651,44 @@ private class WasmExpressionBuilder private (
 
   private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
     val info = ctx.getClassInfo(tree.className)
-    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+
+    info.kind match {
+      case ClassKind.NativeJSClass =>
+        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+        }
+        genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+
+      case ClassKind.JSClass =>
+        instrs += CALL(FuncIdx(WasmFunctionName.loadJSClass(tree.className)))
+        IRTypes.AnyType
+
+      case _ =>
+        throw new AssertionError(
+          s"Invalid LoadJSConstructor for class ${tree.className.nameString} of kind ${info.kind}"
+        )
     }
-    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
   }
 
   private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
     val info = ctx.getClassInfo(tree.className)
-    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+
+    info.kind match {
+      case ClassKind.NativeJSModuleClass =>
+        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+        }
+        genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+
+      case ClassKind.JSModuleClass =>
+        instrs += CALL(FuncIdx(WasmFunctionName.loadModule(tree.className)))
+        IRTypes.AnyType
+
+      case _ =>
+        throw new AssertionError(
+          s"Invalid LoadJSModule for class ${tree.className.nameString} of kind ${info.kind}"
+        )
     }
-    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
   }
 
   private def genSelectJSNativeMember(tree: IRTrees.SelectJSNativeMember): IRTypes.Type = {
@@ -2056,5 +2098,48 @@ private class WasmExpressionBuilder private (
     }
 
     tree.tpe
+  }
+
+  private def genCreateJSClass(tree: IRTrees.CreateJSClass): IRTypes.Type = {
+    val classInfo = ctx.getClassInfo(tree.className)
+    val jsClassCaptures = classInfo.jsClassCaptures.getOrElse {
+      throw new AssertionError(
+        s"Illegal CreateJSClass of top-level class ${tree.className.nameString}"
+      )
+    }
+
+    for ((captureValue, captureParam) <- tree.captureValues.zip(jsClassCaptures))
+      genTree(captureValue, captureParam.ptpe)
+
+    instrs += CALL(FuncIdx(WasmFunctionName.createJSClassOf(tree.className)))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
+    genTree(tree.qualifier, IRTypes.AnyType)
+    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(tree.field.name)))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSSuperSelect(tree: IRTrees.JSSuperSelect): IRTypes.Type = {
+    genTree(tree.superClass, IRTypes.AnyType)
+    genTree(tree.receiver, IRTypes.AnyType)
+    genTree(tree.item, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSuperGet))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSSuperMethodCall(tree: IRTrees.JSSuperMethodCall): IRTypes.Type = {
+    genTree(tree.superClass, IRTypes.AnyType)
+    genTree(tree.receiver, IRTypes.AnyType)
+    genTree(tree.method, IRTypes.AnyType)
+    genJSArgsArray(tree.args)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSuperCall))
+
+    IRTypes.AnyType
   }
 }

@@ -22,6 +22,38 @@ function stringHashCode(s) {
   return res;
 }
 
+// JSSuperSelect support -- directly copied from the output of the JS backend
+function resolveSuperRef(superClass, propName) {
+  var getPrototypeOf = Object.getPrototyeOf;
+  var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+  var superProto = superClass.prototype;
+  while (superProto !== null) {
+    var desc = getOwnPropertyDescriptor(superProto, propName);
+    if (desc !== (void 0)) {
+      return desc;
+    }
+    superProto = getPrototypeOf(superProto);
+  }
+}
+function superGet(superClass, self, propName) {
+  var desc = resolveSuperRef(superClass, propName);
+  if (desc !== (void 0)) {
+    var getter = desc.get;
+    return getter !== (void 0) ? getter.call(self) : getter.value;
+  }
+}
+function superSet(superClass, self, propName, value) {
+  var desc = resolveSuperRef(superClass, propName);
+  if (desc !== (void 0)) {
+    var setter = desc.set;
+    if (setter !== (void 0)) {
+      setter.call(self, value);
+      return;
+    }
+  }
+  throw new TypeError("super has no setter '" + propName + "'.");
+}
+
 const linkingInfo = Object.freeze({
   "esVersion": 6,
   "assumingES6": true,
@@ -176,6 +208,52 @@ const scalaJSHelpers = {
   jsIn: (a, b) => a in b,
   jsInstanceof: (a, b) => a instanceof b,
   jsExponent: (a, b) => a ** b,
+
+  // Non-native JS class support
+  newSymbol: Symbol,
+  createJSClass: (data, superClass, preSuperStats, superArgs, postSuperStats) => {
+    return class extends superClass {
+      constructor(...args) {
+        var preSuperEnv = preSuperStats(data, ...args);
+        super(...superArgs(data, preSuperEnv, ...args));
+        postSuperStats(data, preSuperEnv, this, ...args);
+      }
+    };
+  },
+  installJSField: (instance, name, value) => {
+    Object.defineProperty(instance, name, {
+      value: value,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    });
+  },
+  installJSMethod: (data, jsClass, isStatic, name, func, fixedArgCount) => {
+    var target = isStatic ? jsClass : jsClass.prototype;
+    var closure = fixedArgCount < 0
+      ? (function(...args) { return func(data, this, ...args); })
+      : (function(...args) { return func(data, this, ...args.slice(0, fixedArgCount), args.slice(fixedArgCount))});
+    target[name] = closure;
+  },
+  installJSProperty: (data, jsClass, isStatic, name, getter, setter) => {
+    var target = isStatic ? jsClass : jsClass.prototype;
+    var getterClosure = getter
+      ? (function() { return getter(data, this) })
+      : (void 0);
+    var setterClosure = setter
+      ? (function(arg) { setter(data, this, arg) })
+      : (void 0);
+    Object.defineProperty(target, name, {
+      get: getterClosure,
+      set: setterClosure,
+      configurable: true,
+    });
+  },
+  jsSuperGet: superGet,
+  jsSuperSet: superSet,
+  jsSuperCall: (superClass, receiver, method, args) => {
+    return superClass.prototype[method].apply(receiver, args);
+  },
 }
 
 export async function load(wasmFileURL) {

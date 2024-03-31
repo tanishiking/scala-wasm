@@ -6,12 +6,13 @@ import wasm4s.WasmContext._
 import wasm4s.Names._
 import wasm4s.Types._
 import wasm4s.WasmInstr._
+import wasm4s.WasmImmediate._
 import TypeTransformer._
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
-import org.scalajs.ir.ClassKind
+import org.scalajs.ir.{ClassKind, Position}
 
 import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
 
@@ -68,12 +69,22 @@ class WasmBuilder {
       ctx.addGlobal(global)
     }
 
+    // Generate method implementations
+    for (method <- clazz.methods) {
+      if (method.body.isDefined)
+        genFunction(clazz, method)
+    }
+
     clazz.kind match {
       case ClassKind.ModuleClass   => transformModuleClass(clazz)
       case ClassKind.Class         => transformClass(clazz)
       case ClassKind.HijackedClass => transformHijackedClass(clazz)
       case ClassKind.Interface     => transformInterface(clazz)
-      case _                       => ()
+
+      case ClassKind.JSClass | ClassKind.JSModuleClass =>
+        transformJSClass(clazz)
+      case ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.NativeJSModuleClass =>
+        () // nothing to do
     }
   }
 
@@ -145,8 +156,6 @@ class WasmBuilder {
   private def genTypeDataFieldValues(kind: Int, typeRef: IRTypes.NonArrayTypeRef)(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
-    import WasmImmediate._
-
     val nameStr = typeRef match {
       case typeRef: IRTypes.PrimRef    => typeRef.displayName
       case IRTypes.ClassRef(className) => className.nameString
@@ -215,11 +224,6 @@ class WasmBuilder {
   private def transformClassCommon(
       clazz: LinkedClass
   )(implicit ctx: WasmContext): WasmStructType = {
-    // gen functions
-    clazz.methods.foreach { method =>
-      genFunction(clazz, method)
-    }
-
     val className = clazz.name.name
     val typeRef = IRTypes.ClassRef(className)
     val classInfo = ctx.getClassInfo(className)
@@ -295,7 +299,6 @@ class WasmBuilder {
   }
 
   private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     assert(clazz.kind == ClassKind.ModuleClass)
     val ctor = clazz.methods
       .find(_.methodName.isConstructor)
@@ -369,9 +372,8 @@ class WasmBuilder {
   }
 
   private def transformHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    clazz.methods.foreach { method =>
-      genFunction(clazz, method)
-    }
+    // nothing to do
+    ()
   }
 
   private def transformInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -395,12 +397,6 @@ class WasmBuilder {
     // typeName
     // genITable
     // generateVTable()
-
-    // Do we need receivers?
-    clazz.methods.collect {
-      case method if method.body.isDefined =>
-        genFunction(clazz, method)
-    }
   }
 
   private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
@@ -420,6 +416,368 @@ class WasmBuilder {
     ctx.addGlobal(global)
 
     genLoadModuleFunc(clazz)
+  }
+
+  private def transformJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    assert(clazz.kind.isJSClass)
+
+    // Define the globals holding the Symbols of private fields
+    for (fieldDef <- clazz.fields) {
+      fieldDef match {
+        case IRTrees.FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
+          ctx.addGlobal(
+            WasmGlobal(
+              WasmGlobalName.WasmGlobalJSPrivateFieldName(name.name),
+              WasmAnyRef,
+              WasmExpr(List(REF_NULL(HeapType(WasmHeapType.Simple.Any)))),
+              isMutable = true
+            )
+          )
+          ctx.addJSPrivateFieldName(name.name)
+        case _ =>
+          ()
+      }
+    }
+
+    genCreateJSClassFunction(clazz)
+
+    if (clazz.jsClassCaptures.isEmpty)
+      genLoadJSClassFunction(clazz)
+
+    if (clazz.kind == ClassKind.JSModuleClass)
+      genLoadJSModuleFunction(clazz)
+  }
+
+  private def genCreateJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val noPos: Position = Position.NoPosition
+
+    val jsClassCaptures = clazz.jsClassCaptures.getOrElse(Nil)
+
+    /* We need to decompose the body of the constructor into 3 closures.
+     * Given an IR constructor of the form
+     *   constructor(...params) {
+     *     preSuperStats;
+     *     super(...superArgs);
+     *     postSuperStats;
+     *   }
+     * We will create closures for `preSuperStats`, `superArgs` and `postSuperStats`.
+     *
+     * There is one huge catch: `preSuperStats` can declare `VarDef`s at its top-level,
+     * and those vars are still visible inside `superArgs` and `postSuperStats`.
+     * The `preSuperStats` must therefore return a struct with the values of its
+     * declared vars, which will be given as an additional argument to `superArgs`
+     * and `postSuperStats`. We call that struct the `preSuperEnv`.
+     *
+     * In the future, we should optimize `preSuperEnv` to only store locals that
+     * are still used by `superArgs` and/or `postSuperArgs`.
+     */
+
+    val ctor = clazz.jsConstructorDef.get
+    val ctorBody = ctor.body
+
+    // Compute the pre-super environment
+    val preSuperDecls = ctorBody.beforeSuper.collect { case varDef: IRTrees.VarDef =>
+      varDef
+    }
+
+    // Build the `preSuperStats` function
+    val preSuperStatsFun = {
+      val preSuperEnvStructType = ctx.getClosureDataStructType(preSuperDecls.map(_.vtpe))
+      val preSuperEnvTyp = WasmRefType(WasmHeapType.Type(preSuperEnvStructType.name))
+
+      implicit val fctx = WasmFunctionContext(
+        Some(clazz.className),
+        WasmFunctionName.preSuperStats(clazz.className),
+        Some(jsClassCaptures),
+        None,
+        ctor.args,
+        List(preSuperEnvTyp)
+      )
+
+      import fctx.instrs
+
+      WasmExpressionBuilder.generateBlockStats(ctorBody.beforeSuper) {
+        // Build and return the preSuperEnv struct
+        for (varDef <- preSuperDecls)
+          instrs += LOCAL_GET(fctx.lookupLocalAssertLocalStorage(varDef.name.name))
+        instrs += STRUCT_NEW(preSuperEnvStructType.name)
+      }
+
+      fctx.buildAndAddToContext()
+    }
+
+    // Build the `superArgs` function
+    val superArgsFun = {
+      implicit val fctx = WasmFunctionContext(
+        Some(clazz.className),
+        WasmFunctionName.superArgs(clazz.className),
+        Some(jsClassCaptures),
+        Some(preSuperDecls),
+        None,
+        ctor.args,
+        List(WasmAnyRef) // a js.Array
+      )
+
+      WasmExpressionBuilder.generateIRBody(
+        IRTrees.JSArrayConstr(ctorBody.superCall.args),
+        IRTypes.AnyType
+      )
+
+      fctx.buildAndAddToContext()
+    }
+
+    // Build the `postSuperStats` function
+    val postSuperStatsFun = {
+      implicit val fctx = WasmFunctionContext(
+        Some(clazz.className),
+        WasmFunctionName.postSuperStats(clazz.className),
+        Some(jsClassCaptures),
+        Some(preSuperDecls),
+        Some(WasmAnyRef),
+        ctor.args,
+        List(WasmAnyRef)
+      )
+
+      import fctx.instrs
+
+      // Create fields
+      for (fieldDef <- clazz.fields if !fieldDef.flags.namespace.isStatic) {
+        // Load instance
+        instrs += LOCAL_GET(fctx.receiverStorage.idx)
+
+        // Load name
+        fieldDef match {
+          case IRTrees.FieldDef(_, name, _, _) =>
+            instrs += GLOBAL_GET(
+              GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(name.name))
+            )
+          case IRTrees.JSFieldDef(_, nameTree, _) =>
+            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+        }
+
+        // Generate boxed representation of the zero of the field
+        WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
+
+        instrs += CALL(FuncIdx(WasmFunctionName.installJSField))
+      }
+
+      WasmExpressionBuilder.generateIRBody(
+        IRTrees.Block(ctorBody.afterSuper),
+        IRTypes.AnyType
+      )
+
+      fctx.buildAndAddToContext()
+    }
+
+    // Build the actual `createJSClass` function
+    val createJSClassFun = {
+      implicit val fctx = WasmFunctionContext(
+        Some(clazz.className),
+        WasmFunctionName.createJSClassOf(clazz.className),
+        None,
+        None,
+        jsClassCaptures,
+        List(WasmRefType.any)
+      )
+
+      import fctx.instrs
+
+      // Bundle class captures in a capture data struct -- leave it on the stack for createJSClass
+      val dataStructType = ctx.getClosureDataStructType(jsClassCaptures.map(_.ptpe))
+      val dataStructLocal = fctx.addLocal(
+        "__classCaptures",
+        WasmRefType(WasmHeapType.Type(dataStructType.name))
+      )
+      for (cc <- jsClassCaptures)
+        instrs += LOCAL_GET(fctx.lookupLocalAssertLocalStorage(cc.name.name))
+      instrs += STRUCT_NEW(dataStructType.name)
+      instrs += LOCAL_TEE(dataStructLocal)
+
+      /* Load super constructor; specified by
+       * https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-classdef-runtime-semantics-evaluation
+       * - if `jsSuperClass` is defined, evaluate it;
+       * - otherwise evaluate `LoadJSConstructor` of the declared superClass.
+       */
+      val jsSuperClassTree = clazz.jsSuperClass.getOrElse {
+        IRTrees.LoadJSConstructor(clazz.superClass.get.name)
+      }
+      WasmExpressionBuilder.generateIRBody(jsSuperClassTree, IRTypes.AnyType)
+
+      // Load the references to the 3 functions that make up the constructor
+      instrs += ctx.refFuncWithDeclaration(preSuperStatsFun.name)
+      instrs += ctx.refFuncWithDeclaration(superArgsFun.name)
+      instrs += ctx.refFuncWithDeclaration(postSuperStatsFun.name)
+
+      // Call the createJSClass helper to bundle everything
+      instrs += CALL(FuncIdx(WasmFunctionName.createJSClass))
+
+      // Store the result, locally and possibly in the global cache
+      val jsClassLocal = fctx.addLocal("__jsClass", WasmRefType.any)
+      if (clazz.jsClassCaptures.isEmpty) {
+        // Static JS class with a global cache
+        instrs += LOCAL_TEE(jsClassLocal)
+        instrs += GLOBAL_SET(
+          GlobalIdx(WasmGlobalName.WasmJSClassName(clazz.className))
+        )
+      } else {
+        // Local or inner JS class, which is new every time
+        instrs += LOCAL_SET(jsClassLocal)
+      }
+
+      // Install methods and properties
+      for (methodOrProp <- clazz.exportedMembers) {
+        val isStatic = methodOrProp.flags.namespace.isStatic
+        instrs += LOCAL_GET(dataStructLocal)
+        instrs += LOCAL_GET(jsClassLocal)
+        instrs += I32_CONST(I32(if (isStatic) 1 else 0))
+
+        val receiverTyp = if (isStatic) None else Some(WasmAnyRef)
+
+        methodOrProp match {
+          case IRTrees.JSMethodDef(flags, nameTree, params, restParam, body) =>
+            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+
+            val closureFuncName = fctx.genInnerFuncName()
+            locally {
+              implicit val fctx: WasmFunctionContext = WasmFunctionContext(
+                Some(clazz.className),
+                closureFuncName,
+                Some(jsClassCaptures),
+                receiverTyp,
+                params ::: restParam.toList,
+                List(WasmAnyRef)
+              )
+              WasmExpressionBuilder.generateIRBody(body, IRTypes.AnyType)
+              fctx.buildAndAddToContext()
+            }
+            instrs += ctx.refFuncWithDeclaration(closureFuncName)
+
+            instrs += I32_CONST(I32(if (restParam.isDefined) params.size else -1))
+            instrs += CALL(FuncIdx(WasmFunctionName.installJSMethod))
+
+          case IRTrees.JSPropertyDef(flags, nameTree, optGetter, optSetter) =>
+            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+
+            optGetter match {
+              case None =>
+                instrs += REF_NULL(HeapType(WasmHeapType.Simple.Func))
+
+              case Some(getterBody) =>
+                val closureFuncName = fctx.genInnerFuncName()
+                locally {
+                  implicit val fctx: WasmFunctionContext = WasmFunctionContext(
+                    Some(clazz.className),
+                    closureFuncName,
+                    Some(jsClassCaptures),
+                    receiverTyp,
+                    Nil,
+                    List(WasmAnyRef)
+                  )
+                  WasmExpressionBuilder.generateIRBody(getterBody, IRTypes.AnyType)
+                  fctx.buildAndAddToContext()
+                }
+                instrs += ctx.refFuncWithDeclaration(closureFuncName)
+            }
+
+            optSetter match {
+              case None =>
+                instrs += REF_NULL(HeapType(WasmHeapType.Simple.Func))
+
+              case Some((setterParamDef, setterBody)) =>
+                val closureFuncName = fctx.genInnerFuncName()
+                locally {
+                  implicit val fctx: WasmFunctionContext = WasmFunctionContext(
+                    Some(clazz.className),
+                    closureFuncName,
+                    Some(jsClassCaptures),
+                    receiverTyp,
+                    setterParamDef :: Nil,
+                    Nil
+                  )
+                  WasmExpressionBuilder.generateIRBody(setterBody, IRTypes.NoType)
+                  fctx.buildAndAddToContext()
+                }
+                instrs += ctx.refFuncWithDeclaration(closureFuncName)
+            }
+
+            instrs += CALL(FuncIdx(WasmFunctionName.installJSProperty))
+        }
+      }
+
+      // Final result
+      instrs += LOCAL_GET(jsClassLocal)
+
+      fctx.buildAndAddToContext()
+    }
+  }
+
+  private def genLoadJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    val cachedJSClassGlobal = WasmGlobal(
+      WasmGlobalName.WasmJSClassName(clazz.className),
+      WasmAnyRef,
+      WasmExpr(List(REF_NULL(HeapType(WasmHeapType.Simple.Any)))),
+      isMutable = true
+    )
+    ctx.addGlobal(cachedJSClassGlobal)
+
+    val fctx = WasmFunctionContext(
+      Some(clazz.className),
+      WasmFunctionName.loadJSClass(clazz.className),
+      None,
+      Nil,
+      List(WasmRefType.any)
+    )
+
+    import fctx.instrs
+
+    fctx.block(WasmRefType.any) { doneLabel =>
+      // Load cached JS class, return if non-null
+      instrs += GLOBAL_GET(GlobalIdx(cachedJSClassGlobal.name))
+      instrs += BR_ON_NON_NULL(doneLabel)
+      // Otherwise, call createJSClass -- it will also store the class in the cache
+      instrs += CALL(FuncIdx(WasmFunctionName.createJSClassOf(clazz.className)))
+    }
+
+    fctx.buildAndAddToContext()
+  }
+
+  private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    val className = clazz.className
+    val cacheGlobalName = WasmGlobalName.WasmModuleInstanceName.fromIR(className)
+
+    ctx.addGlobal(
+      WasmGlobal(
+        cacheGlobalName,
+        WasmAnyRef,
+        WasmExpr(List(REF_NULL(HeapType(WasmHeapType.Simple.Any)))),
+        isMutable = true
+      )
+    )
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.loadModule(className),
+      Nil,
+      List(WasmAnyRef)
+    )
+
+    import fctx.instrs
+
+    fctx.block(WasmAnyRef) { doneLabel =>
+      // Load cached instance; return if non-null
+      instrs += GLOBAL_GET(GlobalIdx(cacheGlobalName))
+      instrs += BR_ON_NON_NULL(doneLabel)
+
+      // Get the JS class and instantiate it
+      instrs += CALL(FuncIdx(WasmFunctionName.loadJSClass(className)))
+      instrs += CALL(FuncIdx(WasmFunctionName.jsNewArray))
+      instrs += CALL(FuncIdx(WasmFunctionName.jsNew))
+
+      // Store and return the result
+      instrs += GLOBAL_SET(GlobalIdx(cacheGlobalName))
+      instrs += GLOBAL_GET(GlobalIdx(cacheGlobalName))
+    }
+
+    fctx.buildAndAddToContext()
   }
 
   private def transformTopLevelMethodExportDef(

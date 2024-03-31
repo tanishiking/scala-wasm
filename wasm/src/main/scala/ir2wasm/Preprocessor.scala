@@ -52,6 +52,7 @@ object Preprocessor {
       new WasmClassInfo(
         clazz.name.name,
         clazz.kind,
+        clazz.jsClassCaptures,
         infos,
         allFieldDefs,
         clazz.superClass.map(_.name),

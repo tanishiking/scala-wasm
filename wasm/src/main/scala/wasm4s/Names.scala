@@ -12,10 +12,12 @@ object Names {
       val suffix = this match {
         case _: WasmLocalName                               => "local"
         case _: WasmGlobalName.WasmModuleInstanceName       => "g_instance"
+        case _: WasmGlobalName.WasmJSClassName              => "g_jsclass"
         case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName         => "g_itable"
         case _: WasmGlobalName.WasmGlobalConstantStringName => "str_const"
         case _: WasmGlobalName.WasmGlobalStaticFieldName    => "f_static"
+        case _: WasmGlobalName.WasmGlobalJSPrivateFieldName => "g_jspfield"
         case _: WasmFunctionName                            => "fun"
         case _: WasmFieldName                               => "field"
         case _: WasmTagName                                 => "tag"
@@ -62,6 +64,14 @@ object Names {
         name.nameString
       )
     }
+
+    final case class WasmJSClassName private (override private[wasm4s] val name: String)
+        extends WasmGlobalName(name)
+    object WasmJSClassName {
+      def apply(name: IRNames.ClassName): WasmJSClassName =
+        new WasmJSClassName(name.nameString)
+    }
+
     final case class WasmGlobalVTableName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmGlobalVTableName {
@@ -100,6 +110,14 @@ object Names {
     object WasmGlobalStaticFieldName {
       def apply(fieldName: IRNames.FieldName): WasmGlobalStaticFieldName =
         new WasmGlobalStaticFieldName(s"static___${fieldName.nameString}")
+    }
+
+    final case class WasmGlobalJSPrivateFieldName private (
+        override private[wasm4s] val name: String
+    ) extends WasmGlobalName(name)
+    object WasmGlobalJSPrivateFieldName {
+      def apply(fieldName: IRNames.FieldName): WasmGlobalJSPrivateFieldName =
+        new WasmGlobalJSPrivateFieldName(s"jspfield___${fieldName.nameString}")
     }
   }
 
@@ -149,6 +167,16 @@ object Names {
       new WasmFunctionName("instanceTest", clazz.nameString)
     def clone(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("clone", clazz.nameString)
+    def loadJSClass(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("loadJSClass", clazz.nameString)
+    def createJSClassOf(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("createJSClassOf", clazz.nameString)
+    def preSuperStats(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("preSuperStats", clazz.nameString)
+    def superArgs(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("superArgs", clazz.nameString)
+    def postSuperStats(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("postSuperStats", clazz.nameString)
 
     val start = new WasmFunctionName("start", "start")
 
@@ -240,6 +268,15 @@ object Names {
         JSBinaryOp.** -> helper("jsExponent")
       )
     }
+
+    val newSymbol = helper("newSymbol")
+    val createJSClass = helper("createJSClass")
+    val installJSField = helper("installJSField")
+    val installJSMethod = helper("installJSMethod")
+    val installJSProperty = helper("installJSProperty")
+    val jsSuperGet = helper("jsSuperGet")
+    val jsSuperSet = helper("jsSuperSet")
+    val jsSuperCall = helper("jsSuperCall")
 
     // Wasm internal helpers
 
