@@ -24,11 +24,23 @@ trait ReadOnlyWasmContext {
   protected val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
   protected val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
 
+  protected val itableIdx = mutable.Map[IRNames.ClassName, Int]()
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
   private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
-  private val itablesCache = mutable.Map[IRNames.ClassName, WasmClassItables]()
+  protected var nextItableIdx: Int
 
   val cloneFunctionTypeName: WasmFunctionTypeName
+
+  def itablesLength = nextItableIdx
+
+  /** Get an index of the itable for the given interface. The itable instance must be placed at the
+    * index in the array of itables (whose size is `itablesLength`).
+    */
+  def getItableIdx(iface: IRNames.ClassName): Int =
+    itableIdx.getOrElse(
+      iface,
+      throw new IllegalArgumentException(s"Interface $iface is not registed.")
+    )
 
   def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
@@ -67,53 +79,40 @@ trait ReadOnlyWasmContext {
        else info.methods.filterNot(_.isAbstract))
   }
 
-  private def calculateVtable(
-      name: IRNames.ClassName,
-      includeAbstractMethods: Boolean
-  ): List[WasmFunctionInfo] = {
-    collectMethods(name, includeAbstractMethods)
-      .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
-        acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
-          case i if i < 0 => acc :+ m
-          case i          => acc.updated(i, m)
-        }
-      }
-      .toList
-  }
-
-  def calculateGlobalVTable(name: IRNames.ClassName): List[WasmFunctionInfo] =
+  def calculateGlobalVTable(name: IRNames.ClassName): List[WasmFunctionInfo] = {
+    val vtableType = calculateVtableType(name)
     // Do not include abstract methods when calculating vtable instance,
     // all slots should be filled with the function reference to the concrete methods
-    calculateVtable(name, includeAbstractMethods = false)
+    val methods = collectMethods(name, includeAbstractMethods = false)
+    vtableType.functions.map { slot =>
+      methods
+        .findLast(_.name.simpleName == slot.name.simpleName)
+        .getOrElse(throw new Error(s"No implementation found for ${slot.name} in ${name}"))
+    }
+  }
 
   def calculateVtableType(name: IRNames.ClassName): WasmVTable = {
     vtablesCache.getOrElseUpdate(
       name, {
-        val functions = calculateVtable(name, includeAbstractMethods = true)
+        val functions =
+          collectMethods(name, includeAbstractMethods = true)
+            .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
+              acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
+                case i if i < 0 => acc :+ m
+                case i          => acc.updated(i, m)
+              }
+            }
+            .toList
         WasmVTable(functions)
       }
     )
-  }
-
-  def calculateClassItables(clazz: IRNames.ClassName): WasmClassItables = {
-    def collectInterfaces(info: WasmClassInfo): List[WasmClassInfo] = {
-      val superInterfaces =
-        info.superClass.map(s => collectInterfaces(getClassInfo(s))).getOrElse(Nil)
-      val ifaces = info.interfaces.flatMap { iface =>
-        collectInterfaces(getClassInfo(iface))
-      }
-
-      if (info.isInterface) superInterfaces ++ ifaces :+ info
-      else superInterfaces ++ ifaces
-    }
-
-    itablesCache.getOrElseUpdate(clazz, WasmClassItables(collectInterfaces(getClassInfo(clazz))))
   }
 }
 
 trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
+  protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
   protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
 
   private var nextConstantStringIndex: Int = 1
@@ -209,6 +208,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
+  override protected var nextItableIdx: Int = 0
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
@@ -221,6 +221,12 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     module.addRecGroupType(ty)
     gcTypes.define(ty)
   }
+
+  def addGlobalITable(name: IRNames.ClassName, g: WasmGlobal): Unit = {
+    classItableGlobals.put(name, g.name)
+    module.addGlobal(g)
+    globals.define(g)
+  }
   def addGlobal(g: WasmGlobal): Unit = {
     module.addGlobal(g)
     globals.define(g)
@@ -228,8 +234,13 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   def addFuncDeclaration(name: WasmFunctionName): Unit =
     _funcDeclarations += name
 
-  def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit =
+  def putClassInfo(name: IRNames.ClassName, info: WasmClassInfo): Unit = {
     classInfo.put(name, info)
+    if (info.isInterface) {
+      itableIdx.put(name, nextItableIdx)
+      nextItableIdx += 1
+    }
+  }
 
   val exceptionTagName: WasmTagName = WasmTagName("exception")
 
@@ -377,6 +388,26 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
 
     import fctx.instrs
+
+    // Initialize itables
+
+    for ((name, globalName) <- classItableGlobals) {
+      val classInfo = getClassInfo(name)
+      val interfaces = classInfo.ancestors.map(getClassInfo(_)).filter(_.isInterface)
+      val vtable = calculateVtableType(name)
+      interfaces.foreach { iface =>
+        val idx = getItableIdx(iface.name)
+        instrs += WasmInstr.GLOBAL_GET(WasmImmediate.GlobalIdx(globalName))
+        instrs += WasmInstr.I32_CONST(WasmImmediate.I32(idx))
+
+        iface.methods.foreach { method =>
+          val func = vtable.resolve(method.name)
+          instrs += WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(func.name))
+        }
+        instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
+        instrs += WasmInstr.ARRAY_SET(WasmImmediate.TypeIdx(WasmTypeName.WasmArrayTypeName.itables))
+      }
+    }
 
     // Initialize the constant string globals
 
@@ -542,38 +573,6 @@ object WasmContext {
   }
   case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
 
-  /** itables in order that super class's interface -> interfaces
-    */
-  case class WasmClassItables(val itables: List[WasmClassInfo]) {
-    def isEmpty = itables.isEmpty
-    // def resolveWithIdx(name: IRNames.ClassName): (Int, WasmClassInfo) = {
-    //   val idx = itables.indexWhere(_.name == name)
-    //   if (idx < 0) throw new Error(s"itable not found: $name")
-    //   else (idx, itables(idx))
-    // }
-    /** @param name
-      *   method name to find
-      * @return
-      *   (itableIdx, methodIdx) where itableIdx is the index of the interface in itables and
-      *   methodIdx is the index of the method in that
-      */
-    def resolveMethod(name: IRNames.MethodName): (Int, Int) = {
-      var foundMethodIdx = -1
-      val itableIdx =
-        itables.lastIndexWhere { classInfo =>
-          val methodIdx = classInfo.methods.lastIndexWhere { func =>
-            func.name.simpleName == name.nameString
-          }
-          if (methodIdx >= 0) {
-            foundMethodIdx = methodIdx
-            true
-          } else false
-        }
-      if (itableIdx >= 0)
-        (itableIdx, foundMethodIdx)
-      else throw new Error(s"Method not found: $name")
-    }
-  }
   case class WasmVTable(val functions: List[WasmFunctionInfo]) {
     def resolve(name: WasmFunctionName): WasmFunctionInfo =
       functions

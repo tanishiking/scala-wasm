@@ -239,24 +239,18 @@ class WasmBuilder {
 
     val typeDataFieldValues = genTypeDataFieldValues(clazz)
 
-    val (gVtable, gItable) = if (!isAbstractClass) {
+    if (!isAbstractClass) {
       // Generate an actual vtable
       val functions = ctx.calculateGlobalVTable(className)
       val vtableElems = functions.map(method => WasmInstr.REF_FUNC(method.name))
       val globalVTable = genTypeDataGlobal(typeRef, vtableType, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
-
-      // Generate class itable
-      val globalClassITable = calculateClassITable(clazz)
-      globalClassITable.foreach(ctx.addGlobal)
-
-      (globalVTable, globalClassITable)
+      genGlobalClassItable(clazz)
     } else {
       // Only generate typeData
       val globalTypeData =
         genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(globalTypeData)
-      (globalTypeData, None)
     }
 
     // Declare the struct type for the class
@@ -274,9 +268,7 @@ class WasmBuilder {
     ctx.addGCType(structType)
 
     // Define the `new` function, unless the class is abstract
-    if (!isAbstractClass)
-      genStructNewDefault(classInfo, Some(gVtable), gItable)
-
+    if (!isAbstractClass) HelperFunctions.genNewDefault(clazz)
     structType
   }
 
@@ -348,78 +340,27 @@ class WasmBuilder {
     ctx.addFunction(func)
   }
 
-  private def genStructNewDefault(
-      classInfo: WasmClassInfo,
-      vtable: Option[WasmGlobal],
-      itable: Option[WasmGlobal]
-  )(implicit ctx: WasmContext): Unit = {
-    val className = classInfo.name
-
-    val getVTable = vtable match {
-      case None =>
-        REF_NULL(
-          WasmImmediate.HeapType(
-            WasmHeapType.Type(WasmTypeName.WasmVTableTypeName(className))
-          )
-        )
-      case Some(v) => GLOBAL_GET(WasmImmediate.GlobalIdx(v.name))
-    }
-    val getITable = itable match {
-      case None => REF_NULL(WasmImmediate.HeapType(WasmHeapType.Type(WasmArrayType.itables.name)))
-      case Some(i) => GLOBAL_GET(WasmImmediate.GlobalIdx(i.name))
-    }
-    val defaultFields =
-      getVTable +: getITable +:
-        classInfo.allFieldDefs.map { f =>
-          val ty = transformType(f.ftpe)
-          Defaults.defaultValue(ty)
-        }
-
-    val structName = WasmTypeName.WasmStructTypeName(className)
-    val body =
-      defaultFields :+ STRUCT_NEW(WasmImmediate.TypeIdx(structName))
-    val sig =
-      WasmFunctionSignature(Nil, List(WasmRefType(WasmHeapType.Type(structName))))
-    val newDefaultTypeName = ctx.addFunctionType(sig)
-    val func = WasmFunction(
-      WasmFunctionName.newDefault(className),
-      WasmFunctionType(newDefaultTypeName, sig),
-      Nil,
-      WasmExpr(body)
-    )
-    ctx.addFunction(func)
-  }
-
-  /** @return
-    *   global instance of the class itable
+  /** Generate global instance of the class itable. Their init value will be an array of null refs
+    * of size = number of interfaces. They will be initialized in start function
     */
-  private def calculateClassITable(
+  private def genGlobalClassItable(
       clazz: LinkedClass
-  )(implicit ctx: ReadOnlyWasmContext): Option[WasmGlobal] = {
-    val classItables = ctx.calculateClassItables(clazz.name.name)
-    if (!classItables.isEmpty) {
-      val vtable = ctx.calculateVtableType(clazz.name.name)
-
-      val itablesInit: List[WasmInstr] = classItables.itables.flatMap { iface =>
-        iface.methods.map { method =>
-          val func = vtable.resolve(method.name)
-          REF_FUNC(WasmImmediate.FuncIdx(func.name))
-        } :+ STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
-      } ++ List(
-        ARRAY_NEW_FIXED(
-          WasmImmediate.TypeIdx(WasmArrayType.itables.name),
-          WasmImmediate.I32(classItables.itables.size)
-        )
+  )(implicit ctx: WasmContext): Unit = {
+    val info = ctx.getClassInfo(clazz.name.name)
+    val interfaces = info.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
+    if (!interfaces.isEmpty) {
+      val itablesInit = List(
+        I32_CONST(WasmImmediate.I32(ctx.itablesLength)),
+        ARRAY_NEW_DEFAULT(WasmImmediate.TypeIdx(WasmArrayType.itables.name))
       )
-
       val globalITable = WasmGlobal(
         WasmGlobalName.WasmGlobalITableName(clazz.name.name),
         WasmRefType(WasmHeapType.Type(WasmArrayType.itables.name)),
         init = WasmExpr(itablesInit),
         isMutable = false
       )
-      Some(globalITable)
-    } else None
+      ctx.addGlobalITable(clazz.name.name, globalITable)
+    }
   }
 
   private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
