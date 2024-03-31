@@ -502,24 +502,15 @@ private class WasmExpressionBuilder private (
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
-      val itables = ctx.calculateClassItables(clazz = receiverClassInfo.name)
+      val itableIdx = ctx.getItableIdx(receiverClassInfo.name)
+      val methodIdx =
+        receiverClassInfo.methods.indexWhere(meth => meth.name.simpleName == methodName.nameString)
+      if (methodIdx < 0)
+        throw new Error(
+          s"Method ${methodName.nameString} not found in class ${receiverClassInfo.name}"
+        )
 
-      val (itableIdx, methodIdx) = itables.resolveMethod(methodName)
-      val targetClass = itables.itables(itableIdx)
-      val method = targetClass.methods(
-        methodIdx
-      ) // should be safe since resolveMethod should return valid value
-
-      // val methodIdx = info.methods.indexWhere(i => i.name.methodName == t.method.name.nameString)
-      // if (methodIdx < 0) { throw new Error(s"Cannot find method ${t.method}") }
-      // val method = info.methods(methodIdx)
-
-      // val rttReceiverClassName =
-      //   TypeTransformer.transformType(t.receiver.tpe)(ctx) match {
-      //     case Types.WasmRefNullType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_))) => name
-      //     case Types.WasmRefType(Types.WasmHeapType.Type(name @ WasmStructTypeName(_)))     => name
-      //     case _ => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
-      //   }
+      val methodInfo = receiverClassInfo.methods(methodIdx)
 
       instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
       instrs += STRUCT_GET(
@@ -533,14 +524,14 @@ private class WasmExpressionBuilder private (
         TypeIdx(WasmArrayType.itables.name)
       )
       instrs += REF_CAST(
-        HeapType(Types.WasmHeapType.Type(WasmITableTypeName(targetClass.name)))
+        HeapType(Types.WasmHeapType.Type(WasmITableTypeName(receiverClassInfo.name)))
       )
       instrs += STRUCT_GET(
-        TypeIdx(WasmITableTypeName(targetClass.name)),
+        TypeIdx(WasmITableTypeName(receiverClassInfo.name)),
         StructFieldIdx(methodIdx)
       )
       instrs += CALL_REF(
-        TypeIdx(method.toWasmFunctionType()(ctx).name)
+        TypeIdx(methodInfo.toWasmFunctionType()(ctx).name)
       )
     }
 

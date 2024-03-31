@@ -13,6 +13,7 @@ import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr._
 
 import TypeTransformer._
+import wasm4s.Defaults
 
 object HelperFunctions {
 
@@ -834,6 +835,40 @@ object HelperFunctions {
       val fun = fctx.buildAndAddToContext()
       // fun.typ
     }
+  }
+
+  def genNewDefault(clazz: LinkedClass)(implicit ctx: TypeDefinableWasmContext): Unit = {
+    val className = clazz.name.name
+    val classInfo = ctx.getClassInfo(className)
+    assert(clazz.hasDirectInstances)
+
+    val structName = WasmTypeName.WasmStructTypeName(className)
+    val fctx = WasmFunctionContext(
+      Names.WasmFunctionName.newDefault(className),
+      Nil,
+      List(WasmRefType(WasmHeapType.Type(structName)))
+    )
+
+    import fctx.instrs
+
+    instrs +=
+      GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalVTableName(className)))
+
+    val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
+    if (!interfaces.isEmpty)
+      instrs +=
+        GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalITableName(className)))
+    else
+      instrs +=
+        REF_NULL(WasmImmediate.HeapType(WasmHeapType.Type(WasmArrayType.itables.name)))
+
+    classInfo.allFieldDefs.foreach { f =>
+      val ty = transformType(f.ftpe)
+      instrs += Defaults.defaultValue(ty)
+    }
+    instrs += STRUCT_NEW(WasmImmediate.TypeIdx(structName))
+
+    fctx.buildAndAddToContext()
   }
 
 }

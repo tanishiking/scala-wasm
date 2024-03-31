@@ -141,7 +141,11 @@ object WasmArrayType {
   /** array (ref struct) */
   val itables = WasmArrayType(
     WasmArrayTypeName.itables,
-    WasmStructField(WasmFieldName.itable, WasmRefType(WasmHeapType.Simple.Struct), false)
+    WasmStructField(
+      WasmFieldName.itable,
+      WasmRefNullType(WasmHeapType.Simple.Struct),
+      isMutable = true
+    )
   )
 
   /** array i8 */
