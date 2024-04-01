@@ -230,7 +230,10 @@ object Names {
     val jsNew = helper("jsNew")
     val jsFunctionApply = helper("jsFunctionApply")
     val jsMethodApply = helper("jsMethodApply")
+    val jsImportCall = helper("jsImportCall")
+    val jsImportMeta = helper("jsImportMeta")
     val jsDelete = helper("jsDelete")
+    val jsForInSimple = helper("jsForInSimple")
     val jsIsTruthy = helper("jsIsTruthy")
     val jsLinkingInfo = helper("jsLinkingInfo")
 
