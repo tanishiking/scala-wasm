@@ -569,39 +569,22 @@ object HelperFunctions {
           )
 
           // switch(jsValueType(value)) { ... }
-          fctx.block() { typeOtherLabel =>
-            fctx.block() { typeUndefinedLabel =>
-              fctx.block() { typeNumberLabel =>
-                fctx.block() { typeStringLabel =>
-                  fctx.block() { typeBooleanLabel =>
-                    instrs += LOCAL_GET(valueParam)
-                    instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
-                    instrs += BR_TABLE(
-                      LabelIdxVector(
-                        List(
-                          typeBooleanLabel, // 0
-                          typeBooleanLabel, // 1
-                          typeStringLabel, // 2
-                          typeNumberLabel, // 3
-                          typeUndefinedLabel // 4
-                        )
-                      ),
-                      typeOtherLabel
-                    )
-                  }
-
-                  // typeBoolean:
-                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
-                  instrs += BR(gotTypeDataLabel)
-                }
-
-                // typeString:
-                instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
-                instrs += BR(gotTypeDataLabel)
-              }
-
-              /* typeNumber:
-               * For `number`s, the result is based on the actual value, as specified by
+          fctx.switch(typeDataType) { () =>
+            // scrutinee
+            instrs += LOCAL_GET(valueParam)
+            instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
+          }(
+            // case typeFalse, typeTrue =>
+            List(0, 1) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
+            },
+            // case typeString =>
+            List(2) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
+            },
+            // case typeNumber =>
+            List(3) -> { () =>
+              /* For `number`s, the result is based on the actual value, as specified by
                * [[https://www.scala-js.org/doc/semantics.html#getclass]].
                */
 
@@ -620,7 +603,7 @@ object HelperFunctions {
               instrs += LOCAL_GET(doubleValueLocal)
               instrs += I64_REINTERPRET_F64
               instrs += I64_EQ
-              fctx.ifThenElse() {
+              fctx.ifThenElse(typeDataType) {
                 // then it is a Byte, a Short, or an Integer
 
                 // if intValue.toByte.toInt == intValue
@@ -628,24 +611,21 @@ object HelperFunctions {
                 instrs += I32_EXTEND8_S
                 instrs += LOCAL_GET(intValueLocal)
                 instrs += I32_EQ
-                fctx.ifThenElse() {
+                fctx.ifThenElse(typeDataType) {
                   // then it is a Byte
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedByteClass)
-                  instrs += BR(gotTypeDataLabel)
                 } {
                   // else, if intValue.toShort.toInt == intValue
                   instrs += LOCAL_GET(intValueLocal)
                   instrs += I32_EXTEND16_S
                   instrs += LOCAL_GET(intValueLocal)
                   instrs += I32_EQ
-                  fctx.ifThenElse() {
+                  fctx.ifThenElse(typeDataType) {
                     // then it is a Short
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedShortClass)
-                    instrs += BR(gotTypeDataLabel)
                   } {
                     // else, it is an Integer
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedIntegerClass)
-                    instrs += BR(gotTypeDataLabel)
                   }
                 }
               } {
@@ -657,36 +637,35 @@ object HelperFunctions {
                 instrs += F64_PROMOTE_F32
                 instrs += LOCAL_GET(doubleValueLocal)
                 instrs += F64_EQ
-                fctx.ifThenElse() {
+                fctx.ifThenElse(typeDataType) {
                   // then it is a Float
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
-                  instrs += BR(gotTypeDataLabel)
                 } {
                   // else, if it is NaN
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += F64_NE
-                  fctx.ifThenElse() {
+                  fctx.ifThenElse(typeDataType) {
                     // then it is a Float
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
-                    instrs += BR(gotTypeDataLabel)
                   } {
                     // else, it is a Double
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedDoubleClass)
-                    instrs += BR(gotTypeDataLabel)
                   }
                 }
               }
+            },
+            // case typeUndefined =>
+            List(4) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
             }
-
-            // typeUndefined:
-            instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
-            instrs += BR(gotTypeDataLabel)
+          ) { () =>
+            // case _ (typeOther) =>
+            instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
+            instrs += RETURN
           }
 
-          // typeOther:
-          instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
-          instrs += RETURN
+          instrs += BR(gotTypeDataLabel)
         }
 
         instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0))

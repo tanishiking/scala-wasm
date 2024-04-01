@@ -152,7 +152,7 @@ class WasmFunctionContext private (
   }
 
   def ifThen(sig: WasmFunctionSignature)(thenp: => Unit): Unit =
-    ifThen(BlockType.FunctionType(ctx.addFunctionType(sig)))(thenp)
+    ifThen(sigToBlockType(sig))(thenp)
 
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
@@ -172,15 +172,10 @@ class WasmFunctionContext private (
     block(BlockType.ValueType())(body)
 
   def block[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
-    block(BlockType.FunctionType(ctx.addFunctionType(sig)))(body)
+    block(sigToBlockType(sig))(body)
 
-  def block[A](resultTypes: List[WasmType])(body: LabelIdx => A): A = {
-    resultTypes match {
-      case Nil           => block()(body)
-      case single :: Nil => block(single)(body)
-      case _             => block(WasmFunctionSignature(Nil, resultTypes))(body)
-    }
-  }
+  def block[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+    block(WasmFunctionSignature(Nil, resultTypes))(body)
 
   def loop[A](blockType: BlockType)(body: LabelIdx => A): A = {
     val label = genLabel()
@@ -197,15 +192,10 @@ class WasmFunctionContext private (
     loop(BlockType.ValueType())(body)
 
   def loop[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
-    loop(BlockType.FunctionType(ctx.addFunctionType(sig)))(body)
+    loop(sigToBlockType(sig))(body)
 
-  def loop[A](resultTypes: List[WasmType])(body: LabelIdx => A): A = {
-    resultTypes match {
-      case Nil           => loop()(body)
-      case single :: Nil => loop(single)(body)
-      case _             => loop(WasmFunctionSignature(Nil, resultTypes))(body)
-    }
-  }
+  def loop[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+    loop(WasmFunctionSignature(Nil, resultTypes))(body)
 
   def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
     instrs += TRY_TABLE(blockType, WasmImmediate.CatchClauseVector(clauses))
@@ -223,16 +213,118 @@ class WasmFunctionContext private (
   def tryTable[A](sig: WasmFunctionSignature)(clauses: List[WasmImmediate.CatchClause])(
       body: => A
   ): A =
-    tryTable(BlockType.FunctionType(ctx.addFunctionType(sig)))(clauses)(body)
+    tryTable(sigToBlockType(sig))(clauses)(body)
 
   def tryTable[A](
       resultTypes: List[WasmType]
-  )(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
-    resultTypes match {
-      case Nil           => tryTable()(clauses)(body)
-      case single :: Nil => tryTable(single)(clauses)(body)
-      case _             => tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
+  )(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+    tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
+
+  /** Builds a `switch` over a scrutinee using a `br_table` instruction.
+    *
+    * This function produces code that encodes the following control-flow:
+    *
+    * {{{
+    * switch (scrutinee) {
+    *   case clause0_alt0 | ... | clause0_altN => clause0_body
+    *   ...
+    *   case clauseM_alt0 | ... | clauseM_altN => clauseM_body
+    *   case _ => default
+    * }
+    * }}}
+    *
+    * All the alternative values must be non-negative and distinct, but they need not be
+    * consecutive. The highest one must be strictly smaller than 128, as a safety precaution against
+    * generating unexpectedly large tables.
+    *
+    * @param scrutineeSig
+    *   The signature of the `scrutinee` block, *excluding* the i32 result that will be switched
+    *   over.
+    * @param clauseSig
+    *   The signature of every `clauseI_body` block and of the `default` block. The clauses' params
+    *   must consume at least all the results of the scrutinee.
+    */
+  def switch(
+      scrutineeSig: WasmFunctionSignature,
+      clauseSig: WasmFunctionSignature
+  )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
+    val clauseLabels = clauses.map(_ => genLabel())
+
+    // Build the dispatch vector, i.e., the array of caseValue -> target clauseLabel
+    val numCases = clauses.map(_._1.max).max + 1
+    if (numCases >= 128)
+      throw new IllegalArgumentException(s"Too many cases for switch: $numCases")
+    val dispatchVector = new Array[LabelIdx](numCases)
+    for {
+      (clause, clauseLabel) <- clauses.zip(clauseLabels)
+      caseValue <- clause._1
+    } {
+      if (dispatchVector(caseValue) != null)
+        throw new IllegalArgumentException(s"Duplicate case value for switch: $caseValue")
+      dispatchVector(caseValue) = clauseLabel
     }
+
+    // Compute the BlockType's we will need
+    require(
+      clauseSig.params.size >= scrutineeSig.results.size,
+      "The clauses of a switch must consume all the results of the scrutinee " +
+        s"(scrutinee results: ${scrutineeSig.results}; clause params: ${clauseSig.params})"
+    )
+    val (doneBlockType, clauseBlockType) = {
+      val clauseParamsComingFromAbove = clauseSig.params.drop(scrutineeSig.results.size)
+      val doneBlockSig = WasmFunctionSignature(
+        clauseParamsComingFromAbove ::: scrutineeSig.params,
+        clauseSig.results
+      )
+      val clauseBlockSig = WasmFunctionSignature(
+        clauseParamsComingFromAbove ::: scrutineeSig.params,
+        clauseSig.params
+      )
+      (sigToBlockType(doneBlockSig), sigToBlockType(clauseBlockSig))
+    }
+
+    block(doneBlockType) { doneLabel =>
+      block(clauseBlockType) { defaultLabel =>
+        // Fill up empty entries of the dispatch vector with the default label
+        for (i <- 0 until numCases if dispatchVector(i) == null)
+          dispatchVector(i) = defaultLabel
+
+        // Enter all the case labels
+        for (clauseLabel <- clauseLabels.reverse)
+          instrs += BLOCK(clauseBlockType, Some(clauseLabel))
+
+        // Load the scrutinee and dispatch
+        scrutinee()
+        instrs += BR_TABLE(WasmImmediate.LabelIdxVector(dispatchVector.toList), defaultLabel)
+
+        // Close all the case labels and emit their respective bodies
+        for (clause <- clauses) {
+          instrs += END // close the block whose label is the corresponding label for this clause
+          clause._2() // emit the body of that clause
+          instrs += BR(doneLabel) // jump to done
+        }
+      }
+
+      default()
+    }
+  }
+
+  def switch(
+      clauseSig: WasmFunctionSignature
+  )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
+    switch(WasmFunctionSignature.NilToNil, clauseSig)(scrutinee)(clauses: _*)(default)
+  }
+
+  def switch(
+      resultType: WasmType
+  )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
+    switch(WasmFunctionSignature(Nil, List(resultType)))(scrutinee)(clauses: _*)(default)
+  }
+
+  def switch()(
+      scrutinee: () => Unit
+  )(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
+    switch(WasmFunctionSignature.NilToNil)(scrutinee)(clauses: _*)(default)
   }
 
   // Final result

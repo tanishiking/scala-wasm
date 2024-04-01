@@ -63,6 +63,10 @@ case class WasmFunctionSignature(
     params: List[WasmType],
     results: List[WasmType]
 )
+object WasmFunctionSignature {
+  val NilToNil: WasmFunctionSignature = WasmFunctionSignature(Nil, Nil)
+}
+
 case class WasmFunctionType(
     name: WasmFunctionTypeName,
     params: List[WasmType],
