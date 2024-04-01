@@ -24,10 +24,11 @@ final class WasmBinaryWriter(module: WasmModule) {
   }
 
   private val importTypeDefinitions: List[WasmFunctionType] = {
-    module.imports.map { imprt =>
+    module.imports.flatMap { imprt =>
       imprt.desc match {
-        case WasmImportDesc.Func(id, typ) => typ
-        case WasmImportDesc.Tag(id, typ)  => typ
+        case WasmImportDesc.Func(id, typ)   => List(typ)
+        case WasmImportDesc.Global(_, _, _) => Nil
+        case WasmImportDesc.Tag(id, typ)    => List(typ)
       }
     }
   }
@@ -51,8 +52,13 @@ final class WasmBinaryWriter(module: WasmModule) {
     allNames.zipWithIndex.toMap
   }
 
-  private val globalIdxValues: Map[WasmGlobalName, Int] =
-    module.globals.map(_.name).zipWithIndex.toMap
+  private val globalIdxValues: Map[WasmGlobalName, Int] = {
+    val importedGlobalNames = module.imports.collect {
+      case WasmImport(_, _, WasmImportDesc.Global(id, _, _)) => id
+    }
+    val allNames = importedGlobalNames ::: module.globals.map(_.name)
+    allNames.zipWithIndex.toMap
+  }
 
   private var localIdxValues: Option[Map[WasmLocalName, Int]] = None
   private var labelsInScope: List[Option[WasmImmediate.LabelIdx]] = Nil
@@ -154,6 +160,10 @@ final class WasmBinaryWriter(module: WasmModule) {
         case WasmImportDesc.Func(id, typ) =>
           buf.byte(0x00) // func
           writeImportedTypeIdx(typ.name)
+        case WasmImportDesc.Global(id, typ, isMutable) =>
+          buf.byte(0x03) // global
+          writeType(buf, typ)
+          buf.boolean(isMutable)
         case WasmImportDesc.Tag(id, typ) =>
           buf.byte(0x04) // tag
           buf.byte(0x00) // exception kind (that is the only valid kind for now)
