@@ -325,6 +325,20 @@ object Names {
 
     // Fields of the typeData structs
     object typeData {
+      // Values for `kind`
+      final val KindVoid = 0
+      final val KindBoolean = 1
+      final val KindChar = 2
+      final val KindByte = 3
+      final val KindShort = 4
+      final val KindInt = 5
+      final val KindLong = 6
+      final val KindFloat = 7
+      final val KindDouble = 8
+      final val KindArray = 9
+      final val KindClass = 10
+      final val KindInterface = 11
+      final val KindJSType = 12
 
       /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
         *
@@ -333,14 +347,7 @@ object Names {
         */
       val nameData = new WasmFieldName("nameData")
 
-      /** The kind of type data, an `i32`.
-        *
-        *   - 0 for regular class
-        *   - 1 for primitive
-        *   - 2 for array
-        *   - 3 for interface
-        *   - 4 for JS type
-        */
+      /** The kind of type data, an `i32`. */
       val kind = new WasmFieldName("kind")
 
       /** The typeData of a component of this array type, or `null` if this is not an array type.

@@ -24,20 +24,22 @@ class WasmBuilder {
   // val module = new WasmModule()
 
   def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
+    import WasmFieldName.typeData._
+
     val primRefsWithTypeData = List(
-      IRTypes.VoidRef,
-      IRTypes.BooleanRef,
-      IRTypes.CharRef,
-      IRTypes.ByteRef,
-      IRTypes.ShortRef,
-      IRTypes.IntRef,
-      IRTypes.LongRef,
-      IRTypes.FloatRef,
-      IRTypes.DoubleRef
+      IRTypes.VoidRef -> KindVoid,
+      IRTypes.BooleanRef -> KindBoolean,
+      IRTypes.CharRef -> KindChar,
+      IRTypes.ByteRef -> KindByte,
+      IRTypes.ShortRef -> KindShort,
+      IRTypes.IntRef -> KindInt,
+      IRTypes.LongRef -> KindLong,
+      IRTypes.FloatRef -> KindFloat,
+      IRTypes.DoubleRef -> KindDouble
     )
 
-    for (primRef <- primRefsWithTypeData) {
-      val typeDataFieldValues = genTypeDataFieldValues(kind = 1, primRef)
+    for ((primRef, kind) <- primRefsWithTypeData) {
+      val typeDataFieldValues = genTypeDataFieldValues(kind, primRef)
       val typeDataGlobal =
         genTypeDataGlobal(primRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
@@ -144,10 +146,12 @@ class WasmBuilder {
   private def genTypeDataFieldValues(clazz: LinkedClass)(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
+    import WasmFieldName.typeData._
+
     val kind = clazz.kind match {
-      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => 0
-      case ClassKind.Interface                                               => 3
-      case _                                                                 => 4
+      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
+      case ClassKind.Interface                                               => KindInterface
+      case _                                                                 => KindJSType
     }
 
     genTypeDataFieldValues(kind, IRTypes.ClassRef(clazz.className))

@@ -139,10 +139,10 @@ object HelperFunctions {
       // for the STRUCT_SET typeData.name near the end
       instrs += LOCAL_GET(typeDataParam)
 
-      // if typeData.kind == 2 (isArray)
+      // if typeData.kind == KindArray
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-      instrs += I32_CONST(I32(2))
+      instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
       instrs += I32_EQ
       fctx.ifThenElse(WasmRefType.any) {
         // it is an array; compute its name from the component type name
@@ -158,90 +158,63 @@ object HelperFunctions {
           WasmFieldName.typeData.componentTypeIdx
         )
         instrs += REF_AS_NOT_NULL
-        instrs += LOCAL_TEE(componentTypeDataLocal)
+        instrs += LOCAL_SET(componentTypeDataLocal)
 
-        // if componentTypeData.kind == 1 (primitive)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-        instrs += I32_CONST(I32(1))
-        instrs += I32_EQ
-        fctx.ifThenElse(WasmRefType.any) { // returns the string that must come after "["
-          // the component type is a primitive; compute its charCode from its name's first and second chars
-
-          // componentNameData := componentTypeData.nameData
-          instrs += LOCAL_GET(componentTypeDataLocal)
-          instrs += STRUCT_GET(
-            TypeIdx(WasmStructTypeName.typeData),
-            WasmFieldName.typeData.nameDataIdx
-          )
-          instrs += REF_AS_NOT_NULL
-          instrs += LOCAL_TEE(componentNameDataLocal)
-
-          // firstChar := componentNameData(0)
-          instrs += I32_CONST(I32(0))
-          instrs += ARRAY_GET_U(u16ArrayIdx)
-          instrs += LOCAL_TEE(firstCharLocal)
-
-          // if firstChar == 'b'
-          instrs += I32_CONST(I32('b'.toInt))
-          instrs += I32_EQ
-          fctx.ifThenElse(WasmInt32) {
-            // 'b' can be 'byte' or 'boolean'; check second char
-
-            // if componentNameData(1) == 'o'
-            instrs += LOCAL_GET(componentNameDataLocal)
-            instrs += I32_CONST(I32(1)) // second char
-            instrs += ARRAY_GET_U(u16ArrayIdx)
-            instrs += I32_CONST(I32('o'.toInt))
-            instrs += I32_EQ
-            fctx.ifThenElse(WasmInt32) {
-              // if 'o', it's 'boolean'
-              instrs += I32_CONST(I32('Z'.toInt))
-            } {
-              // otherwise, it is 'byte'
-              instrs += I32_CONST(I32('B'.toInt))
-            }
-          } {
-            // if firstChar == 'l'
-            instrs += LOCAL_GET(firstCharLocal)
-            instrs += I32_CONST(I32('l'.toInt))
-            instrs += I32_EQ
-            fctx.ifThenElse(WasmInt32) {
-              // 'l' is 'long', which must become 'J'
-              instrs += I32_CONST(I32('J'.toInt))
-            } {
-              // Other letters are turned into their uppercase, which is 32 less
-              instrs += LOCAL_GET(firstCharLocal)
-              instrs += I32_CONST(I32(32))
-              instrs += I32_SUB
-            }
-          }
-
-          // convert the charCode to string
-          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-        } {
-          // the component type is not a primitive
-
-          // if componentTypeData.kind == 2 (array)
+        // switch (componentTypeData.kind)
+        // the result of this switch is the string that must come after "["
+        fctx.switch(WasmRefType.any) { () =>
+          // scrutinee
           instrs += LOCAL_GET(componentTypeDataLocal)
           instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-          instrs += I32_CONST(I32(2))
-          instrs += I32_EQ
-          fctx.ifThenElse(WasmRefType.any) {
+        }(
+          List(WasmFieldName.typeData.KindBoolean) -> { () =>
+            instrs += I32_CONST(I32('Z'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindChar) -> { () =>
+            instrs += I32_CONST(I32('C'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindByte) -> { () =>
+            instrs += I32_CONST(I32('B'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindShort) -> { () =>
+            instrs += I32_CONST(I32('S'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindInt) -> { () =>
+            instrs += I32_CONST(I32('I'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindLong) -> { () =>
+            instrs += I32_CONST(I32('J'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindFloat) -> { () =>
+            instrs += I32_CONST(I32('F'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindDouble) -> { () =>
+            instrs += I32_CONST(I32('D'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindArray) -> { () =>
             // the component type is an array; get its own name
             instrs += LOCAL_GET(componentTypeDataLocal)
             instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
-          } {
-            // the component type is neither a primitive nor an array;
-            // concatenate "L" + <its own name> + ";"
-            instrs += I32_CONST(I32('L'.toInt))
-            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-            instrs += LOCAL_GET(componentTypeDataLocal)
-            instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
-            instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
-            instrs += I32_CONST(I32(';'.toInt))
-            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-            instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
           }
+        ) { () =>
+          // default: the component type is neither a primitive nor an array;
+          // concatenate "L" + <its own name> + ";"
+          instrs += I32_CONST(I32('L'.toInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          instrs += LOCAL_GET(componentTypeDataLocal)
+          instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
+          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
+          instrs += I32_CONST(I32(';'.toInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
         }
 
         // At this point, the stack contains "[" and the string that must be concatenated with it
@@ -307,27 +280,27 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isPrimitive": (typeData.kind == 1)
+    // "isPrimitive": (typeData.kind <= KindDouble)
     instrs += ctx.getConstantStringInstr("isPrimitive")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(1))
-    instrs += I32_EQ
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindDouble))
+    instrs += I32_LE_U
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isArrayClass": (typeData.kind == 2)
+    // "isArrayClass": (typeData.kind == KindArray)
     instrs += ctx.getConstantStringInstr("isArrayClass")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(2))
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isInterface": (typeData.kind == 3)
+    // "isInterface": (typeData.kind == KindInterface)
     instrs += ctx.getConstantStringInstr("isInterface")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(3))
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindInterface))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
@@ -439,7 +412,7 @@ object HelperFunctions {
 
         // typeData := new typeData(...)
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // nameData
-        instrs += I32_CONST(I32(2)) // kind = isArray
+        instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray)) // kind = KindArray
         instrs += LOCAL_GET(typeDataParam) // componentType
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // name
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // classOf
