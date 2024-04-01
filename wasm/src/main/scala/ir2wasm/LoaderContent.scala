@@ -178,7 +178,10 @@ const scalaJSHelpers = {
   jsNew: (constr, args) => new constr(...args),
   jsFunctionApply: (f, args) => f(...args),
   jsMethodApply: (o, m, args) => o[m](...args),
+  jsImportCall: (s) => import(s),
+  jsImportMeta: () => import.meta,
   jsDelete: (o, p) => { delete o[p]; },
+  jsForInSimple: (o, f) => { for (var k in o) f(k); },
   jsIsTruthy: (x) => !!x,
   jsLinkingInfo: () => linkingInfo,
 

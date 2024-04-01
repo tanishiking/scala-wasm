@@ -353,7 +353,10 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
     List(WasmAnyRef)
   )
+  addHelperImport(WasmFunctionName.jsImportCall, List(WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsImportMeta, Nil, List(WasmAnyRef))
   addHelperImport(WasmFunctionName.jsDelete, List(WasmAnyRef, WasmAnyRef), Nil)
+  addHelperImport(WasmFunctionName.jsForInSimple, List(WasmAnyRef, WasmAnyRef), Nil)
   addHelperImport(WasmFunctionName.jsIsTruthy, List(WasmAnyRef), List(WasmInt32))
   addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(WasmAnyRef))
 
