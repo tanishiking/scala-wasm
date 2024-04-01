@@ -197,6 +197,8 @@ object Names {
     def unboxOrNull(primRef: IRTypes.PrimRef): WasmFunctionName = helper("uN" + primRef.charCode)
     def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
 
+    val fmod = helper("fmod")
+
     val closure = helper("closure")
     val closureThis = helper("closureThis")
     val closureRest = helper("closureRest")

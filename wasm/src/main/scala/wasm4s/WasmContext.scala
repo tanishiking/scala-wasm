@@ -289,6 +289,8 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     }
   }
 
+  addHelperImport(WasmFunctionName.fmod, List(WasmFloat64, WasmFloat64), List(WasmFloat64))
+
   addHelperImport(
     WasmFunctionName.closure,
     List(WasmRefType.func, WasmAnyRef),

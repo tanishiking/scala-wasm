@@ -790,6 +790,29 @@ private class WasmExpressionBuilder private (
       case BinaryOp.Long_>>> => genLongShiftOp(I64_SHR_U)
       case BinaryOp.Long_>>  => genLongShiftOp(I64_SHR_S)
 
+      /* Floating point remainders are specified by
+       * https://262.ecma-international.org/#sec-numeric-types-number-remainder
+       * which says that it is equivalent to the C library function `fmod`.
+       * For `Float`s, we promote and demote to `Double`s.
+       * `fmod` seems quite hard to correctly implement, so we delegate to a
+       * JavaScript Helper.
+       * (The naive function `x - trunc(x / y) * y` that we can find on the
+       * Web does not work.)
+       */
+      case BinaryOp.Float_% =>
+        genTree(binary.lhs, IRTypes.FloatType)
+        instrs += F64_PROMOTE_F32
+        genTree(binary.rhs, IRTypes.FloatType)
+        instrs += F64_PROMOTE_F32
+        instrs += CALL(FuncIdx(WasmFunctionName.fmod))
+        instrs += F32_DEMOTE_F64
+        IRTypes.FloatType
+      case BinaryOp.Double_% =>
+        genTree(binary.lhs, IRTypes.DoubleType)
+        genTree(binary.rhs, IRTypes.DoubleType)
+        instrs += CALL(FuncIdx(WasmFunctionName.fmod))
+        IRTypes.DoubleType
+
       // New in 1.11
       case BinaryOp.String_charAt =>
         genTree(binary.lhs, IRTypes.StringType) // push the string
@@ -864,21 +887,10 @@ private class WasmExpressionBuilder private (
       case BinaryOp.Float_* => F32_MUL
       case BinaryOp.Float_/ => F32_DIV
 
-      // TODO
-      // get_local 0
-      // get_local 1
-      // f32.div
-      // f32.trunc
-      // get_local 1
-      // f32.mul
-      // f32.sub
-      case BinaryOp.Float_% => ???
-
       case BinaryOp.Double_+ => F64_ADD
       case BinaryOp.Double_- => F64_SUB
       case BinaryOp.Double_* => F64_MUL
       case BinaryOp.Double_/ => F64_DIV
-      case BinaryOp.Double_% => ??? // TODO same as Float_%
 
       case BinaryOp.Double_== => F64_EQ
       case BinaryOp.Double_!= => F64_NE
