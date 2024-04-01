@@ -760,15 +760,15 @@ object HelperFunctions {
     fctx.buildAndAddToContext()
   }
 
-  /** Generate clone function for the given class, if it implements Cloneable interface. The
-    * generated clone function will be registered in the typeData of the class (which resides in the
-    * vtable of the class), and will be invoked when the `super.clone()` method is called on the
-    * class instance.
+  /** Generate clone function for the given class, if it is concrete and implements the Cloneable
+    * interface. The generated clone function will be registered in the typeData of the class (which
+    * resides in the vtable of the class), and will be invoked when the `super.clone()` method is
+    * called on the class instance.
     */
   def genCloneFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     import WasmImmediate._
     val info = ctx.getClassInfo(clazz.name.name)
-    if (info.ancestors.contains(IRNames.CloneableClass) && !info.isInterface) {
+    if (info.ancestors.contains(IRNames.CloneableClass) && !info.isAbstract) {
       val heapType =
         WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name))
       val fctx = WasmFunctionContext(

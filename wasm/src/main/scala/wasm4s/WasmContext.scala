@@ -55,26 +55,27 @@ trait ReadOnlyWasmContext {
       IRTypes.ArrayType(typeRef)
   }
 
-  /** Collects all methods declared, inherited, and mixed-in by the given class, super-class, and
-    * interfaces.
+  /** Collects all methods declared and inherited by the given class, super-class.
     *
     * @param className
     *   class to collect methods from
     * @param includeAbstractMethods
     *   whether to include abstract methods
     * @return
-    *   list of methods in order that "collectMethods(superClass) ++ methods from interfaces ++
-    *   methods from the class"
+    *   list of methods in order that "collectVTableMethods(superClass) ++ methods from the class"
     */
-  private def collectMethods(
+  private def collectVTableMethods(
       className: IRNames.ClassName,
       includeAbstractMethods: Boolean
   ): List[WasmFunctionInfo] = {
     val info = classInfo.getOrElse(className, throw new Error(s"Class not found: $className"))
+    assert(
+      info.kind.isClass || info.kind == ClassKind.HijackedClass,
+      s"collectVTableMethods cannot be called for non-class ${className.nameString}"
+    )
     val fromSuperClass =
-      info.superClass.map(collectMethods(_, includeAbstractMethods)).getOrElse(Nil)
-    val fromInterfaces = info.interfaces.flatMap(collectMethods(_, includeAbstractMethods))
-    fromSuperClass ++ fromInterfaces ++
+      info.superClass.map(collectVTableMethods(_, includeAbstractMethods)).getOrElse(Nil)
+    fromSuperClass ++
       (if (includeAbstractMethods) info.methods
        else info.methods.filterNot(_.isAbstract))
   }
@@ -83,7 +84,7 @@ trait ReadOnlyWasmContext {
     val vtableType = calculateVtableType(name)
     // Do not include abstract methods when calculating vtable instance,
     // all slots should be filled with the function reference to the concrete methods
-    val methodsReverse = collectMethods(name, includeAbstractMethods = false).reverse
+    val methodsReverse = collectVTableMethods(name, includeAbstractMethods = false).reverse
     vtableType.functions.map { slot =>
       methodsReverse
         .find(_.name.simpleName == slot.name.simpleName)
@@ -95,11 +96,11 @@ trait ReadOnlyWasmContext {
     vtablesCache.getOrElseUpdate(
       name, {
         val functions =
-          collectMethods(name, includeAbstractMethods = true)
+          collectVTableMethods(name, includeAbstractMethods = true)
             .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
               acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
                 case i if i < 0 => acc :+ m
-                case i          => acc.updated(i, m)
+                case i          => if (m.isAbstract) acc else acc.updated(i, m)
               }
             }
             .toList
@@ -574,6 +575,7 @@ object WasmContext {
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
+      val isAbstract: Boolean,
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
       val jsNativeMembers: Map[IRNames.MethodName, IRTrees.JSNativeLoadSpec]
   ) {
