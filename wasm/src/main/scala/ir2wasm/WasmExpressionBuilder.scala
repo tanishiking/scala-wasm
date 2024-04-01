@@ -70,36 +70,6 @@ private class WasmExpressionBuilder private (
   def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit =
     genTree(tree, expectedType)
 
-  /** object creation prefix
-    * ```
-    * local.get $receiver ;; (ref null $struct)
-    * ref.is_null
-    * if
-    *   call $newDefault
-    *   local.set $receiver
-    * end
-    * ```
-    *
-    * Maybe we can unreachable in else branch?
-    */
-  // def objectCreationPrefix(clazz: IRTrees.ClassDef, method: IRTrees.MethodDef): List[WasmInstr] = {
-  //   assert(method.flags.namespace.isConstructor)
-  //   val recieverGCTypeName = fctx.receiver.typ match {
-  //     case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
-  //     case Types.WasmRefType(Types.WasmHeapType.Type(gcType))     => gcType
-  //     case _                                                      => ???
-  //   }
-  //   Nil
-  //   // List(
-  //   //   LOCAL_GET(LocalIdx(fctx.receiver.name)),
-  //   //   REF_IS_NULL,
-  //   //   IF(WasmImmediate.BlockType.ValueType(None)),
-  //   //   CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
-  //   //   LOCAL_SET(LocalIdx(fctx.receiver.name)),
-  //   //   END
-  //   // )
-  // }
-
   def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit = {
     for ((tree, expectedType) <- trees.zip(expectedTypes))
       genTree(tree, expectedType)
