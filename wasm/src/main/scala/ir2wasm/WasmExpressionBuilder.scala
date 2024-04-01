@@ -28,6 +28,14 @@ object WasmExpressionBuilder {
     builder.genBody(tree, resultType)
   }
 
+  def generateBlockStats[A](stats: List[IRTrees.Tree])(inner: => A)(implicit
+      ctx: TypeDefinableWasmContext,
+      fctx: WasmFunctionContext
+  ): A = {
+    val builder = new WasmExpressionBuilder(ctx, fctx)
+    builder.genBlockStats(stats)(inner)
+  }
+
   private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
   private val BoxedStringRef = IRTypes.ClassRef(IRNames.BoxedStringClass)
   private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
@@ -159,23 +167,21 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.NewArray    => genNewArray(t)
       case t: IRTrees.ArraySelect => genArraySelect(t)
       case t: IRTrees.ArrayValue  => genArrayValue(t)
-      case _ =>
-        println(tree)
-        ???
 
-      // case select: IRTrees.JSPrivateSelect => ???
-      // case IRTrees.RecordValue(pos) =>
-      // case IRTrees.JSNewTarget(pos) =>
-      // case IRTrees.JSSuperMethodCall(pos) =>
-      // case IRTrees.Match(tpe) =>
-      // case IRTrees.RecordSelect(tpe) =>
-      // case IRTrees.JSImportMeta(pos) =>
-      // case IRTrees.JSSuperSelect(pos) =>
-      // case IRTrees.JSSuperConstructorCall(pos) =>
-      // case IRTrees.CreateJSClass(pos) =>
-      // case IRTrees.Transient(pos) =>
-      // case IRTrees.ForIn(pos) =>
-      // case IRTrees.JSImportCall(pos) =>
+      // Non-native JS classes
+      case t: IRTrees.CreateJSClass     => genCreateJSClass(t)
+      case t: IRTrees.JSPrivateSelect   => genJSPrivateSelect(t)
+      case t: IRTrees.JSSuperSelect     => genJSSuperSelect(t)
+      case t: IRTrees.JSSuperMethodCall => genJSSuperMethodCall(t)
+      case t: IRTrees.JSNewTarget       => genJSNewTarget(t)
+
+      case _: IRTrees.JSImportMeta | _: IRTrees.JSImportCall | _: IRTrees.ForIn |
+          _: IRTrees.ApplyDynamicImport =>
+        throw new NotImplementedError(tree.toString())
+
+      case _: IRTrees.RecordSelect | _: IRTrees.RecordValue | _: IRTrees.Transient |
+          _: IRTrees.JSSuperConstructorCall =>
+        throw new AssertionError(s"Invalid tree: $tree")
     }
 
     genAdapt(generatedType, expectedType)
@@ -262,8 +268,11 @@ private class WasmExpressionBuilder private (
             )
         }
 
-      case assign: IRTrees.RecordSelect    => ??? // struct.set
-      case assign: IRTrees.JSPrivateSelect => ???
+      case sel: IRTrees.JSPrivateSelect =>
+        genTree(sel.qualifier, IRTypes.AnyType)
+        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(sel.field.name)))
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
       case assign: IRTrees.JSSelect =>
         genTree(assign.qualifier, IRTypes.AnyType)
@@ -271,7 +280,12 @@ private class WasmExpressionBuilder private (
         genTree(t.rhs, IRTypes.AnyType)
         instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
-      case assign: IRTrees.JSSuperSelect => ???
+      case assign: IRTrees.JSSuperSelect =>
+        genTree(assign.superClass, IRTypes.AnyType)
+        genTree(assign.receiver, IRTypes.AnyType)
+        genTree(assign.item, IRTypes.AnyType)
+        genTree(t.rhs, IRTypes.AnyType)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsSuperSet))
 
       case assign: IRTrees.JSGlobalRef =>
         genLiteral(IRTrees.StringLiteral(assign.name)(assign.pos))
@@ -279,8 +293,19 @@ private class WasmExpressionBuilder private (
         instrs += CALL(FuncIdx(WasmFunctionName.jsGlobalRefSet))
 
       case ref: IRTrees.VarRef =>
-        genTree(t.rhs, t.lhs.tpe)
-        instrs += LOCAL_SET(LocalIdx(Names.WasmLocalName.fromIR(ref.ident.name)))
+        import WasmFunctionContext.VarStorage
+        fctx.lookupLocal(ref.ident.name) match {
+          case VarStorage.Local(local) =>
+            genTree(t.rhs, t.lhs.tpe)
+            instrs += LOCAL_SET(local)
+          case VarStorage.StructField(structLocal, structTypeName, fieldIdx) =>
+            instrs += LOCAL_GET(structLocal)
+            genTree(t.rhs, t.lhs.tpe)
+            instrs += STRUCT_SET(TypeIdx(structTypeName), fieldIdx)
+        }
+
+      case assign: IRTrees.RecordSelect =>
+        throw new AssertionError(s"Invalid tree: $t")
     }
 
     IRTypes.NoType
@@ -345,12 +370,8 @@ private class WasmExpressionBuilder private (
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
-    val receiverLocalForDispatch: WasmLocalName = {
-      val name = fctx.genSyntheticLocalName()
-      val typ = Types.WasmRefType(heapTypeForDispatch)
-      fctx.locals.define(WasmLocal(name, typ, isParameter = false))
-      name
-    }
+    val receiverLocalForDispatch =
+      fctx.addSyntheticLocal(Types.WasmRefType(heapTypeForDispatch))
 
     /* Gen loading of the receiver and check that it is non-null.
      * After this codegen, the non-null receiver is on the stack.
@@ -376,7 +397,7 @@ private class WasmExpressionBuilder private (
     if (!receiverClassInfo.isAncestorOfHijackedClass) {
       // Standard dispatch codegen
       genReceiverNotNull()
-      instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_TEE(receiverLocalForDispatch)
       genArgs(t.args, t.method.name)
       genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
     } else {
@@ -438,7 +459,7 @@ private class WasmExpressionBuilder private (
             WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
             WasmImmediate.HeapType(heapTypeForDispatch)
           )
-          instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+          instrs += LOCAL_TEE(receiverLocalForDispatch)
           pushArgs(argsLocals)
           genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
           instrs += BR(labelDone)
@@ -500,7 +521,7 @@ private class WasmExpressionBuilder private (
   def genTableDispatch(
       receiverClassInfo: WasmContext.WasmClassInfo,
       methodName: IRNames.MethodName,
-      receiverLocalForDispatch: WasmLocalName
+      receiverLocalForDispatch: LocalIdx
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
@@ -514,7 +535,7 @@ private class WasmExpressionBuilder private (
 
       val methodInfo = receiverClassInfo.methods(methodIdx)
 
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
@@ -557,7 +578,7 @@ private class WasmExpressionBuilder private (
       // struct.get $classType 0 ;; get vtable
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
-      instrs += LOCAL_GET(LocalIdx(receiverLocalForDispatch))
+      instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += REF_CAST(
         HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
       )
@@ -920,12 +941,8 @@ private class WasmExpressionBuilder private (
          */
 
         // A local for a copy of the receiver that we will use to resolve dispatch
-        val receiverLocalForDispatch: WasmLocalName = {
-          val name = fctx.genSyntheticLocalName()
-          val typ = Types.WasmRefType(Types.WasmHeapType.ObjectType)
-          fctx.locals.define(WasmLocal(name, typ, isParameter = false))
-          name
-        }
+        val receiverLocalForDispatch =
+          fctx.addSyntheticLocal(Types.WasmRefType(Types.WasmHeapType.ObjectType))
 
         val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
 
@@ -949,7 +966,7 @@ private class WasmExpressionBuilder private (
             fctx.block() { labelIsNull =>
               genTreeAuto(tree)
               instrs += BR_ON_NULL(labelIsNull)
-              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
               instrs += BR_ON_NON_NULL(labelDone)
             }
@@ -985,7 +1002,7 @@ private class WasmExpressionBuilder private (
                 WasmImmediate.HeapType(Types.WasmHeapType.Simple.Any),
                 WasmImmediate.HeapType(Types.WasmHeapType.ObjectType)
               )
-              instrs += LOCAL_TEE(LocalIdx(receiverLocalForDispatch))
+              instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
               instrs += BR_ON_NON_NULL(labelDone)
               instrs += REF_NULL(HeapType(Types.WasmHeapType.Simple.Any))
@@ -1257,14 +1274,25 @@ private class WasmExpressionBuilder private (
     tree.tpe
   }
 
+  private def genReadStorage(storage: WasmFunctionContext.VarStorage): Unit = {
+    import WasmFunctionContext.VarStorage
+
+    storage match {
+      case VarStorage.Local(localIdx) =>
+        instrs += LOCAL_GET(localIdx)
+      case VarStorage.StructField(structLocalIdx, structTypeName, fieldIdx) =>
+        instrs += LOCAL_GET(structLocalIdx)
+        instrs += STRUCT_GET(TypeIdx(structTypeName), fieldIdx)
+    }
+  }
+
   private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
-    val name = WasmLocalName.fromIR(r.ident.name)
-    instrs += LOCAL_GET(LocalIdx(name))
+    genReadStorage(fctx.lookupLocal(r.ident.name))
     r.tpe
   }
 
   private def genThis(t: IRTrees.This): IRTypes.Type = {
-    instrs += LOCAL_GET(LocalIdx(fctx.receiver.name))
+    genReadStorage(fctx.receiverStorage)
 
     /* If the receiver is a Class/ModuleClass, its wasm type will be declared
      * as `(ref any)`, and therefore we must cast it down.
@@ -1289,11 +1317,10 @@ private class WasmExpressionBuilder private (
   }
 
   private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
-    val localIdx = fctx.addLocal(r.name.name, TypeTransformer.transformType(r.vtpe)(ctx))
-
-    genTree(r.rhs, r.vtpe)
-    instrs += LOCAL_SET(localIdx)
-
+    /* This is an isolated VarDef that is not in a Block.
+     * Its scope is empty by construction, and therefore it need not be stored.
+     */
+    genTree(r.rhs, IRTypes.NoType)
     IRTypes.NoType
   }
 
@@ -1355,9 +1382,10 @@ private class WasmExpressionBuilder private (
         }
         instrs += BR(doneLabel)
       } // end block $catch
-      val exceptionLocal = fctx.addLocal(t.errVar.name, Types.WasmAnyRef)
-      instrs += LOCAL_SET(exceptionLocal)
-      genTree(t.handler, t.tpe)
+      fctx.withNewLocal(t.errVar.name, Types.WasmAnyRef) { exceptionLocal =>
+        instrs += LOCAL_SET(exceptionLocal)
+        genTree(t.handler, t.tpe)
+      }
     } // end block $done
 
     t.tpe
@@ -1411,10 +1439,26 @@ private class WasmExpressionBuilder private (
   }
 
   private def genBlock(t: IRTrees.Block, expectedType: IRTypes.Type): IRTypes.Type = {
-    for (stat <- t.stats.init)
-      genTree(stat, IRTypes.NoType)
-    genTree(t.stats.last, expectedType)
+    genBlockStats(t.stats.init) {
+      genTree(t.stats.last, expectedType)
+    }
     expectedType
+  }
+
+  final def genBlockStats[A](stats: List[IRTrees.Tree])(inner: => A): A = {
+    stats match {
+      case IRTrees.VarDef(name, _, vtpe, _, rhs) :: rest =>
+        genTree(rhs, vtpe)
+        fctx.withNewLocal(name.name, TypeTransformer.transformType(vtpe)(ctx)) { local =>
+          instrs += LOCAL_SET(local)
+          genBlockStats(rest)(inner)
+        }
+      case stat :: rest =>
+        genTree(stat, IRTypes.NoType)
+        genBlockStats(rest)(inner)
+      case Nil =>
+        inner
+    }
   }
 
   private def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
@@ -1437,17 +1481,10 @@ private class WasmExpressionBuilder private (
   }
 
   private def genNew(n: IRTrees.New): IRTypes.Type = {
-    val localInstance = WasmLocal(
-      fctx.genSyntheticLocalName(),
-      TypeTransformer.transformType(n.tpe)(ctx),
-      isParameter = false
-    )
-    fctx.locals.define(localInstance)
+    val localInstance = fctx.addSyntheticLocal(TypeTransformer.transformType(n.tpe)(ctx))
 
-    // REF_NULL(HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(n.className)))),
-    // LOCAL_TEE(LocalIdx(localInstance.name))
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
-    instrs += LOCAL_TEE(LocalIdx(localInstance.name))
+    instrs += LOCAL_TEE(localInstance)
     genArgs(n.args, n.ctor.name)
     instrs += CALL(
       FuncIdx(
@@ -1458,7 +1495,7 @@ private class WasmExpressionBuilder private (
         )
       )
     )
-    instrs += LOCAL_GET(LocalIdx(localInstance.name))
+    instrs += LOCAL_GET(localInstance)
     n.tpe
   }
 
@@ -1469,13 +1506,11 @@ private class WasmExpressionBuilder private (
   ): IRTypes.Type = {
     // `primTyp` is `i32` for `char` (containing a `u16` value) or `i64` for `long`.
     val primTyp = TypeTransformer.transformType(primType)(ctx)
-    val primLocal = WasmLocal(fctx.genSyntheticLocalName(), primTyp, isParameter = false)
-    fctx.locals.define(primLocal)
+    val primLocal = fctx.addSyntheticLocal(primTyp)
 
     val boxClassType = IRTypes.ClassType(boxClassName)
     val boxTyp = TypeTransformer.transformType(boxClassType)(ctx)
-    val instanceLocal = WasmLocal(fctx.genSyntheticLocalName(), boxTyp, isParameter = false)
-    fctx.locals.define(instanceLocal)
+    val instanceLocal = fctx.addSyntheticLocal(boxTyp)
 
     /* The generated code is as follows. Before the codegen, the stack contains
      * a value of the primitive type. After, it contains the reference to box instance.
@@ -1494,15 +1529,15 @@ private class WasmExpressionBuilder private (
      * what the constructor would do anyway (so we're basically inlining it).
      */
 
-    instrs += LOCAL_SET(LocalIdx(primLocal.name))
+    instrs += LOCAL_SET(primLocal)
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(boxClassName)))
-    instrs += LOCAL_TEE(LocalIdx(instanceLocal.name))
-    instrs += LOCAL_GET(LocalIdx(primLocal.name))
+    instrs += LOCAL_TEE(instanceLocal)
+    instrs += LOCAL_GET(primLocal)
     instrs += STRUCT_SET(
       TypeIdx(WasmStructTypeName(boxClassName)),
       StructFieldIdx.uniqueRegularField
     )
-    instrs += LOCAL_GET(LocalIdx(instanceLocal.name))
+    instrs += LOCAL_GET(instanceLocal)
 
     boxClassType
   }
@@ -1617,18 +1652,44 @@ private class WasmExpressionBuilder private (
 
   private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
     val info = ctx.getClassInfo(tree.className)
-    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+
+    info.kind match {
+      case ClassKind.NativeJSClass =>
+        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+        }
+        genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+
+      case ClassKind.JSClass =>
+        instrs += CALL(FuncIdx(WasmFunctionName.loadJSClass(tree.className)))
+        IRTypes.AnyType
+
+      case _ =>
+        throw new AssertionError(
+          s"Invalid LoadJSConstructor for class ${tree.className.nameString} of kind ${info.kind}"
+        )
     }
-    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
   }
 
   private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
     val info = ctx.getClassInfo(tree.className)
-    val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-      throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+
+    info.kind match {
+      case ClassKind.NativeJSModuleClass =>
+        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
+          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
+        }
+        genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
+
+      case ClassKind.JSModuleClass =>
+        instrs += CALL(FuncIdx(WasmFunctionName.loadModule(tree.className)))
+        IRTypes.AnyType
+
+      case _ =>
+        throw new AssertionError(
+          s"Invalid LoadJSModule for class ${tree.className.nameString} of kind ${info.kind}"
+        )
     }
-    genLoadJSNativeLoadSpec(jsNativeLoadSpec)(tree.pos)
   }
 
   private def genSelectJSNativeMember(tree: IRTrees.SelectJSNativeMember): IRTypes.Type = {
@@ -1687,20 +1748,19 @@ private class WasmExpressionBuilder private (
         /* Here we need to implement the short-circuiting behavior, with a
          * condition based on the truthy value of the left-hand-side.
          */
-        val lhsLocal = fctx.genSyntheticLocalName()
-        fctx.locals.define(WasmLocal(lhsLocal, Types.WasmAnyRef, isParameter = false))
+        val lhsLocal = fctx.addSyntheticLocal(Types.WasmAnyRef)
         genTree(tree.lhs, IRTypes.AnyType)
-        instrs += LOCAL_TEE(LocalIdx(lhsLocal))
+        instrs += LOCAL_TEE(lhsLocal)
         instrs += CALL(FuncIdx(WasmFunctionName.jsIsTruthy))
         instrs += IF(BlockType.ValueType(Types.WasmAnyRef))
         if (tree.op == JSBinaryOp.||) {
-          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+          instrs += LOCAL_GET(lhsLocal)
           instrs += ELSE
           genTree(tree.rhs, IRTypes.AnyType)
         } else {
           genTree(tree.rhs, IRTypes.AnyType)
           instrs += ELSE
-          instrs += LOCAL_GET(LocalIdx(lhsLocal))
+          instrs += LOCAL_GET(lhsLocal)
         }
         instrs += END
 
@@ -1917,44 +1977,22 @@ private class WasmExpressionBuilder private (
     // Define the function where captures are reified as a `__captureData` argument.
     val closureFuncName = fctx.genInnerFuncName()
     locally {
-      val receiverParam =
+      val receiverTyp =
         if (!hasThis) None
-        else Some(WasmLocal(WasmLocalName.receiver, Types.WasmAnyRef, isParameter = true))
+        else Some(Types.WasmAnyRef)
 
-      val captureDataParam = WasmLocal(
-        WasmLocalName("__captureData"),
-        Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
-        isParameter = true
-      )
-
-      val paramLocals = (tree.params ::: tree.restParam.toList).map { param =>
-        val typ = TypeTransformer.transformType(param.ptpe)
-        WasmLocal(WasmLocalName.fromIR(param.name.name), typ, isParameter = true)
-      }
       val resultTyps = TypeTransformer.transformResultType(IRTypes.AnyType)
 
       implicit val fctx = WasmFunctionContext(
         enclosingClassName = None,
         closureFuncName,
-        receiverParam,
-        captureDataParam :: paramLocals,
+        Some(tree.captureParams),
+        receiverTyp,
+        tree.params ::: tree.restParam.toList,
         resultTyps
       )
 
-      val captureDataLocalIdx = fctx.paramIndices.head
-
-      // Extract the fields of captureData in individual locals
-      for ((captureParam, index) <- tree.captureParams.zipWithIndex) {
-        val local = fctx.addLocal(
-          captureParam.name.name,
-          TypeTransformer.transformType(captureParam.ptpe)
-        )
-        fctx.instrs += LOCAL_GET(captureDataLocalIdx)
-        fctx.instrs += STRUCT_GET(TypeIdx(dataStructType.name), StructFieldIdx(index))
-        fctx.instrs += LOCAL_SET(local)
-      }
-
-      // Now transform the body - use AnyType as result type to box potential primitives
+      // Transform the body - use AnyType as result type to box potential primitives
       WasmExpressionBuilder.generateIRBody(tree.body, IRTypes.AnyType)
 
       fctx.buildAndAddToContext()
@@ -2061,5 +2099,54 @@ private class WasmExpressionBuilder private (
     }
 
     tree.tpe
+  }
+
+  private def genCreateJSClass(tree: IRTrees.CreateJSClass): IRTypes.Type = {
+    val classInfo = ctx.getClassInfo(tree.className)
+    val jsClassCaptures = classInfo.jsClassCaptures.getOrElse {
+      throw new AssertionError(
+        s"Illegal CreateJSClass of top-level class ${tree.className.nameString}"
+      )
+    }
+
+    for ((captureValue, captureParam) <- tree.captureValues.zip(jsClassCaptures))
+      genTree(captureValue, captureParam.ptpe)
+
+    instrs += CALL(FuncIdx(WasmFunctionName.createJSClassOf(tree.className)))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
+    genTree(tree.qualifier, IRTypes.AnyType)
+    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(tree.field.name)))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSSuperSelect(tree: IRTrees.JSSuperSelect): IRTypes.Type = {
+    genTree(tree.superClass, IRTypes.AnyType)
+    genTree(tree.receiver, IRTypes.AnyType)
+    genTree(tree.item, IRTypes.AnyType)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSuperGet))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSSuperMethodCall(tree: IRTrees.JSSuperMethodCall): IRTypes.Type = {
+    genTree(tree.superClass, IRTypes.AnyType)
+    genTree(tree.receiver, IRTypes.AnyType)
+    genTree(tree.method, IRTypes.AnyType)
+    genJSArgsArray(tree.args)
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSuperCall))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSNewTarget(tree: IRTrees.JSNewTarget): IRTypes.Type = {
+    genReadStorage(fctx.newTargetStorage)
+
+    IRTypes.AnyType
   }
 }

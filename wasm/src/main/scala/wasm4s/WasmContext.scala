@@ -176,7 +176,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   }
 
   def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
-    closureDataTypes.getOrElse(
+    closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
         val fields: List[WasmStructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
@@ -209,6 +209,9 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
   override protected var nextItableIdx: Int = 0
+
+  private val _jsPrivateFieldNames: mutable.ListBuffer[IRNames.FieldName] =
+    new mutable.ListBuffer()
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
@@ -241,6 +244,9 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       nextItableIdx += 1
     }
   }
+
+  def addJSPrivateFieldName(fieldName: IRNames.FieldName): Unit =
+    _jsPrivateFieldNames += fieldName
 
   val exceptionTagName: WasmTagName = WasmTagName("exception")
 
@@ -284,22 +290,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   addHelperImport(
     WasmFunctionName.closure,
-    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThis,
-    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureRest,
-    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThisRest,
-    List(WasmRefType(WasmHeapType.Simple.Func), WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef),
     List(WasmRefType.any)
   )
 
@@ -361,6 +367,43 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     addHelperImport(name, List(WasmAnyRef, WasmAnyRef), List(resultType))
   }
 
+  addHelperImport(WasmFunctionName.newSymbol, Nil, List(WasmAnyRef))
+  addHelperImport(
+    WasmFunctionName.createJSClass,
+    List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
+    WasmFunctionName.installJSField,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.installJSMethod,
+    List(WasmAnyRef, WasmAnyRef, WasmInt32, WasmAnyRef, WasmRefType.func, WasmInt32),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.installJSProperty,
+    List(WasmAnyRef, WasmAnyRef, WasmInt32, WasmAnyRef, WasmFuncRef, WasmFuncRef),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.jsSuperGet,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(WasmAnyRef)
+  )
+  addHelperImport(
+    WasmFunctionName.jsSuperSet,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.jsSuperCall,
+    List(WasmAnyRef, WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(WasmAnyRef)
+  )
+
   def complete(
       moduleInitializers: List[ModuleInitializer.Initializer],
       classesWithStaticInit: List[IRNames.ClassName]
@@ -407,6 +450,15 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
         instrs += WasmInstr.ARRAY_SET(WasmImmediate.TypeIdx(WasmTypeName.WasmArrayTypeName.itables))
       }
+    }
+
+    // Initialize the JS private field symbols
+
+    for (fieldName <- _jsPrivateFieldNames) {
+      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.newSymbol))
+      instrs += WasmInstr.GLOBAL_SET(
+        WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(fieldName))
+      )
     }
 
     // Initialize the constant string globals
@@ -513,6 +565,7 @@ object WasmContext {
   final class WasmClassInfo(
       val name: IRNames.ClassName,
       val kind: ClassKind,
+      val jsClassCaptures: Option[List[IRTrees.ParamDef]],
       private var _methods: List[WasmFunctionInfo],
       val allFieldDefs: List[IRTrees.FieldDef],
       val superClass: Option[IRNames.ClassName],
