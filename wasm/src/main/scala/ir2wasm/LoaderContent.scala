@@ -1,3 +1,14 @@
+package wasm.ir2wasm
+
+import java.nio.charset.StandardCharsets
+
+/** Contents of the `__loader.js` file that we emit in every output. */
+object LoaderContent {
+  val bytesContent: Array[Byte] =
+    stringContent.getBytes(StandardCharsets.UTF_8)
+
+  private def stringContent: String = {
+    """
 // Specified by java.lang.String.hashCode()
 function stringHashCode(s) {
   var res = 0;
@@ -167,17 +178,21 @@ const scalaJSHelpers = {
   jsExponent: (a, b) => a ** b,
 }
 
-export async function load(wasmFileName) {
+export async function load(wasmFileURL) {
   const importsObj = {
     "__scalaJSHelpers": scalaJSHelpers,
   };
+  const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;
-  if (typeof process !== "undefined") {
+  if (resolvedURL.protocol === 'file:') {
+    const wasmPath = import("node:url").then((url) => url.fileURLToPath(resolvedURL))
     wasmModulePromise = import("node:fs").then((fs) => {
-      return WebAssembly.instantiate(fs.readFileSync(wasmFileName), importsObj);
+      return wasmPath.then((path) => {
+        return WebAssembly.instantiate(fs.readFileSync(path), importsObj);
+      });
     });
   } else {
-    wasmModulePromise = WebAssembly.instantiateStreaming(fetch(wasmFileName), importsObj);
+    wasmModulePromise = WebAssembly.instantiateStreaming(fetch(resolvedURL), importsObj);
   }
   const wasmModule = await wasmModulePromise;
   const exports = wasmModule.instance.exports;
@@ -197,4 +212,7 @@ export async function load(wasmFileName) {
   }
   Object.freeze(userExports);
   return userExports;
+}
+    """
+  }
 }

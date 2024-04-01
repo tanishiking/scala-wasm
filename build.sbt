@@ -1,7 +1,11 @@
 import org.scalajs.linker.interface.ESVersion
 import org.scalajs.linker.interface.OutputPatterns
 
-val scalaV = "2.13.12"
+val scalaV = "2.12.19"
+
+// Include wasm.jvm on the classpath used to dynamically load Scala.js linkers
+Global / scalaJSLinkerImpl / fullClasspath :=
+  (wasm.jvm / Compile / fullClasspath).value
 
 inThisBuild(Def.settings(
   scalacOptions ++= Seq(
@@ -31,13 +35,13 @@ lazy val cli = project
     ),
   )
   .dependsOn(
-    wasm,
+    wasm.js,
     // tests // for TestSuites constant
   )
 
-lazy val wasm = project
+lazy val wasm = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
   .in(file("wasm"))
-  .enablePlugins(ScalaJSPlugin)
   .settings(
     name := "wasm",
     version := "0.1.0-SNAPSHOT",
@@ -45,31 +49,14 @@ lazy val wasm = project
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-linker" % "1.16.0"
     ),
-    scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.CommonJSModule),
-    }
   )
-//   .enablePlugins(ScalaJSPlugin)
 
 lazy val sample = project
   .in(file("sample"))
-  .enablePlugins(ScalaJSPlugin)
+  .enablePlugins(WasmLinkerPlugin)
   .settings(
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,
-    Compile / jsEnv := {
-      import org.scalajs.jsenv.nodejs.NodeJSEnv
-      val cp = Attributed
-        .data((Compile / fullClasspath).value)
-        .mkString(";")
-      val env = Map(
-        "SCALAJS_CLASSPATH" -> cp,
-        "SCALAJS_MODE" -> "sample",
-      )
-      new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
-    },
-    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
 
 lazy val testSuite = project
@@ -102,7 +89,7 @@ lazy val tests = project
       "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1" % Test
     ),
     scalaJSLinkerConfig ~= {
-      // Generate CoreTests as an ES module so that it can import the loader.mjs
+      // Generate CoreTests as an ES module so that it can import the main.mjs files
       // Give it an `.mjs` extension so that Node.js actually interprets it as an ES module
       _.withModuleKind(ModuleKind.ESModule)
         .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs")),

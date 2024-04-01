@@ -15,6 +15,10 @@ object Main {
     true
   }
 
+  def main(args: Array[String]): Unit = {
+    println("hello world")
+  }
+
   private def println(x: Any): Unit =
     js.Dynamic.global.console.log("" + x)
 }

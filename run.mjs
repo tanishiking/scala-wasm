@@ -1,7 +1,6 @@
-import { load } from "./loader.mjs";
+import { test, field } from "./sample/target/scala-2.12/sample-fastopt/main.mjs";
 
-const moduleExports = await load("./target/output.wasm");
-console.log(moduleExports.field);
-const o = moduleExports.test(7);
+console.log(field);
+const o = test(7);
 console.log(o);
-console.log(moduleExports.field);
+console.log(field);
