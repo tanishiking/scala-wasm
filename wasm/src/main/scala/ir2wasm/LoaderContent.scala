@@ -214,9 +214,9 @@ const scalaJSHelpers = {
   createJSClass: (data, superClass, preSuperStats, superArgs, postSuperStats) => {
     return class extends superClass {
       constructor(...args) {
-        var preSuperEnv = preSuperStats(data, ...args);
-        super(...superArgs(data, preSuperEnv, ...args));
-        postSuperStats(data, preSuperEnv, this, ...args);
+        var preSuperEnv = preSuperStats(data, new.target, ...args);
+        super(...superArgs(data, preSuperEnv, new.target, ...args));
+        postSuperStats(data, preSuperEnv, new.target, this, ...args);
       }
     };
   },

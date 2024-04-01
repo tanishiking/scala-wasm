@@ -173,9 +173,10 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.JSPrivateSelect   => genJSPrivateSelect(t)
       case t: IRTrees.JSSuperSelect     => genJSSuperSelect(t)
       case t: IRTrees.JSSuperMethodCall => genJSSuperMethodCall(t)
+      case t: IRTrees.JSNewTarget       => genJSNewTarget(t)
 
-      case _: IRTrees.JSNewTarget | _: IRTrees.JSImportMeta | _: IRTrees.JSImportCall |
-          _: IRTrees.ForIn | _: IRTrees.ApplyDynamicImport =>
+      case _: IRTrees.JSImportMeta | _: IRTrees.JSImportCall | _: IRTrees.ForIn |
+          _: IRTrees.ApplyDynamicImport =>
         throw new NotImplementedError(tree.toString())
 
       case _: IRTrees.RecordSelect | _: IRTrees.RecordValue | _: IRTrees.Transient |
@@ -2139,6 +2140,12 @@ private class WasmExpressionBuilder private (
     genTree(tree.method, IRTypes.AnyType)
     genJSArgsArray(tree.args)
     instrs += CALL(FuncIdx(WasmFunctionName.jsSuperCall))
+
+    IRTypes.AnyType
+  }
+
+  private def genJSNewTarget(tree: IRTrees.JSNewTarget): IRTypes.Type = {
+    genReadStorage(fctx.newTargetStorage)
 
     IRTypes.AnyType
   }

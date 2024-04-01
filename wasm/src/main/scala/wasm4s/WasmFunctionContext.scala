@@ -18,6 +18,7 @@ class WasmFunctionContext private (
     val enclosingClassName: Option[IRNames.ClassName],
     val functionName: WasmFunctionName,
     _params: List[WasmLocal],
+    _newTargetStorage: Option[WasmFunctionContext.VarStorage.Local],
     _receiverStorage: Option[WasmFunctionContext.VarStorage.Local],
     _paramsEnv: WasmFunctionContext.Env,
     _resultTypes: List[WasmType]
@@ -32,6 +33,9 @@ class WasmFunctionContext private (
   private val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
 
   _params.foreach(locals.define(_))
+
+  def newTargetStorage: VarStorage.Local =
+    _newTargetStorage.getOrElse(throw new Error("Cannot access new.target in this context."))
 
   def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
@@ -256,6 +260,7 @@ object WasmFunctionContext {
       name: WasmFunctionName,
       captureParamDefs: Option[List[IRTrees.ParamDef]],
       preSuperVarDefs: Option[List[IRTrees.VarDef]],
+      hasNewTarget: Boolean,
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
@@ -302,10 +307,14 @@ object WasmFunctionContext {
       )
     }
 
+    val newTarget =
+      if (!hasNewTarget) None
+      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmAnyRef, isParameter = true))
+    val newTargetStorage = newTarget.map(local => VarStorage.Local(LocalIdx(local.name)))
+
     val receiver = receiverTyp.map { typ =>
       WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
     }
-    val receiverList = receiver.toList
     val receiverStorage = receiver.map(local => VarStorage.Local(LocalIdx(local.name)))
 
     val normalParams = paramDefsToWasmParams(paramDefs)
@@ -313,7 +322,8 @@ object WasmFunctionContext {
       paramDef.name.name -> VarStorage.Local(LocalIdx(param.name))
     }
 
-    val allParams = captureDataParamList ::: preSuperEnvParamList ::: receiverList ::: normalParams
+    val allParams =
+      captureDataParamList ::: preSuperEnvParamList ::: newTarget.toList ::: receiver.toList ::: normalParams
     val fullEnv = captureParamsEnv ++ preSuperEnvEnv ++ normalParamsEnv
 
     new WasmFunctionContext(
@@ -321,6 +331,7 @@ object WasmFunctionContext {
       enclosingClassName,
       name,
       allParams,
+      newTargetStorage,
       receiverStorage,
       fullEnv,
       resultTypes
@@ -340,6 +351,7 @@ object WasmFunctionContext {
       name,
       captureParamDefs,
       None,
+      hasNewTarget = false,
       receiverTyp,
       paramDefs,
       resultTypes
@@ -387,7 +399,7 @@ object WasmFunctionContext {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
-    new WasmFunctionContext(ctx, None, name, paramLocals, None, Map.empty, resultTypes)
+    new WasmFunctionContext(ctx, None, name, paramLocals, None, None, Map.empty, resultTypes)
   }
 
   def paramDefsToWasmParams(

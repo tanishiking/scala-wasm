@@ -489,7 +489,9 @@ class WasmBuilder {
         Some(clazz.className),
         WasmFunctionName.preSuperStats(clazz.className),
         Some(jsClassCaptures),
-        None,
+        preSuperVarDefs = None,
+        hasNewTarget = true,
+        receiverTyp = None,
         ctor.args,
         List(preSuperEnvTyp)
       )
@@ -513,7 +515,8 @@ class WasmBuilder {
         WasmFunctionName.superArgs(clazz.className),
         Some(jsClassCaptures),
         Some(preSuperDecls),
-        None,
+        hasNewTarget = true,
+        receiverTyp = None,
         ctor.args,
         List(WasmAnyRef) // a js.Array
       )
@@ -533,7 +536,8 @@ class WasmBuilder {
         WasmFunctionName.postSuperStats(clazz.className),
         Some(jsClassCaptures),
         Some(preSuperDecls),
-        Some(WasmAnyRef),
+        hasNewTarget = true,
+        receiverTyp = Some(WasmAnyRef),
         ctor.args,
         List(WasmAnyRef)
       )

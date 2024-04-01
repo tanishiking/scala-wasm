@@ -51,6 +51,8 @@ object Names {
     def fromIR(name: IRNames.LocalName) = new WasmLocalName(name.nameString)
     def fromStr(str: String) = new WasmLocalName(str)
     def synthetic(id: Int) = new WasmLocalName(s"local___$id")
+
+    val newTarget = new WasmLocalName("new.target")
     val receiver = new WasmLocalName("___<this>")
   }
 

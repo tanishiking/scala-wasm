@@ -10,6 +10,7 @@ object NonNativeJSClassTest {
     testClassCaptures()
     testInheritanceAndSuper()
     testObject()
+    testNewTarget()
   }
 
   def testBasic(): Unit = {
@@ -84,6 +85,14 @@ object NonNativeJSClassTest {
     assertSame(obj1, obj2)
   }
 
+  def testNewTarget(): Unit = {
+    val parent = new NewTargetParent
+    assertSame(js.constructorOf[NewTargetParent], parent.myNewTarget)
+
+    val child = new NewTargetChild
+    assertSame(js.constructorOf[NewTargetChild], child.myNewTarget)
+  }
+
   class MyClass(private var s: String) extends js.Object {
     var i: Int = _
 
@@ -105,4 +114,10 @@ object NonNativeJSClassTest {
   object MyObject extends js.Object {
     def foo(x: Int): Int = x + 1
   }
+
+  class NewTargetParent extends js.Object {
+    val myNewTarget = js.`new`.target
+  }
+
+  class NewTargetChild extends NewTargetParent
 }
