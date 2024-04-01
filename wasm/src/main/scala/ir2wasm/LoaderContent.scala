@@ -262,9 +262,10 @@ const scalaJSHelpers = {
   },
 }
 
-export async function load(wasmFileURL) {
+export async function load(wasmFileURL, importedModules) {
   const importsObj = {
     "__scalaJSHelpers": scalaJSHelpers,
+    "__scalaJSImports": importedModules,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;

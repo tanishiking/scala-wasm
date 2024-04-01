@@ -122,6 +122,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 
   def addFunction(fun: WasmFunction): Unit
   protected def addGlobal(g: WasmGlobal): Unit
+  def getImportedModuleGlobal(moduleName: String): WasmGlobalName
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
 
   val cloneFunctionTypeName =
@@ -209,6 +210,9 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
 
+  private val _importedModules: mutable.LinkedHashSet[String] =
+    new mutable.LinkedHashSet()
+
   override protected var nextItableIdx: Int = 0
 
   private val _jsPrivateFieldNames: mutable.ListBuffer[IRNames.FieldName] =
@@ -235,6 +239,23 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     module.addGlobal(g)
     globals.define(g)
   }
+
+  def getImportedModuleGlobal(moduleName: String): WasmGlobalName = {
+    val name = WasmGlobalName.WasmImportedModuleName(moduleName)
+    if (_importedModules.add(moduleName)) {
+      module.addImport(
+        WasmImport(
+          "__scalaJSImports",
+          moduleName,
+          WasmImportDesc.Global(name, WasmAnyRef, isMutable = false)
+        )
+      )
+    }
+    name
+  }
+
+  def allImportedModules: List[String] = _importedModules.toList
+
   def addFuncDeclaration(name: WasmFunctionName): Unit =
     _funcDeclarations += name
 

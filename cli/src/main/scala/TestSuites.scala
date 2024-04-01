@@ -25,6 +25,7 @@ object TestSuites {
     TestSuite("testsuite.core.HijackedClassesDispatchTest"),
     TestSuite("testsuite.core.HijackedClassesMonoTest"),
     TestSuite("testsuite.core.HijackedClassesUpcastTest"),
+    TestSuite("testsuite.core.ImportTest"),
     TestSuite("testsuite.core.NonNativeJSClassTest"),
     TestSuite("testsuite.core.StaticFieldsTest"),
     TestSuite("testsuite.core.StaticMethodTest"),

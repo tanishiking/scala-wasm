@@ -1748,9 +1748,11 @@ private class WasmExpressionBuilder private (
         genFollowPath(path)
         IRTypes.AnyType
       case Import(module, path) =>
-        ???
+        instrs += GLOBAL_GET(GlobalIdx(ctx.getImportedModuleGlobal(module)))
+        genFollowPath(path)
+        IRTypes.AnyType
       case ImportWithGlobalFallback(importSpec, globalSpec) =>
-        genLoadJSNativeLoadSpec(globalSpec)
+        genLoadJSNativeLoadSpec(importSpec)
     }
   }
 
