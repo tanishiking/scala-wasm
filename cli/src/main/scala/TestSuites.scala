@@ -32,6 +32,7 @@ object TestSuites {
     TestSuite("testsuite.core.ThrowAndTryTest"),
     TestSuite("testsuite.core.ThrowablesTest"),
     TestSuite("testsuite.core.ToStringTest"),
+    TestSuite("testsuite.core.UnitPatMatTest"),
     TestSuite("testsuite.core.MatchTest"),
     TestSuite("testsuite.core.WrapUnwrapThrowableTest")
   )

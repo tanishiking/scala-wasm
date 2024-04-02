@@ -1479,10 +1479,10 @@ private class WasmExpressionBuilder private (
 
   private def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
     val label = fctx.registerLabel(t.label.name, expectedType)
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    val ty = TypeTransformer.transformResultType(expectedType)(ctx)
 
     // Manual BLOCK here because we have a specific `label`
-    instrs += BLOCK(BlockType.ValueType(ty), Some(label))
+    instrs += BLOCK(fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)), Some(label))
     genTree(t.body, expectedType)
     instrs += END
     expectedType
