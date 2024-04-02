@@ -6,6 +6,7 @@ object TestSuites {
     TestSuite("testsuite.core.Simple"),
     TestSuite("testsuite.core.Add"),
     TestSuite("testsuite.core.ArrayTest"),
+    TestSuite("testsuite.core.ArrayReflectTest"),
     TestSuite("testsuite.core.BasicListTest"),
     TestSuite("testsuite.core.CloneTest"),
     TestSuite("testsuite.core.ControlStructuresTest"),

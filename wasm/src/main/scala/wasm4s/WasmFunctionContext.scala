@@ -197,6 +197,16 @@ class WasmFunctionContext private (
   def loop[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
     loop(WasmFunctionSignature(Nil, resultTypes))(body)
 
+  def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
+    loop() { loopLabel =>
+      cond
+      ifThen() {
+        body
+        instrs += BR(loopLabel)
+      }
+    }
+  }
+
   def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
     instrs += TRY_TABLE(blockType, WasmImmediate.CatchClauseVector(clauses))
     val result = body

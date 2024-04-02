@@ -302,7 +302,9 @@ object Names {
     val getClassOf = helper("getClassOf")
     val arrayTypeData = helper("arrayTypeData")
     val getComponentType = helper("getComponentType")
+    val newArrayOfThisClass = helper("newArrayOfThisClass")
     val anyGetClass = helper("anyGetClass")
+    val newArrayObject = helper("newArrayObject")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)

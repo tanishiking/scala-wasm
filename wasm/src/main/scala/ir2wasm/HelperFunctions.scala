@@ -24,7 +24,9 @@ object HelperFunctions {
     genGetClassOf()
     genArrayTypeData()
     genGetComponentType()
+    genNewArrayOfThisClass()
     genAnyGetClass()
+    genNewArrayObject()
   }
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
@@ -310,7 +312,13 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // TODO: "isInstance", "isAssignableFrom", "checkCast", "newArrayOfThisClass"
+    // "newArrayOfThisClass": closure(newArrayOfThisClass, typeData)
+    instrs += ctx.getConstantStringInstr("newArrayOfThisClass")
+    instrs += ctx.refFuncWithDeclaration(WasmFunctionName.newArrayOfThisClass)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += CALL(FuncIdx(WasmFunctionName.closure))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    // TODO: "isInstance", "isAssignableFrom", "checkCast"
 
     // Call java.lang.Class::<init>(dataObject)
     instrs += CALL(
@@ -497,6 +505,83 @@ object HelperFunctions {
     fctx.buildAndAddToContext()
   }
 
+  /** `newArrayOfThisClass: (ref typeData), anyref -> (ref jlObject)`.
+    *
+    * This is the underlying func for the `newArrayOfThisClass()` closure inside class data objects.
+    */
+  private def genNewArrayOfThisClass()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName.WasmStructTypeName
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val i32ArrayType = WasmRefType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.i32Array))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.newArrayOfThisClass,
+      List("typeData" -> typeDataType, "lengths" -> WasmAnyRef),
+      List(WasmRefType(WasmHeapType.ObjectType))
+    )
+
+    val List(typeDataParam, lengthsParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val lengthsLenLocal = fctx.addLocal("lengthsLenLocal", WasmInt32)
+    val lengthsValuesLocal = fctx.addLocal("lengthsValues", i32ArrayType)
+    val iLocal = fctx.addLocal("i", WasmInt32)
+
+    // lengthsLen := lengths.length // as a JS field access
+    instrs += LOCAL_GET(lengthsParam)
+    instrs += ctx.getConstantStringInstr("length")
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+    instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.IntRef)))
+    instrs += LOCAL_TEE(lengthsLenLocal)
+
+    // lengthsValues := array.new<i32Array> lengthsLen
+    instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmTypeName.WasmArrayTypeName.i32Array))
+    instrs += LOCAL_SET(lengthsValuesLocal)
+
+    // i := 0
+    instrs += I32_CONST(I32(0))
+    instrs += LOCAL_SET(iLocal)
+
+    // while (i != lengthsLen)
+    fctx.whileLoop() {
+      instrs += LOCAL_GET(iLocal)
+      instrs += LOCAL_GET(lengthsLenLocal)
+      instrs += I32_NE
+    } {
+      // lengthsValue[i] := lengths[i] (where the rhs is a JS field access)
+
+      instrs += LOCAL_GET(lengthsValuesLocal)
+      instrs += LOCAL_GET(iLocal)
+
+      instrs += LOCAL_GET(lengthsParam)
+      instrs += LOCAL_GET(iLocal)
+      instrs += REF_I31
+      instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+      instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.IntRef)))
+
+      instrs += ARRAY_SET(TypeIdx(WasmTypeName.WasmArrayTypeName.i32Array))
+
+      // i += 1
+      instrs += LOCAL_GET(iLocal)
+      instrs += I32_CONST(I32(1))
+      instrs += I32_ADD
+      instrs += LOCAL_SET(iLocal)
+    }
+
+    // return newArrayObject(arrayTypeData(typeData, lengthsLen), lengthsValues, 0)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += LOCAL_GET(lengthsLenLocal)
+    instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+    instrs += LOCAL_GET(lengthsValuesLocal)
+    instrs += I32_CONST(I32(0))
+    instrs += CALL(FuncIdx(WasmFunctionName.newArrayObject))
+
+    fctx.buildAndAddToContext()
+  }
+
   /** `anyGetClass: (ref any) -> (ref null jlClass)`.
     *
     * This is the implementation of `value.getClass()` when `value` can be an instance of a hijacked
@@ -645,6 +730,193 @@ object HelperFunctions {
       }
 
       instrs += CALL(FuncIdx(WasmFunctionName.getClassOf))
+    }
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `newArrayObject`: `(ref typeData), (ref array i32), i32 -> (ref jl.Object)`.
+    *
+    * The arguments are `arrayTypeData`, `lengths` and `lengthIndex`.
+    *
+    * This recursive function creates a multi-dimensional array. The resulting array has type data
+    * `arrayTypeData` and length `lengths(lengthIndex)`. If `lengthIndex < `lengths.length - 1`, its
+    * elements are recursively initialized with `newArrayObject(arrayTypeData.componentType,
+    * lengths, lengthIndex - 1)`.
+    */
+  def genNewArrayObject()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName._
+    import WasmFieldName.typeData._
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val i32ArrayType = WasmRefType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.i32Array))
+    val objectVTableType = WasmRefType(WasmHeapType.Type(WasmVTableTypeName.ObjectVTable))
+    val arrayTypeDataType = objectVTableType
+    val itablesType = WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name))
+    val nonNullObjectType = WasmRefType(WasmHeapType.ObjectType)
+    val anyArrayType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.newArrayObject,
+      List(
+        "arrayTypeData" -> arrayTypeDataType,
+        "lengths" -> i32ArrayType,
+        "lengthIndex" -> WasmInt32
+      ),
+      List(nonNullObjectType)
+    )
+
+    val List(arrayTypeDataParam, lengthsParam, lengthIndexParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val lenLocal = fctx.addLocal("len", WasmInt32)
+    val underlyingLocal = fctx.addLocal("underlying", anyArrayType)
+    val subLengthIndexLocal = fctx.addLocal("subLengthIndex", WasmInt32)
+    val arrayComponentTypeDataLocal = fctx.addLocal("arrayComponentTypeData", arrayTypeDataType)
+    val iLocal = fctx.addLocal("i", WasmInt32)
+
+    /* High-level pseudo code of what this function does:
+     *
+     * def newArrayObject(arrayTypeData, lengths, lengthIndex) {
+     *   // create an array of the right primitive type
+     *   val len = lengths(lengthIndex)
+     *   switch (arrayTypeData.componentType.kind) {
+     *     // for primitives, return without recursion
+     *     case KindBoolean => new Array[Boolean](len)
+     *     ...
+     *     case KindDouble => new Array[Double](len)
+     *
+     *     // for reference array types, maybe recursively initialize
+     *     case _ =>
+     *       val result = new Array[Object](len) // with arrayTypeData as vtable
+     *       val subLengthIndex = lengthIndex + 1
+     *       if (subLengthIndex != lengths.length) {
+     *         val arrayComponentTypeData = arrayTypeData.componentType
+     *         for (i <- 0 until len)
+     *           result(i) = newArrayObject(arrayComponentTypeData, lengths, subLengthIndex)
+     *       }
+     *       result
+     *   }
+     * }
+     */
+
+    val primRefsWithArrayTypes = List(
+      IRTypes.BooleanRef -> KindBoolean,
+      IRTypes.CharRef -> KindChar,
+      IRTypes.ByteRef -> KindByte,
+      IRTypes.ShortRef -> KindShort,
+      IRTypes.IntRef -> KindInt,
+      IRTypes.LongRef -> KindLong,
+      IRTypes.FloatRef -> KindFloat,
+      IRTypes.DoubleRef -> KindDouble
+    )
+
+    // Load the vtable and itable or the resulting array on the stack
+    instrs += LOCAL_GET(arrayTypeDataParam) // vtable
+    // TODO: this should not be null because of Serializable and Cloneable
+    instrs += REF_NULL(HeapType(Types.WasmHeapType.Type(WasmArrayType.itables.name))) // itable
+
+    // Load the first length
+    instrs += LOCAL_GET(lengthsParam)
+    instrs += LOCAL_GET(lengthIndexParam)
+    instrs += ARRAY_GET(TypeIdx(Names.WasmTypeName.WasmArrayTypeName.i32Array))
+
+    // componentTypeData := ref_as_non_null(arrayTypeData.componentType)
+    // switch (componentTypeData.kind)
+    val switchClauseSig = WasmFunctionSignature(
+      List(arrayTypeDataType, itablesType, WasmInt32),
+      List(nonNullObjectType)
+    )
+    fctx.switch(switchClauseSig) { () =>
+      // scrutinee
+      instrs += LOCAL_GET(arrayTypeDataParam)
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.typeData),
+        WasmFieldName.typeData.componentTypeIdx
+      )
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.typeData),
+        WasmFieldName.typeData.kindIdx
+      )
+    }(
+      // For all the primitive types, by construction, this is the bottom dimension
+      // case KindPrim => array.new_default underlyingPrimArray; struct.new PrimArray
+      primRefsWithArrayTypes.map { case (primRef, kind) =>
+        List(kind) -> { () =>
+          val arrayTypeRef = IRTypes.ArrayTypeRef(primRef, 1)
+          instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
+          instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+          () // required for correct type inference
+        }
+      }: _*
+    ) { () =>
+      // default -- all non-primitive array types
+
+      // len := <top-of-stack> (which is the first length)
+      instrs += LOCAL_TEE(lenLocal)
+
+      // underlying := array.new_default anyArray
+      val arrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.ObjectClass), 1)
+      instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
+      instrs += LOCAL_SET(underlyingLocal)
+
+      // subLengthIndex := lengthIndex + 1
+      instrs += LOCAL_GET(lengthIndexParam)
+      instrs += I32_CONST(I32(1))
+      instrs += I32_ADD
+      instrs += LOCAL_TEE(subLengthIndexLocal)
+
+      // if subLengthIndex != lengths.length
+      instrs += LOCAL_GET(lengthsParam)
+      instrs += ARRAY_LEN
+      instrs += I32_NE
+      fctx.ifThen() {
+        // then, recursively initialize all the elements
+
+        // arrayComponentTypeData := ref_cast<arrayTypeDataType> arrayTypeData.componentTypeData
+        instrs += LOCAL_GET(arrayTypeDataParam)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.componentTypeIdx
+        )
+        instrs += REF_CAST(HeapType(arrayTypeDataType.heapType))
+        instrs += LOCAL_SET(arrayComponentTypeDataLocal)
+
+        // i := 0
+        instrs += I32_CONST(I32(0))
+        instrs += LOCAL_SET(iLocal)
+
+        // while (i != len)
+        fctx.whileLoop() {
+          instrs += LOCAL_GET(iLocal)
+          instrs += LOCAL_GET(lenLocal)
+          instrs += I32_NE
+        } {
+          // underlying[i] := newArrayObject(arrayComponentType, lengths, subLengthIndex)
+
+          instrs += LOCAL_GET(underlyingLocal)
+          instrs += LOCAL_GET(iLocal)
+
+          instrs += LOCAL_GET(arrayComponentTypeDataLocal)
+          instrs += LOCAL_GET(lengthsParam)
+          instrs += LOCAL_GET(subLengthIndexLocal)
+          instrs += CALL(FuncIdx(WasmFunctionName.newArrayObject))
+
+          instrs += ARRAY_SET(TypeIdx(WasmArrayTypeName.anyArray))
+
+          // i += 1
+          instrs += LOCAL_GET(iLocal)
+          instrs += I32_CONST(I32(1))
+          instrs += I32_ADD
+          instrs += LOCAL_SET(iLocal)
+        }
+      }
+
+      // load underlying; struct.new ObjectArray
+      instrs += LOCAL_GET(underlyingLocal)
+      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
     }
 
     fctx.buildAndAddToContext()
