@@ -1391,12 +1391,18 @@ private class WasmExpressionBuilder private (
 
     fctx.block(resultType) { doneLabel =>
       fctx.block(Types.WasmAnyRef) { catchLabel =>
-        fctx.tryTable(resultType)(
+        /* We used to have `resultType` as result of the try_table, wich the
+         * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
+         * V8 cannot handle try_table with a result type that is `(ref ...)`.
+         * The current encoding with `anyref` as result type (to match the
+         * enclosing block) and the `br` *inside* the `try_table` works.
+         */
+        fctx.tryTable(Types.WasmAnyRef)(
           List(CatchClause.Catch(TagIdx(ctx.exceptionTagName), catchLabel))
         ) {
           genTree(t.block, t.tpe)
+          instrs += BR(doneLabel)
         }
-        instrs += BR(doneLabel)
       } // end block $catch
       fctx.withNewLocal(t.errVar.name, Types.WasmAnyRef) { exceptionLocal =>
         instrs += LOCAL_SET(exceptionLocal)
