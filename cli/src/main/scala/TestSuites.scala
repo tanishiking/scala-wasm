@@ -18,6 +18,7 @@ object TestSuites {
     TestSuite("testsuite.core.FieldsTest"),
     TestSuite("testsuite.core.FloatingPointRemTest"),
     TestSuite("testsuite.core.GetClassTest"),
+    TestSuite("testsuite.core.JLObjectInstanceTest"),
     TestSuite("testsuite.core.JSForInTest"),
     TestSuite("testsuite.core.JSImportCallTest"),
     TestSuite("testsuite.core.JSImportMetaTest"),
