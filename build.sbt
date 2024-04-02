@@ -1,3 +1,5 @@
+import org.scalajs.jsenv.nodejs.NodeJSEnv
+
 import org.scalajs.linker.interface.ESVersion
 import org.scalajs.linker.interface.OutputPatterns
 
@@ -17,6 +19,12 @@ inThisBuild(Def.settings(
   ),
   scalaJSLinkerConfig ~= {
     _.withESFeatures(_.withESVersion(ESVersion.ES2016))
+  },
+  jsEnv := {
+    // Enable support for exnref and try_table
+    new NodeJSEnv(
+      NodeJSEnv.Config().withArgs(List("--experimental-wasm-exnref"))
+    )
   },
 ))
 
@@ -66,7 +74,6 @@ lazy val testSuite = project
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,
     Compile / jsEnv := {
-      import org.scalajs.jsenv.nodejs.NodeJSEnv
       val cp = Attributed
         .data((Compile / fullClasspath).value)
         .mkString(";")
@@ -74,7 +81,11 @@ lazy val testSuite = project
         "SCALAJS_CLASSPATH" -> cp,
         "SCALAJS_MODE" -> "testsuite",
       )
-      new NodeJSEnv(NodeJSEnv.Config().withEnv(env).withArgs(List("--enable-source-maps")))
+      new NodeJSEnv(
+        NodeJSEnv.Config()
+          .withEnv(env)
+          .withArgs(List("--enable-source-maps", "--experimental-wasm-exnref"))
+      )
     },
     Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
