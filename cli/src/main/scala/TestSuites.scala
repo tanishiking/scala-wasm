@@ -29,6 +29,7 @@ object TestSuites {
     TestSuite("testsuite.core.NonNativeJSClassTest"),
     TestSuite("testsuite.core.StaticFieldsTest"),
     TestSuite("testsuite.core.StaticMethodTest"),
+    TestSuite("testsuite.core.ThrowAndTryTest"),
     TestSuite("testsuite.core.ThrowablesTest"),
     TestSuite("testsuite.core.ToStringTest"),
     TestSuite("testsuite.core.MatchTest"),
