@@ -41,7 +41,10 @@ It contains the WebAsembly Text Format representation of `main.wasm`, for debugg
 You can also use the `run.mjs` script to play with `@JSExportTopLevel` exports.
 
 - Run from the command line with `node run.mjs`.
+- Run from the command line with `DENO_V8_FLAGS=--experimental-wasm-exnref deno run --allow-read run.mjs`.
 - Run from the browser by starting an HTTP server (e.g., `python -m http.server`) and navigate to `testrun.html`.
+
+If you encounter the `Invalid opcode 0x1f` error with Node.js, try using Deno or running the code in a browser instead.
 
 ### Test suite
 
