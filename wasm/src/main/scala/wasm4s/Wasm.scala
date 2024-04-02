@@ -23,6 +23,8 @@ sealed abstract class WasmImportDesc
 
 object WasmImportDesc {
   final case class Func(id: WasmFunctionName, typ: WasmFunctionType) extends WasmImportDesc
+  final case class Global(id: WasmGlobalName, typ: WasmType, isMutable: Boolean)
+      extends WasmImportDesc
   final case class Tag(id: WasmTagName, typ: WasmFunctionType) extends WasmImportDesc
 }
 

@@ -102,7 +102,8 @@ final class WebAssemblyLinkerBackend(
     val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
     val binaryOutput = new converters.WasmBinaryWriter(wasmModule).write()
     val loaderOutput = LoaderContent.bytesContent
-    val jsFileOutput = buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName)
+    val jsFileOutput =
+      buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName, context.allImportedModules)
     val jsFileOutputBytes = jsFileOutput.getBytes(StandardCharsets.UTF_8)
 
     val filesToProduce = Set(
@@ -133,8 +134,19 @@ final class WebAssemblyLinkerBackend(
   private def buildJSFileOutput(
       module: ModuleSet.Module,
       loaderJSFileName: String,
-      wasmFileName: String
+      wasmFileName: String,
+      importedModules: List[String]
   ): String = {
+    val (moduleImports, importedModulesItems) = (for {
+      (moduleName, idx) <- importedModules.zipWithIndex
+    } yield {
+      val identName = s"imported$idx"
+      val escapedModuleName = "\"" + moduleName + "\""
+      val moduleImport = s"import * as $identName from $escapedModuleName"
+      val item = s"  $escapedModuleName: $identName,"
+      (moduleImport, item)
+    }).unzip
+
     /* TODO This is not correct for exported *vars*, since they won't receive
      * updates from mutations after loading.
      */
@@ -145,8 +157,12 @@ final class WebAssemblyLinkerBackend(
     }
 
     s"""
+      |${moduleImports.mkString("\n")}
+      |
       |import { load as __load } from './${loaderJSFileName}';
-      |const __exports = await __load('./${wasmFileName}');
+      |const __exports = await __load('./${wasmFileName}', {
+      |${importedModulesItems.mkString("\n")}
+      |});
       |
       |${reExportStats.mkString("\n")}
     """.stripMargin.trim() + "\n"

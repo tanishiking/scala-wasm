@@ -124,6 +124,16 @@ class WasmTextWriter {
                 writeSig(typ.params, typ.results)
               }
             )
+          case WasmImportDesc.Global(id, typ, isMutable) =>
+            b.sameLineList(
+              "global", {
+                b.appendElement(id.show)
+                if (isMutable)
+                  b.sameLineList("mut", { b.appendElement(typ.show) })
+                else
+                  b.appendElement(typ.show)
+              }
+            )
           case WasmImportDesc.Tag(id, typ) =>
             b.sameLineList(
               "tag", {

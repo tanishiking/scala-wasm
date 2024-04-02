@@ -45,18 +45,6 @@ object WasmExpressionBuilder {
   private val CharSequenceClass = IRNames.ClassName("java.lang.CharSequence")
   private val ComparableClass = IRNames.ClassName("java.lang.Comparable")
   private val JLNumberClass = IRNames.ClassName("java.lang.Number")
-
-  private object PrimTypeWithBoxUnbox {
-    def unapply(primType: IRTypes.PrimTypeWithRef): Option[IRTypes.PrimTypeWithRef] = {
-      primType match {
-        case IRTypes.BooleanType | IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType |
-            IRTypes.FloatType | IRTypes.DoubleType =>
-          Some(primType)
-        case _ =>
-          None
-      }
-    }
-  }
 }
 
 private class WasmExpressionBuilder private (
@@ -69,36 +57,6 @@ private class WasmExpressionBuilder private (
 
   def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit =
     genTree(tree, expectedType)
-
-  /** object creation prefix
-    * ```
-    * local.get $receiver ;; (ref null $struct)
-    * ref.is_null
-    * if
-    *   call $newDefault
-    *   local.set $receiver
-    * end
-    * ```
-    *
-    * Maybe we can unreachable in else branch?
-    */
-  // def objectCreationPrefix(clazz: IRTrees.ClassDef, method: IRTrees.MethodDef): List[WasmInstr] = {
-  //   assert(method.flags.namespace.isConstructor)
-  //   val recieverGCTypeName = fctx.receiver.typ match {
-  //     case Types.WasmRefNullType(Types.WasmHeapType.Type(gcType)) => gcType
-  //     case Types.WasmRefType(Types.WasmHeapType.Type(gcType))     => gcType
-  //     case _                                                      => ???
-  //   }
-  //   Nil
-  //   // List(
-  //   //   LOCAL_GET(LocalIdx(fctx.receiver.name)),
-  //   //   REF_IS_NULL,
-  //   //   IF(WasmImmediate.BlockType.ValueType(None)),
-  //   //   CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name))),
-  //   //   LOCAL_SET(LocalIdx(fctx.receiver.name)),
-  //   //   END
-  //   // )
-  // }
 
   def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit = {
     for ((tree, expectedType) <- trees.zip(expectedTypes))
@@ -195,20 +153,11 @@ private class WasmExpressionBuilder private (
         ()
       case (_, IRTypes.NoType) =>
         instrs += DROP
-      case (primType: IRTypes.PrimType, _) =>
+      case (primType: IRTypes.PrimTypeWithRef, _) =>
         // box
         primType match {
-          case IRTypes.UndefType | IRTypes.StringType | IRTypes.NullType =>
+          case IRTypes.NullType =>
             ()
-          case PrimTypeWithBoxUnbox(primType) =>
-            /* Calls a `bX` helper. Most of them are of the form
-             *   bX: (x) => x
-             * at the JavaScript level, but with a primType->anyref Wasm type.
-             * For example, for `IntType`, `bI` has type `i32 -> anyref`. This
-             * asks the JS host to turn a primitive `i32` into its generic
-             * representation, which we can store in an `anyref`.
-             */
-            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.box(primType.primRef)))
           case IRTypes.CharType =>
             /* `char` and `long` are opaque to JS in the Scala.js semantics.
              * We implement them with real Wasm classes following the correct
@@ -217,9 +166,17 @@ private class WasmExpressionBuilder private (
             genBox(IRTypes.CharType, SpecialNames.CharBoxClass)
           case IRTypes.LongType =>
             genBox(IRTypes.LongType, SpecialNames.LongBoxClass)
+          case IRTypes.NoType | IRTypes.NothingType =>
+            throw new AssertionError(s"Unexpected adaptation from $primType to $expectedType")
           case _ =>
-            println(s"adapt($primType, $expectedType)")
-            ???
+            /* Calls a `bX` helper. Most of them are of the form
+             *   bX: (x) => x
+             * at the JavaScript level, but with a primType->anyref Wasm type.
+             * For example, for `IntType`, `bI` has type `i32 -> anyref`. This
+             * asks the JS host to turn a primitive `i32` into its generic
+             * representation, which we can store in an `anyref`.
+             */
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.box(primType.primRef)))
         }
       case _ =>
         ()
@@ -833,6 +790,29 @@ private class WasmExpressionBuilder private (
       case BinaryOp.Long_>>> => genLongShiftOp(I64_SHR_U)
       case BinaryOp.Long_>>  => genLongShiftOp(I64_SHR_S)
 
+      /* Floating point remainders are specified by
+       * https://262.ecma-international.org/#sec-numeric-types-number-remainder
+       * which says that it is equivalent to the C library function `fmod`.
+       * For `Float`s, we promote and demote to `Double`s.
+       * `fmod` seems quite hard to correctly implement, so we delegate to a
+       * JavaScript Helper.
+       * (The naive function `x - trunc(x / y) * y` that we can find on the
+       * Web does not work.)
+       */
+      case BinaryOp.Float_% =>
+        genTree(binary.lhs, IRTypes.FloatType)
+        instrs += F64_PROMOTE_F32
+        genTree(binary.rhs, IRTypes.FloatType)
+        instrs += F64_PROMOTE_F32
+        instrs += CALL(FuncIdx(WasmFunctionName.fmod))
+        instrs += F32_DEMOTE_F64
+        IRTypes.FloatType
+      case BinaryOp.Double_% =>
+        genTree(binary.lhs, IRTypes.DoubleType)
+        genTree(binary.rhs, IRTypes.DoubleType)
+        instrs += CALL(FuncIdx(WasmFunctionName.fmod))
+        IRTypes.DoubleType
+
       // New in 1.11
       case BinaryOp.String_charAt =>
         genTree(binary.lhs, IRTypes.StringType) // push the string
@@ -907,21 +887,10 @@ private class WasmExpressionBuilder private (
       case BinaryOp.Float_* => F32_MUL
       case BinaryOp.Float_/ => F32_DIV
 
-      // TODO
-      // get_local 0
-      // get_local 1
-      // f32.div
-      // f32.trunc
-      // get_local 1
-      // f32.mul
-      // f32.sub
-      case BinaryOp.Float_% => ???
-
       case BinaryOp.Double_+ => F64_ADD
       case BinaryOp.Double_- => F64_SUB
       case BinaryOp.Double_* => F64_MUL
       case BinaryOp.Double_/ => F64_DIV
-      case BinaryOp.Double_% => ??? // TODO same as Float_%
 
       case BinaryOp.Double_== => F64_EQ
       case BinaryOp.Double_!= => F64_NE
@@ -1090,24 +1059,27 @@ private class WasmExpressionBuilder private (
       testType match {
         case IRTypes.UndefType =>
           instrs += CALL(FuncIdx(WasmFunctionName.isUndef))
-        case PrimTypeWithBoxUnbox(testType) =>
-          /* Calls the appromriate `tX` JS helper. It dynamically tests whether
-           * the value fits in the given primitive type, according to
-           * https://www.scala-js.org/doc/semantics.html
-           * All the `tX` helpers have Wasm type `anyref -> i32` (interpreted as `boolean`).
-           */
-          instrs += CALL(FuncIdx(WasmFunctionName.typeTest(testType.primRef)))
         case IRTypes.StringType =>
           instrs += CALL(FuncIdx(WasmFunctionName.isString))
-        case IRTypes.CharType =>
-          val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
-          instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        case IRTypes.LongType =>
-          val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
-          instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        case _ =>
-          println(tree)
-          ???
+
+        case testType: IRTypes.PrimTypeWithRef =>
+          testType match {
+            case IRTypes.CharType =>
+              val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+              instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+            case IRTypes.LongType =>
+              val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+              instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+            case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
+              throw new AssertionError(s"Illegal isInstanceOf[$testType]")
+            case _ =>
+              /* Calls the appropriate `tX` JS helper. It dynamically tests whether
+               * the value fits in the given primitive type, according to
+               * https://www.scala-js.org/doc/semantics.html
+               * All the `tX` helpers have Wasm type `anyref -> i32` (interpreted as `boolean`).
+               */
+              instrs += CALL(FuncIdx(WasmFunctionName.typeTest(testType.primRef)))
+          }
       }
     }
 
@@ -1182,19 +1154,21 @@ private class WasmExpressionBuilder private (
             IRTypes.BoxedClassToPrimType(targetClassName) match {
               case IRTypes.UndefType | IRTypes.StringType =>
                 ()
-              case PrimTypeWithBoxUnbox(primType) =>
-                instrs += CALL(
-                  WasmImmediate.FuncIdx(WasmFunctionName.unboxOrNull(primType.primRef))
-                )
-              case IRTypes.CharType =>
-                val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
-                instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
-              case IRTypes.LongType =>
-                val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
-                instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
-              case _ =>
-                println(tree)
-                ???
+              case primType: IRTypes.PrimTypeWithRef =>
+                primType match {
+                  case IRTypes.CharType =>
+                    val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+                    instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
+                  case IRTypes.LongType =>
+                    val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+                    instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
+                  case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
+                    throw new AssertionError(s"Unexpected prim type $primType for $targetClassName")
+                  case _ =>
+                    instrs += CALL(
+                      WasmImmediate.FuncIdx(WasmFunctionName.unboxOrNull(primType.primRef))
+                    )
+                }
             }
           } else if (info.isInterface) {
             if (!info.isAncestorOfHijackedClass)
@@ -1224,26 +1198,27 @@ private class WasmExpressionBuilder private (
       case IRTypes.UndefType =>
         instrs += DROP
         genLiteral(IRTrees.Undefined())
-      case PrimTypeWithBoxUnbox(targetTpe) =>
-        instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unbox(targetTpe.primRef)))
       case IRTypes.StringType =>
         instrs += REF_AS_NOT_NULL
-      case IRTypes.CharType =>
-        // Extract the `value` field (the only field) out of the box class.
-        // TODO Handle null
-        val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
-        instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
-      case IRTypes.LongType =>
-        // TODO Handle null
-        val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
-        instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
-        instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
-      case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
-        throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
-      case _ =>
-        println(s"genUnbox($targetTpe)")
-        ???
+
+      case targetTpe: IRTypes.PrimTypeWithRef =>
+        targetTpe match {
+          case IRTypes.CharType =>
+            // Extract the `value` field (the only field) out of the box class.
+            // TODO Handle null
+            val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+            instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+            instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
+          case IRTypes.LongType =>
+            // TODO Handle null
+            val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+            instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+            instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
+          case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
+            throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
+          case _ =>
+            instrs += CALL(WasmImmediate.FuncIdx(WasmFunctionName.unbox(targetTpe.primRef)))
+        }
     }
   }
 
@@ -1773,9 +1748,11 @@ private class WasmExpressionBuilder private (
         genFollowPath(path)
         IRTypes.AnyType
       case Import(module, path) =>
-        ???
+        instrs += GLOBAL_GET(GlobalIdx(ctx.getImportedModuleGlobal(module)))
+        genFollowPath(path)
+        IRTypes.AnyType
       case ImportWithGlobalFallback(importSpec, globalSpec) =>
-        genLoadJSNativeLoadSpec(globalSpec)
+        genLoadJSNativeLoadSpec(importSpec)
     }
   }
 

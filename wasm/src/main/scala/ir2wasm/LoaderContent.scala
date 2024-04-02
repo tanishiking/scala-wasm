@@ -102,6 +102,9 @@ const scalaJSHelpers = {
   tF: (x) => typeof x === 'number' && (Math.fround(x) === x || x !== x),
   tD: (x) => typeof x === 'number',
 
+  // fmod, to implement Float_% and Double_% (it is apparently quite hard to implement fmod otherwise)
+  fmod: (x, y) => x % y,
+
   // Closure
   closure: (f, data) => f.bind(void 0, data),
   closureThis: (f, data) => function(...args) { return f(data, this, ...args); },
@@ -259,9 +262,10 @@ const scalaJSHelpers = {
   },
 }
 
-export async function load(wasmFileURL) {
+export async function load(wasmFileURL, importedModules) {
   const importsObj = {
     "__scalaJSHelpers": scalaJSHelpers,
+    "__scalaJSImports": importedModules,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;

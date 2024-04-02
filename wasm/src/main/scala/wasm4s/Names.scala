@@ -11,6 +11,7 @@ object Names {
     def show: String = {
       val suffix = this match {
         case _: WasmLocalName                               => "local"
+        case _: WasmGlobalName.WasmImportedModuleName       => "g_imported"
         case _: WasmGlobalName.WasmModuleInstanceName       => "g_instance"
         case _: WasmGlobalName.WasmJSClassName              => "g_jsclass"
         case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
@@ -59,6 +60,14 @@ object Names {
   sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
+    final case class WasmImportedModuleName private (
+        override private[wasm4s] val name: String
+    ) extends WasmGlobalName(name)
+    object WasmImportedModuleName {
+      def apply(moduleName: String): WasmImportedModuleName =
+        new WasmImportedModuleName(s"imported___$moduleName")
+    }
+
     final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
         extends WasmGlobalName(name)
     object WasmModuleInstanceName {
@@ -196,6 +205,8 @@ object Names {
     def unbox(primRef: IRTypes.PrimRef): WasmFunctionName = helper("u" + primRef.charCode)
     def unboxOrNull(primRef: IRTypes.PrimRef): WasmFunctionName = helper("uN" + primRef.charCode)
     def typeTest(primRef: IRTypes.PrimRef): WasmFunctionName = helper("t" + primRef.charCode)
+
+    val fmod = helper("fmod")
 
     val closure = helper("closure")
     val closureThis = helper("closureThis")
