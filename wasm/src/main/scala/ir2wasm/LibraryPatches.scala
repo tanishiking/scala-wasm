@@ -37,7 +37,7 @@ object LibraryPatches {
       }.get
 
     derivedIRFiles.map { derived =>
-      derived.flatten ++ Seq(StackTraceIRFile, leanerJSExceptionIRFile) ++ irFiles
+      derived.flatten ++ Seq(StackTraceIRFile) ++ irFiles ++ Seq(leanerJSExceptionIRFile)
     }
   }
 
