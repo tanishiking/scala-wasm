@@ -301,6 +301,8 @@ object Names {
     val createClassOf = helper("createClassOf")
     val getClassOf = helper("getClassOf")
     val arrayTypeData = helper("arrayTypeData")
+    val isAssignableFromExternal = helper("isAssignableFromExternal")
+    val isAssignableFrom = helper("isAssignableFrom")
     val getComponentType = helper("getComponentType")
     val newArrayOfThisClass = helper("newArrayOfThisClass")
     val anyGetClass = helper("anyGetClass")
@@ -338,9 +340,12 @@ object Names {
       final val KindFloat = 7
       final val KindDouble = 8
       final val KindArray = 9
-      final val KindClass = 10
-      final val KindInterface = 11
-      final val KindJSType = 12
+      final val KindObject = 10 // j.l.Object
+      final val KindClass = 11
+      final val KindInterface = 12
+      final val KindJSType = 13
+
+      final val KindLastPrimitive = KindDouble
 
       /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
         *
@@ -351,6 +356,16 @@ object Names {
 
       /** The kind of type data, an `i32`. */
       val kind = new WasmFieldName("kind")
+
+      /** Array of the strict ancestor classes of this class.
+        *
+        * This is `null` for primitive and array types. For all other types, including JS types, it
+        * contains an array of the typeData of their ancestors that:
+        *
+        *   - are not themselves (hence the *strict* ancestors),
+        *   - have typeData to begin with.
+        */
+      val strictAncestors = new WasmFieldName("strictAncestors")
 
       /** The typeData of a component of this array type, or `null` if this is not an array type.
         *
@@ -399,11 +414,12 @@ object Names {
 
       val nameDataIdx = WasmImmediate.StructFieldIdx(0)
       val kindIdx = WasmImmediate.StructFieldIdx(1)
-      val componentTypeIdx = WasmImmediate.StructFieldIdx(2)
-      val nameIdx = WasmImmediate.StructFieldIdx(3)
-      val classOfIdx = WasmImmediate.StructFieldIdx(4)
-      val arrayOfIdx = WasmImmediate.StructFieldIdx(5)
-      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(6)
+      val strictAncestorsIdx = WasmImmediate.StructFieldIdx(2)
+      val componentTypeIdx = WasmImmediate.StructFieldIdx(3)
+      val nameIdx = WasmImmediate.StructFieldIdx(4)
+      val classOfIdx = WasmImmediate.StructFieldIdx(5)
+      val arrayOfIdx = WasmImmediate.StructFieldIdx(6)
+      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(7)
     }
   }
 
@@ -458,6 +474,7 @@ object Names {
     final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
         extends WasmTypeName(name)
     object WasmArrayTypeName {
+      val typeDataArray = new WasmArrayTypeName("typeDataArray")
       val itables = new WasmArrayTypeName("itable")
 
       // primitive array types, underlying the Array[T] classes

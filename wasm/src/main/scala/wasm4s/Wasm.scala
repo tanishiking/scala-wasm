@@ -106,6 +106,11 @@ object WasmStructType {
         isMutable = false
       ),
       WasmStructField(
+        WasmFieldName.typeData.strictAncestors,
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.typeDataArray)),
+        isMutable = false
+      ),
+      WasmStructField(
         WasmFieldName.typeData.componentType,
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
         isMutable = false
@@ -143,6 +148,16 @@ case class WasmArrayType(
     field: WasmStructField
 ) extends WasmGCTypeDefinition
 object WasmArrayType {
+
+  /** array (ref typeData) */
+  val typeDataArray = WasmArrayType(
+    WasmArrayTypeName.typeDataArray,
+    WasmStructField(
+      WasmFieldName.arrayItem,
+      WasmRefType(WasmHeapType.Type(WasmStructTypeName.typeData)),
+      isMutable = false
+    )
+  )
 
   /** array (ref struct) */
   val itables = WasmArrayType(
@@ -260,6 +275,7 @@ class WasmModule(
   def addElement(element: WasmElement): Unit = _elements += element
 
   locally {
+    addArrayType(WasmArrayType.typeDataArray)
     addArrayType(WasmArrayType.itables)
 
     addArrayType(WasmArrayType.i8Array)

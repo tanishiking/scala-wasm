@@ -78,15 +78,15 @@ object IsInstanceOfTest {
     // different dimensions
     ok(!intArray.isInstanceOf[Array[Array[Int]]])
     ok(!intArrayArray.isInstanceOf[Array[Int]])
-    // TODO ok(!intArrayArray.isInstanceOf[Array[Array[Array[Int]]]])
-    // TODO ok(!stringArrayArray.isInstanceOf[Array[String]])
-    // TODO ok(!stringArrayArray.isInstanceOf[Array[Array[Array[String]]]])
-    // TODO ok(!objectArrayArray.isInstanceOf[Array[Array[Object]]])
+    ok(!intArrayArray.isInstanceOf[Array[Array[Array[Int]]]])
+    ok(!stringArrayArray.isInstanceOf[Array[String]])
+    ok(!stringArrayArray.isInstanceOf[Array[Array[Array[String]]]])
+    ok(!objectArray.isInstanceOf[Array[Array[Object]]])
 
     // reference array types are covariant at run-time (IR and JVM semantics)
     ok(stringArray.isInstanceOf[Array[Object]])
     ok(intArrayArray.isInstanceOf[Array[Object]])
-    // TODO ok(!objectArray.isInstanceOf[Array[String]])
+    ok(!objectArray.isInstanceOf[Array[String]])
 
     // non-arrays are not instances of any array type
     ok(!child.isInstanceOf[Array[Boolean]])
@@ -95,6 +95,12 @@ object IsInstanceOfTest {
     ok(!child.isInstanceOf[Array[Array[Int]]])
     ok(!child.isInstanceOf[Array[Array[String]]])
     ok(!child.isInstanceOf[Array[Object]])
+
+    // corner case for reachability of the typeData
+    val arrayOfClassUsedOnlyForArrayTypeTest = new Array[ClassUsedOnlyForArrayTypeTest](1)
+    ok(arrayOfClassUsedOnlyForArrayTypeTest.isInstanceOf[Array[InterfaceUsedOnlyForArrayTypeTest]])
+    ok(!intArray.isInstanceOf[Array[InterfaceUsedOnlyForArrayTypeTest]])
+    ok(!objectArray.isInstanceOf[Array[InterfaceUsedOnlyForArrayTypeTest]])
   }
 
   private def testPrimitiveIsInstanceOfBase(p: Any): Boolean =
@@ -102,6 +108,9 @@ object IsInstanceOfTest {
 
   private def testInt(e: Any): Boolean = e.isInstanceOf[Int]
   private def testString(e: Any): Boolean = e.isInstanceOf[String]
+
+  trait InterfaceUsedOnlyForArrayTypeTest
+  class ClassUsedOnlyForArrayTypeTest extends InterfaceUsedOnlyForArrayTypeTest
 }
 
 abstract class AbstractParent

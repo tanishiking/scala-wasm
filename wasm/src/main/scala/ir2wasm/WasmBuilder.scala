@@ -47,7 +47,9 @@ class WasmBuilder {
   }
 
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
-    if (!clazz.kind.isClass && clazz.hasRuntimeTypeInfo) {
+    val classInfo = ctx.getClassInfo(clazz.className)
+
+    if (!clazz.kind.isClass && classInfo.hasRuntimeTypeInfo) {
       // Gen typeData -- for classes, we do it as part of the vtable generation
       val typeRef = IRTypes.ClassRef(clazz.className)
       val typeDataFieldValues = genTypeDataFieldValues(clazz)
@@ -148,10 +150,15 @@ class WasmBuilder {
   ): List[WasmInstr] = {
     import WasmFieldName.typeData._
 
-    val kind = clazz.kind match {
-      case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
-      case ClassKind.Interface                                               => KindInterface
-      case _                                                                 => KindJSType
+    val kind = clazz.className match {
+      case IRNames.ObjectClass => KindObject
+
+      case _ =>
+        clazz.kind match {
+          case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
+          case ClassKind.Interface                                               => KindInterface
+          case _                                                                 => KindJSType
+        }
     }
 
     genTypeDataFieldValues(kind, IRTypes.ClassRef(clazz.className))
@@ -173,6 +180,33 @@ class WasmBuilder {
       )
     val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
 
+    val strictAncestorsValue: List[WasmInstr] = {
+      typeRef match {
+        case IRTypes.ClassRef(className) =>
+          val ancestors = ctx.getClassInfo(className).ancestors
+
+          // By spec, the first element of `ancestors` is always the class itself
+          assert(
+            ancestors.headOption.contains(className),
+            s"The ancestors of ${className.nameString} do not start with itself: $ancestors"
+          )
+          val strictAncestors = ancestors.tail
+
+          val elems = for {
+            ancestor <- strictAncestors
+            if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
+          } yield {
+            GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(ancestor)))
+          }
+          elems :+ ARRAY_NEW_FIXED(
+            TypeIdx(WasmTypeName.WasmArrayTypeName.typeDataArray),
+            I32(elems.size)
+          )
+        case _ =>
+          REF_NULL(HeapType(WasmHeapType.Simple.None)) :: Nil
+      }
+    }
+
     val cloneFunction = {
       val nullref =
         REF_NULL(HeapType(WasmHeapType.Type(ctx.cloneFunctionTypeName)))
@@ -191,7 +225,12 @@ class WasmBuilder {
     nameDataValue :::
       List(
         // kind
-        I32_CONST(I32(kind)),
+        I32_CONST(I32(kind))
+      ) ::: (
+        // strictAncestors
+        strictAncestorsValue
+      ) :::
+      List(
         // componentType - always `null` since this method is not used for array types
         REF_NULL(HeapType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData))),
         // name - initially `null`; filled in by the `typeDataName` helper
@@ -254,7 +293,7 @@ class WasmBuilder {
       val globalVTable = genTypeDataGlobal(typeRef, vtableType, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
       genGlobalClassItable(clazz)
-    } else {
+    } else if (classInfo.hasRuntimeTypeInfo) {
       // Only generate typeData
       val globalTypeData =
         genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)

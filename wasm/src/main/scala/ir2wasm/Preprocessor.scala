@@ -53,6 +53,23 @@ object Preprocessor {
       }
     }
 
+    /* Should we emit a vtable/typeData global for this class?
+     *
+     * There are essentially three reasons for which we need them:
+     *
+     * - Because there is a `classOf[C]` somewhere in the program; if that is
+     *   true, then `clazz.hasRuntimeTypeInfo` is true.
+     * - Because it is the vtable of a class with direct instances; in that
+     *   case `clazz.hasRuntimeTypeInfo` is also true, as guaranteed by the
+     *   Scala.js frontend analysis.
+     * - Because we generate a test of the form `isInstanceOf[Array[C]]`. In
+     *   that case, `clazz.hasInstanceTests` is true.
+     *
+     * `clazz.hasInstanceTests` is also true if there is only `isInstanceOf[C]`,
+     * in the program, so that is not *optimal*, but it is correct.
+     */
+    val hasRuntimeTypeInfo = clazz.hasRuntimeTypeInfo || clazz.hasInstanceTests
+
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(
@@ -65,6 +82,7 @@ object Preprocessor {
         clazz.interfaces.map(_.name),
         clazz.ancestors,
         !clazz.hasDirectInstances,
+        hasRuntimeTypeInfo,
         clazz.jsNativeLoadSpec,
         clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
       )
