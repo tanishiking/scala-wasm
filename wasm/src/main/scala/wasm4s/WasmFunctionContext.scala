@@ -122,6 +122,15 @@ class WasmFunctionContext private (
 
   // Helpers to build structured control flow
 
+  def sigToBlockType(sig: WasmFunctionSignature): BlockType = sig match {
+    case WasmFunctionSignature(Nil, Nil) =>
+      BlockType.ValueType()
+    case WasmFunctionSignature(Nil, resultType :: Nil) =>
+      BlockType.ValueType(resultType)
+    case _ =>
+      BlockType.FunctionType(ctx.addFunctionType(sig))
+  }
+
   def ifThenElse(blockType: BlockType)(thenp: => Unit)(elsep: => Unit): Unit = {
     instrs += IF(blockType)
     thenp

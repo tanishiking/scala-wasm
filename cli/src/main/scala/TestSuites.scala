@@ -18,6 +18,7 @@ object TestSuites {
     TestSuite("testsuite.core.FieldsTest"),
     TestSuite("testsuite.core.FloatingPointRemTest"),
     TestSuite("testsuite.core.GetClassTest"),
+    TestSuite("testsuite.core.JLObjectInstanceTest"),
     TestSuite("testsuite.core.JSForInTest"),
     TestSuite("testsuite.core.JSImportCallTest"),
     TestSuite("testsuite.core.JSImportMetaTest"),
@@ -32,6 +33,7 @@ object TestSuites {
     TestSuite("testsuite.core.ThrowAndTryTest"),
     TestSuite("testsuite.core.ThrowablesTest"),
     TestSuite("testsuite.core.ToStringTest"),
+    TestSuite("testsuite.core.UnitPatMatTest"),
     TestSuite("testsuite.core.MatchTest"),
     TestSuite("testsuite.core.WrapUnwrapThrowableTest")
   )

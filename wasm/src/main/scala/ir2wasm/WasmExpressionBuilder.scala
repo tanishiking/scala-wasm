@@ -1479,10 +1479,10 @@ private class WasmExpressionBuilder private (
 
   private def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
     val label = fctx.registerLabel(t.label.name, expectedType)
-    val ty = TypeTransformer.transformType(t.tpe)(ctx)
+    val ty = TypeTransformer.transformResultType(expectedType)(ctx)
 
     // Manual BLOCK here because we have a specific `label`
-    instrs += BLOCK(BlockType.ValueType(ty), Some(label))
+    instrs += BLOCK(fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)), Some(label))
     genTree(t.body, expectedType)
     instrs += END
     expectedType
@@ -1497,7 +1497,13 @@ private class WasmExpressionBuilder private (
   }
 
   private def genNew(n: IRTrees.New): IRTypes.Type = {
-    val localInstance = fctx.addSyntheticLocal(TypeTransformer.transformType(n.tpe)(ctx))
+    /* Do not use transformType here, because we must get the struct type even
+     * if the given class is an ancestor of hijacked classes (which in practice
+     * is only the case for j.l.Object).
+     */
+    val instanceTyp =
+      Types.WasmRefNullType(Types.WasmHeapType.Type(WasmStructTypeName(n.className)))
+    val localInstance = fctx.addSyntheticLocal(instanceTyp)
 
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
     instrs += LOCAL_TEE(localInstance)
