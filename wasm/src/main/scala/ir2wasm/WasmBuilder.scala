@@ -533,13 +533,15 @@ class WasmBuilder {
       }
     }
 
-    genCreateJSClassFunction(clazz)
+    if (clazz.hasInstances) {
+      genCreateJSClassFunction(clazz)
 
-    if (clazz.jsClassCaptures.isEmpty)
-      genLoadJSClassFunction(clazz)
+      if (clazz.jsClassCaptures.isEmpty)
+        genLoadJSClassFunction(clazz)
 
-    if (clazz.kind == ClassKind.JSModuleClass)
-      genLoadJSModuleFunction(clazz)
+      if (clazz.kind == ClassKind.JSModuleClass)
+        genLoadJSModuleFunction(clazz)
+    }
   }
 
   private def genCreateJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
