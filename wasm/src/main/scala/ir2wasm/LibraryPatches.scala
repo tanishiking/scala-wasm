@@ -75,6 +75,16 @@ object LibraryPatches {
           Some(
             ArrayValue(arrayOfSTERef, Nil)
           )
+        )(EOH.withInline(true), NOV),
+        MethodDef(
+          EMF,
+          MethodIdent(m("getCurrentStackTrace", Nil, arrayOfSTERef)),
+          NON,
+          Nil,
+          ArrayType(arrayOfSTERef),
+          Some(
+            ArrayValue(arrayOfSTERef, Nil)
+          )
         )(EOH.withInline(true), NOV)
       ),
       None,
