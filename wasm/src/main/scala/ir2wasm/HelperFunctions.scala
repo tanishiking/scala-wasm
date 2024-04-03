@@ -24,7 +24,9 @@ object HelperFunctions {
     genGetClassOf()
     genArrayTypeData()
     genGetComponentType()
+    genNewArrayOfThisClass()
     genAnyGetClass()
+    genNewArrayObject()
   }
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
@@ -139,10 +141,10 @@ object HelperFunctions {
       // for the STRUCT_SET typeData.name near the end
       instrs += LOCAL_GET(typeDataParam)
 
-      // if typeData.kind == 2 (isArray)
+      // if typeData.kind == KindArray
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-      instrs += I32_CONST(I32(2))
+      instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
       instrs += I32_EQ
       fctx.ifThenElse(WasmRefType.any) {
         // it is an array; compute its name from the component type name
@@ -158,90 +160,63 @@ object HelperFunctions {
           WasmFieldName.typeData.componentTypeIdx
         )
         instrs += REF_AS_NOT_NULL
-        instrs += LOCAL_TEE(componentTypeDataLocal)
+        instrs += LOCAL_SET(componentTypeDataLocal)
 
-        // if componentTypeData.kind == 1 (primitive)
-        instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-        instrs += I32_CONST(I32(1))
-        instrs += I32_EQ
-        fctx.ifThenElse(WasmRefType.any) { // returns the string that must come after "["
-          // the component type is a primitive; compute its charCode from its name's first and second chars
-
-          // componentNameData := componentTypeData.nameData
-          instrs += LOCAL_GET(componentTypeDataLocal)
-          instrs += STRUCT_GET(
-            TypeIdx(WasmStructTypeName.typeData),
-            WasmFieldName.typeData.nameDataIdx
-          )
-          instrs += REF_AS_NOT_NULL
-          instrs += LOCAL_TEE(componentNameDataLocal)
-
-          // firstChar := componentNameData(0)
-          instrs += I32_CONST(I32(0))
-          instrs += ARRAY_GET_U(u16ArrayIdx)
-          instrs += LOCAL_TEE(firstCharLocal)
-
-          // if firstChar == 'b'
-          instrs += I32_CONST(I32('b'.toInt))
-          instrs += I32_EQ
-          fctx.ifThenElse(WasmInt32) {
-            // 'b' can be 'byte' or 'boolean'; check second char
-
-            // if componentNameData(1) == 'o'
-            instrs += LOCAL_GET(componentNameDataLocal)
-            instrs += I32_CONST(I32(1)) // second char
-            instrs += ARRAY_GET_U(u16ArrayIdx)
-            instrs += I32_CONST(I32('o'.toInt))
-            instrs += I32_EQ
-            fctx.ifThenElse(WasmInt32) {
-              // if 'o', it's 'boolean'
-              instrs += I32_CONST(I32('Z'.toInt))
-            } {
-              // otherwise, it is 'byte'
-              instrs += I32_CONST(I32('B'.toInt))
-            }
-          } {
-            // if firstChar == 'l'
-            instrs += LOCAL_GET(firstCharLocal)
-            instrs += I32_CONST(I32('l'.toInt))
-            instrs += I32_EQ
-            fctx.ifThenElse(WasmInt32) {
-              // 'l' is 'long', which must become 'J'
-              instrs += I32_CONST(I32('J'.toInt))
-            } {
-              // Other letters are turned into their uppercase, which is 32 less
-              instrs += LOCAL_GET(firstCharLocal)
-              instrs += I32_CONST(I32(32))
-              instrs += I32_SUB
-            }
-          }
-
-          // convert the charCode to string
-          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-        } {
-          // the component type is not a primitive
-
-          // if componentTypeData.kind == 2 (array)
+        // switch (componentTypeData.kind)
+        // the result of this switch is the string that must come after "["
+        fctx.switch(WasmRefType.any) { () =>
+          // scrutinee
           instrs += LOCAL_GET(componentTypeDataLocal)
           instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-          instrs += I32_CONST(I32(2))
-          instrs += I32_EQ
-          fctx.ifThenElse(WasmRefType.any) {
+        }(
+          List(WasmFieldName.typeData.KindBoolean) -> { () =>
+            instrs += I32_CONST(I32('Z'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindChar) -> { () =>
+            instrs += I32_CONST(I32('C'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindByte) -> { () =>
+            instrs += I32_CONST(I32('B'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindShort) -> { () =>
+            instrs += I32_CONST(I32('S'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindInt) -> { () =>
+            instrs += I32_CONST(I32('I'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindLong) -> { () =>
+            instrs += I32_CONST(I32('J'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindFloat) -> { () =>
+            instrs += I32_CONST(I32('F'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindDouble) -> { () =>
+            instrs += I32_CONST(I32('D'.toInt))
+            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          },
+          List(WasmFieldName.typeData.KindArray) -> { () =>
             // the component type is an array; get its own name
             instrs += LOCAL_GET(componentTypeDataLocal)
             instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
-          } {
-            // the component type is neither a primitive nor an array;
-            // concatenate "L" + <its own name> + ";"
-            instrs += I32_CONST(I32('L'.toInt))
-            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-            instrs += LOCAL_GET(componentTypeDataLocal)
-            instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
-            instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
-            instrs += I32_CONST(I32(';'.toInt))
-            instrs += CALL(FuncIdx(WasmFunctionName.charToString))
-            instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
           }
+        ) { () =>
+          // default: the component type is neither a primitive nor an array;
+          // concatenate "L" + <its own name> + ";"
+          instrs += I32_CONST(I32('L'.toInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          instrs += LOCAL_GET(componentTypeDataLocal)
+          instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
+          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
+          instrs += I32_CONST(I32(';'.toInt))
+          instrs += CALL(FuncIdx(WasmFunctionName.charToString))
+          instrs += CALL(FuncIdx(WasmFunctionName.stringConcat))
         }
 
         // At this point, the stack contains "[" and the string that must be concatenated with it
@@ -307,27 +282,27 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isPrimitive": (typeData.kind == 1)
+    // "isPrimitive": (typeData.kind <= KindDouble)
     instrs += ctx.getConstantStringInstr("isPrimitive")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(1))
-    instrs += I32_EQ
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindDouble))
+    instrs += I32_LE_U
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isArrayClass": (typeData.kind == 2)
+    // "isArrayClass": (typeData.kind == KindArray)
     instrs += ctx.getConstantStringInstr("isArrayClass")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(2))
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // "isInterface": (typeData.kind == 3)
+    // "isInterface": (typeData.kind == KindInterface)
     instrs += ctx.getConstantStringInstr("isInterface")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(3))
+    instrs += I32_CONST(I32(WasmFieldName.typeData.KindInterface))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
@@ -337,7 +312,13 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // TODO: "isInstance", "isAssignableFrom", "checkCast", "newArrayOfThisClass"
+    // "newArrayOfThisClass": closure(newArrayOfThisClass, typeData)
+    instrs += ctx.getConstantStringInstr("newArrayOfThisClass")
+    instrs += ctx.refFuncWithDeclaration(WasmFunctionName.newArrayOfThisClass)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += CALL(FuncIdx(WasmFunctionName.closure))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    // TODO: "isInstance", "isAssignableFrom", "checkCast"
 
     // Call java.lang.Class::<init>(dataObject)
     instrs += CALL(
@@ -439,7 +420,7 @@ object HelperFunctions {
 
         // typeData := new typeData(...)
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // nameData
-        instrs += I32_CONST(I32(2)) // kind = isArray
+        instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray)) // kind = KindArray
         instrs += LOCAL_GET(typeDataParam) // componentType
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // name
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // classOf
@@ -524,6 +505,83 @@ object HelperFunctions {
     fctx.buildAndAddToContext()
   }
 
+  /** `newArrayOfThisClass: (ref typeData), anyref -> (ref jlObject)`.
+    *
+    * This is the underlying func for the `newArrayOfThisClass()` closure inside class data objects.
+    */
+  private def genNewArrayOfThisClass()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName.WasmStructTypeName
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val i32ArrayType = WasmRefType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.i32Array))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.newArrayOfThisClass,
+      List("typeData" -> typeDataType, "lengths" -> WasmAnyRef),
+      List(WasmRefType(WasmHeapType.ObjectType))
+    )
+
+    val List(typeDataParam, lengthsParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val lengthsLenLocal = fctx.addLocal("lengthsLenLocal", WasmInt32)
+    val lengthsValuesLocal = fctx.addLocal("lengthsValues", i32ArrayType)
+    val iLocal = fctx.addLocal("i", WasmInt32)
+
+    // lengthsLen := lengths.length // as a JS field access
+    instrs += LOCAL_GET(lengthsParam)
+    instrs += ctx.getConstantStringInstr("length")
+    instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+    instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.IntRef)))
+    instrs += LOCAL_TEE(lengthsLenLocal)
+
+    // lengthsValues := array.new<i32Array> lengthsLen
+    instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmTypeName.WasmArrayTypeName.i32Array))
+    instrs += LOCAL_SET(lengthsValuesLocal)
+
+    // i := 0
+    instrs += I32_CONST(I32(0))
+    instrs += LOCAL_SET(iLocal)
+
+    // while (i != lengthsLen)
+    fctx.whileLoop() {
+      instrs += LOCAL_GET(iLocal)
+      instrs += LOCAL_GET(lengthsLenLocal)
+      instrs += I32_NE
+    } {
+      // lengthsValue[i] := lengths[i] (where the rhs is a JS field access)
+
+      instrs += LOCAL_GET(lengthsValuesLocal)
+      instrs += LOCAL_GET(iLocal)
+
+      instrs += LOCAL_GET(lengthsParam)
+      instrs += LOCAL_GET(iLocal)
+      instrs += REF_I31
+      instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
+      instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.IntRef)))
+
+      instrs += ARRAY_SET(TypeIdx(WasmTypeName.WasmArrayTypeName.i32Array))
+
+      // i += 1
+      instrs += LOCAL_GET(iLocal)
+      instrs += I32_CONST(I32(1))
+      instrs += I32_ADD
+      instrs += LOCAL_SET(iLocal)
+    }
+
+    // return newArrayObject(arrayTypeData(typeData, lengthsLen), lengthsValues, 0)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += LOCAL_GET(lengthsLenLocal)
+    instrs += CALL(FuncIdx(WasmFunctionName.arrayTypeData))
+    instrs += LOCAL_GET(lengthsValuesLocal)
+    instrs += I32_CONST(I32(0))
+    instrs += CALL(FuncIdx(WasmFunctionName.newArrayObject))
+
+    fctx.buildAndAddToContext()
+  }
+
   /** `anyGetClass: (ref any) -> (ref null jlClass)`.
     *
     * This is the implementation of `value.getClass()` when `value` can be an instance of a hijacked
@@ -569,39 +627,22 @@ object HelperFunctions {
           )
 
           // switch(jsValueType(value)) { ... }
-          fctx.block() { typeOtherLabel =>
-            fctx.block() { typeUndefinedLabel =>
-              fctx.block() { typeNumberLabel =>
-                fctx.block() { typeStringLabel =>
-                  fctx.block() { typeBooleanLabel =>
-                    instrs += LOCAL_GET(valueParam)
-                    instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
-                    instrs += BR_TABLE(
-                      LabelIdxVector(
-                        List(
-                          typeBooleanLabel, // 0
-                          typeBooleanLabel, // 1
-                          typeStringLabel, // 2
-                          typeNumberLabel, // 3
-                          typeUndefinedLabel // 4
-                        )
-                      ),
-                      typeOtherLabel
-                    )
-                  }
-
-                  // typeBoolean:
-                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
-                  instrs += BR(gotTypeDataLabel)
-                }
-
-                // typeString:
-                instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
-                instrs += BR(gotTypeDataLabel)
-              }
-
-              /* typeNumber:
-               * For `number`s, the result is based on the actual value, as specified by
+          fctx.switch(typeDataType) { () =>
+            // scrutinee
+            instrs += LOCAL_GET(valueParam)
+            instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
+          }(
+            // case typeFalse, typeTrue =>
+            List(0, 1) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
+            },
+            // case typeString =>
+            List(2) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
+            },
+            // case typeNumber =>
+            List(3) -> { () =>
+              /* For `number`s, the result is based on the actual value, as specified by
                * [[https://www.scala-js.org/doc/semantics.html#getclass]].
                */
 
@@ -620,7 +661,7 @@ object HelperFunctions {
               instrs += LOCAL_GET(doubleValueLocal)
               instrs += I64_REINTERPRET_F64
               instrs += I64_EQ
-              fctx.ifThenElse() {
+              fctx.ifThenElse(typeDataType) {
                 // then it is a Byte, a Short, or an Integer
 
                 // if intValue.toByte.toInt == intValue
@@ -628,24 +669,21 @@ object HelperFunctions {
                 instrs += I32_EXTEND8_S
                 instrs += LOCAL_GET(intValueLocal)
                 instrs += I32_EQ
-                fctx.ifThenElse() {
+                fctx.ifThenElse(typeDataType) {
                   // then it is a Byte
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedByteClass)
-                  instrs += BR(gotTypeDataLabel)
                 } {
                   // else, if intValue.toShort.toInt == intValue
                   instrs += LOCAL_GET(intValueLocal)
                   instrs += I32_EXTEND16_S
                   instrs += LOCAL_GET(intValueLocal)
                   instrs += I32_EQ
-                  fctx.ifThenElse() {
+                  fctx.ifThenElse(typeDataType) {
                     // then it is a Short
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedShortClass)
-                    instrs += BR(gotTypeDataLabel)
                   } {
                     // else, it is an Integer
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedIntegerClass)
-                    instrs += BR(gotTypeDataLabel)
                   }
                 }
               } {
@@ -657,42 +695,228 @@ object HelperFunctions {
                 instrs += F64_PROMOTE_F32
                 instrs += LOCAL_GET(doubleValueLocal)
                 instrs += F64_EQ
-                fctx.ifThenElse() {
+                fctx.ifThenElse(typeDataType) {
                   // then it is a Float
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
-                  instrs += BR(gotTypeDataLabel)
                 } {
                   // else, if it is NaN
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += F64_NE
-                  fctx.ifThenElse() {
+                  fctx.ifThenElse(typeDataType) {
                     // then it is a Float
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
-                    instrs += BR(gotTypeDataLabel)
                   } {
                     // else, it is a Double
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedDoubleClass)
-                    instrs += BR(gotTypeDataLabel)
                   }
                 }
               }
+            },
+            // case typeUndefined =>
+            List(4) -> { () =>
+              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
             }
-
-            // typeUndefined:
-            instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
-            instrs += BR(gotTypeDataLabel)
+          ) { () =>
+            // case _ (typeOther) =>
+            instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
+            instrs += RETURN
           }
 
-          // typeOther:
-          instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
-          instrs += RETURN
+          instrs += BR(gotTypeDataLabel)
         }
 
         instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx(0))
       }
 
       instrs += CALL(FuncIdx(WasmFunctionName.getClassOf))
+    }
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `newArrayObject`: `(ref typeData), (ref array i32), i32 -> (ref jl.Object)`.
+    *
+    * The arguments are `arrayTypeData`, `lengths` and `lengthIndex`.
+    *
+    * This recursive function creates a multi-dimensional array. The resulting array has type data
+    * `arrayTypeData` and length `lengths(lengthIndex)`. If `lengthIndex < `lengths.length - 1`, its
+    * elements are recursively initialized with `newArrayObject(arrayTypeData.componentType,
+    * lengths, lengthIndex - 1)`.
+    */
+  def genNewArrayObject()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName._
+    import WasmFieldName.typeData._
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val i32ArrayType = WasmRefType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.i32Array))
+    val objectVTableType = WasmRefType(WasmHeapType.Type(WasmVTableTypeName.ObjectVTable))
+    val arrayTypeDataType = objectVTableType
+    val itablesType = WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name))
+    val nonNullObjectType = WasmRefType(WasmHeapType.ObjectType)
+    val anyArrayType = WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.newArrayObject,
+      List(
+        "arrayTypeData" -> arrayTypeDataType,
+        "lengths" -> i32ArrayType,
+        "lengthIndex" -> WasmInt32
+      ),
+      List(nonNullObjectType)
+    )
+
+    val List(arrayTypeDataParam, lengthsParam, lengthIndexParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val lenLocal = fctx.addLocal("len", WasmInt32)
+    val underlyingLocal = fctx.addLocal("underlying", anyArrayType)
+    val subLengthIndexLocal = fctx.addLocal("subLengthIndex", WasmInt32)
+    val arrayComponentTypeDataLocal = fctx.addLocal("arrayComponentTypeData", arrayTypeDataType)
+    val iLocal = fctx.addLocal("i", WasmInt32)
+
+    /* High-level pseudo code of what this function does:
+     *
+     * def newArrayObject(arrayTypeData, lengths, lengthIndex) {
+     *   // create an array of the right primitive type
+     *   val len = lengths(lengthIndex)
+     *   switch (arrayTypeData.componentType.kind) {
+     *     // for primitives, return without recursion
+     *     case KindBoolean => new Array[Boolean](len)
+     *     ...
+     *     case KindDouble => new Array[Double](len)
+     *
+     *     // for reference array types, maybe recursively initialize
+     *     case _ =>
+     *       val result = new Array[Object](len) // with arrayTypeData as vtable
+     *       val subLengthIndex = lengthIndex + 1
+     *       if (subLengthIndex != lengths.length) {
+     *         val arrayComponentTypeData = arrayTypeData.componentType
+     *         for (i <- 0 until len)
+     *           result(i) = newArrayObject(arrayComponentTypeData, lengths, subLengthIndex)
+     *       }
+     *       result
+     *   }
+     * }
+     */
+
+    val primRefsWithArrayTypes = List(
+      IRTypes.BooleanRef -> KindBoolean,
+      IRTypes.CharRef -> KindChar,
+      IRTypes.ByteRef -> KindByte,
+      IRTypes.ShortRef -> KindShort,
+      IRTypes.IntRef -> KindInt,
+      IRTypes.LongRef -> KindLong,
+      IRTypes.FloatRef -> KindFloat,
+      IRTypes.DoubleRef -> KindDouble
+    )
+
+    // Load the vtable and itable or the resulting array on the stack
+    instrs += LOCAL_GET(arrayTypeDataParam) // vtable
+    // TODO: this should not be null because of Serializable and Cloneable
+    instrs += REF_NULL(HeapType(Types.WasmHeapType.Type(WasmArrayType.itables.name))) // itable
+
+    // Load the first length
+    instrs += LOCAL_GET(lengthsParam)
+    instrs += LOCAL_GET(lengthIndexParam)
+    instrs += ARRAY_GET(TypeIdx(Names.WasmTypeName.WasmArrayTypeName.i32Array))
+
+    // componentTypeData := ref_as_non_null(arrayTypeData.componentType)
+    // switch (componentTypeData.kind)
+    val switchClauseSig = WasmFunctionSignature(
+      List(arrayTypeDataType, itablesType, WasmInt32),
+      List(nonNullObjectType)
+    )
+    fctx.switch(switchClauseSig) { () =>
+      // scrutinee
+      instrs += LOCAL_GET(arrayTypeDataParam)
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.typeData),
+        WasmFieldName.typeData.componentTypeIdx
+      )
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.typeData),
+        WasmFieldName.typeData.kindIdx
+      )
+    }(
+      // For all the primitive types, by construction, this is the bottom dimension
+      // case KindPrim => array.new_default underlyingPrimArray; struct.new PrimArray
+      primRefsWithArrayTypes.map { case (primRef, kind) =>
+        List(kind) -> { () =>
+          val arrayTypeRef = IRTypes.ArrayTypeRef(primRef, 1)
+          instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
+          instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+          () // required for correct type inference
+        }
+      }: _*
+    ) { () =>
+      // default -- all non-primitive array types
+
+      // len := <top-of-stack> (which is the first length)
+      instrs += LOCAL_TEE(lenLocal)
+
+      // underlying := array.new_default anyArray
+      val arrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.ObjectClass), 1)
+      instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
+      instrs += LOCAL_SET(underlyingLocal)
+
+      // subLengthIndex := lengthIndex + 1
+      instrs += LOCAL_GET(lengthIndexParam)
+      instrs += I32_CONST(I32(1))
+      instrs += I32_ADD
+      instrs += LOCAL_TEE(subLengthIndexLocal)
+
+      // if subLengthIndex != lengths.length
+      instrs += LOCAL_GET(lengthsParam)
+      instrs += ARRAY_LEN
+      instrs += I32_NE
+      fctx.ifThen() {
+        // then, recursively initialize all the elements
+
+        // arrayComponentTypeData := ref_cast<arrayTypeDataType> arrayTypeData.componentTypeData
+        instrs += LOCAL_GET(arrayTypeDataParam)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmStructTypeName.typeData),
+          WasmFieldName.typeData.componentTypeIdx
+        )
+        instrs += REF_CAST(HeapType(arrayTypeDataType.heapType))
+        instrs += LOCAL_SET(arrayComponentTypeDataLocal)
+
+        // i := 0
+        instrs += I32_CONST(I32(0))
+        instrs += LOCAL_SET(iLocal)
+
+        // while (i != len)
+        fctx.whileLoop() {
+          instrs += LOCAL_GET(iLocal)
+          instrs += LOCAL_GET(lenLocal)
+          instrs += I32_NE
+        } {
+          // underlying[i] := newArrayObject(arrayComponentType, lengths, subLengthIndex)
+
+          instrs += LOCAL_GET(underlyingLocal)
+          instrs += LOCAL_GET(iLocal)
+
+          instrs += LOCAL_GET(arrayComponentTypeDataLocal)
+          instrs += LOCAL_GET(lengthsParam)
+          instrs += LOCAL_GET(subLengthIndexLocal)
+          instrs += CALL(FuncIdx(WasmFunctionName.newArrayObject))
+
+          instrs += ARRAY_SET(TypeIdx(WasmArrayTypeName.anyArray))
+
+          // i += 1
+          instrs += LOCAL_GET(iLocal)
+          instrs += I32_CONST(I32(1))
+          instrs += I32_ADD
+          instrs += LOCAL_SET(iLocal)
+        }
+      }
+
+      // load underlying; struct.new ObjectArray
+      instrs += LOCAL_GET(underlyingLocal)
+      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
     }
 
     fctx.buildAndAddToContext()

@@ -1908,7 +1908,26 @@ private class WasmExpressionBuilder private (
 
       // Create the array object
       instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
-    } else ??? // TODO support multi dimensional arrays
+    } else {
+      /* There is no Scala source code that produces `NewArray` with more than
+       * one specified dimension, so this branch is not tested.
+       * (The underlying function `newArrayObject` is tested as part of
+       * reflective array instantiations, though.)
+       */
+
+      // First arg to `newArrayObject`: the typeData of the array to create
+      genLoadArrayTypeData(arrayTypeRef)
+
+      // Second arg: an array of the lengths
+      for (length <- t.lengths)
+        genTree(length, IRTypes.IntType)
+      instrs += ARRAY_NEW_FIXED(TypeIdx(WasmArrayTypeName.i32Array), I32(t.lengths.size))
+
+      // Third arg: constant 0 (start index inside the array of lengths)
+      instrs += I32_CONST(I32(0))
+
+      instrs += CALL(FuncIdx(WasmFunctionName.newArrayObject))
+    }
 
     t.tpe
   }
