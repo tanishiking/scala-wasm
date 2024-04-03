@@ -36,13 +36,15 @@ final class WasmBinaryWriter(module: WasmModule) {
   private val typeIdxValues: Map[WasmTypeName, Int] =
     allTypeDefinitions.map(_.name).zipWithIndex.toMap
 
-  private val funcIdxValues: Map[WasmFunctionName, Int] = {
+  private val allFunctionNames: List[WasmFunctionName] = {
     val importedFunctionNames = module.imports.collect {
       case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
     }
-    val allNames = importedFunctionNames ::: module.definedFunctions.map(_.name)
-    allNames.zipWithIndex.toMap
+    importedFunctionNames ::: module.definedFunctions.map(_.name)
   }
+
+  private val funcIdxValues: Map[WasmFunctionName, Int] =
+    allFunctionNames.zipWithIndex.toMap
 
   private val tagIdxValues: Map[WasmTagName, Int] = {
     val importedTagNames = module.imports.collect {
@@ -95,6 +97,7 @@ final class WasmBinaryWriter(module: WasmModule) {
       writeSection(fullOutput, SectionStart)(writeStartSection(_))
     writeSection(fullOutput, SectionElement)(writeElementSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
+    writeCustomSection(fullOutput, "name")(writeNameCustomSection(_))
 
     fullOutput.result()
   }
@@ -102,6 +105,15 @@ final class WasmBinaryWriter(module: WasmModule) {
   private def writeSection(fullOutput: Buffer, sectionID: Byte)(f: Buffer => Unit): Unit = {
     fullOutput.byte(sectionID)
     fullOutput.byteLengthSubSection(f)
+  }
+
+  private def writeCustomSection(fullOutput: Buffer, customSectionName: String)(
+      f: Buffer => Unit
+  ): Unit = {
+    writeSection(fullOutput, SectionCustom) { buf =>
+      buf.name(customSectionName)
+      f(buf)
+    }
   }
 
   private def writeTypeSection(buf: Buffer): Unit = {
@@ -227,6 +239,18 @@ final class WasmBinaryWriter(module: WasmModule) {
   private def writeCodeSection(buf: Buffer): Unit = {
     buf.vec(module.definedFunctions) { func =>
       buf.byteLengthSubSection(writeFunc(_, func))
+    }
+  }
+
+  private def writeNameCustomSection(buf: Buffer): Unit = {
+    // Currently, we only emit the function names
+
+    buf.byte(0x01) // function names
+    buf.byteLengthSubSection { buf =>
+      buf.vec(allFunctionNames.zipWithIndex) { elem =>
+        buf.u32(elem._2)
+        buf.name(elem._1.show)
+      }
     }
   }
 
@@ -365,6 +389,7 @@ final class WasmBinaryWriter(module: WasmModule) {
 }
 
 object WasmBinaryWriter {
+  private final val SectionCustom = 0x00
   private final val SectionType = 0x01
   private final val SectionImport = 0x02
   private final val SectionFunction = 0x03
