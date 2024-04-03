@@ -13,6 +13,7 @@ object ClassOfTest {
     testIsPrimitive()
     testIsInterface()
     testIsArray()
+    testIsInstance()
     testIsAssignableFrom()
     testGetComponentType()
   }
@@ -89,6 +90,62 @@ object ClassOfTest {
     Assert.assertSame(true, classOf[Array[Int]].isArray())
     Assert.assertSame(true, classOf[Array[String]].isArray())
     Assert.assertSame(true, classOf[Array[CharSequence]].isArray())
+  }
+
+  def testIsInstance(): Unit = {
+    def test(expected: Boolean, cls: Class[_], value: Any): Unit =
+      assertSame(expected, cls.isInstance(value))
+
+    test(false, classOf[AnyRef], null)
+    test(true, classOf[AnyRef], 5)
+    test(true, classOf[AnyRef], 'A')
+    test(true, classOf[AnyRef], "foo")
+    test(true, classOf[AnyRef], ())
+    test(true, classOf[AnyRef], new AnyRef)
+    test(true, classOf[AnyRef], new Parent)
+    test(true, classOf[AnyRef], new Array[Int](1))
+
+    test(false, classOf[Comparable[_]], null)
+    test(false, classOf[Comparable[_]], ())
+    test(true, classOf[Comparable[_]], 5)
+    test(true, classOf[Comparable[_]], "foo")
+    test(true, classOf[Comparable[_]], true)
+    test(true, classOf[Comparable[_]], 6L)
+    test(true, classOf[Comparable[_]], 'A')
+    test(false, classOf[CharSequence], 5)
+    test(true, classOf[CharSequence], "foo")
+    test(false, classOf[CharSequence], 5L)
+    test(false, classOf[CharSequence], 'A')
+
+    test(false, classOf[Child], null)
+    test(true, classOf[Parent], new Parent)
+    test(true, classOf[Parent], new Child)
+    test(false, classOf[Child], new Parent)
+    test(true, classOf[Child], new Child)
+    test(false, classOf[Child], 5)
+
+    test(false, classOf[Interface], null)
+    test(true, classOf[Interface], new Parent)
+    test(false, classOf[OtherInterface], new Parent)
+    test(true, classOf[Interface], new Child)
+    test(true, classOf[OtherInterface], new Child)
+    test(false, classOf[Interface], 5)
+
+    test(false, classOf[Array[Int]], null)
+    test(true, classOf[Array[Int]], new Array[Int](1))
+    test(false, classOf[Array[Int]], new Array[Byte](1))
+    test(true, classOf[Array[String]], new Array[String](1))
+    test(true, classOf[Array[Object]], new Array[String](1))
+    test(false, classOf[Array[Interface]], new Array[String](1))
+
+    test(true, classOf[Character], 'A')
+    test(false, classOf[Character], 5)
+    test(true, classOf[Integer], 5)
+    test(false, classOf[Integer], 5.5)
+    test(true, classOf[java.lang.Boolean], true)
+    test(false, classOf[java.lang.Boolean], 5)
+    test(true, classOf[java.lang.Void], ())
+    test(false, classOf[java.lang.Void], 5)
   }
 
   def testIsAssignableFrom(): Unit = {

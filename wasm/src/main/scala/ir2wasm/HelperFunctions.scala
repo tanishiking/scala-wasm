@@ -12,6 +12,7 @@ import wasm.wasm4s.Names._
 import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr._
 
+import EmbeddedConstants._
 import TypeTransformer._
 import wasm4s.Defaults
 
@@ -23,6 +24,7 @@ object HelperFunctions {
     genCreateClassOf()
     genGetClassOf()
     genArrayTypeData()
+    genIsInstance()
     genIsAssignableFromExternal()
     genIsAssignableFrom()
     genGetComponentType()
@@ -312,6 +314,12 @@ object HelperFunctions {
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    // "isInstance": closure(isInstance, typeData)
+    instrs += ctx.getConstantStringInstr("isInstance")
+    instrs += ctx.refFuncWithDeclaration(WasmFunctionName.isInstance)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += CALL(FuncIdx(WasmFunctionName.closure))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isAssignableFrom": closure(isAssignableFrom, typeData)
     instrs += ctx.getConstantStringInstr("isAssignableFrom")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.isAssignableFromExternal)
@@ -330,7 +338,7 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // TODO: "isInstance", "checkCast"
+    // TODO: "checkCast"
 
     // Call java.lang.Class::<init>(dataObject)
     instrs += CALL(
@@ -441,6 +449,7 @@ object HelperFunctions {
         // typeData := new typeData(...)
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // nameData
         instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray)) // kind = KindArray
+        instrs += I32_CONST(I32(0)) // specialInstanceTypes = 0
 
         // strictAncestors
         for (strictAncestor <- strictAncestors)
@@ -491,6 +500,179 @@ object HelperFunctions {
       instrs += BR(loopLabel)
     } // end loop $loop
     instrs += UNREACHABLE
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `isInstance: (ref typeData), anyref -> i32` (a boolean).
+    *
+    * Tests whether the given value is a non-null instance of the given type.
+    *
+    * Specified by `"isInstance"` at
+    * [[https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-createclassdataof]].
+    */
+  private def genIsInstance()(implicit ctx: WasmContext): Unit = {
+    import WasmImmediate._
+    import WasmTypeName.WasmStructTypeName
+    import WasmFieldName.typeData._
+
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+    val objectRefType = WasmRefType(
+      WasmHeapType.Type(WasmTypeName.WasmStructTypeName(IRNames.ObjectClass))
+    )
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.isInstance,
+      List("typeData" -> typeDataType, "value" -> WasmAnyRef),
+      List(WasmInt32)
+    )
+
+    val List(typeDataParam, valueParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val valueNonNullLocal = fctx.addLocal("valueNonNull", WasmRefType.any)
+    val specialInstanceTypesLocal = fctx.addLocal("specialInstanceTypes", WasmInt32)
+
+    // valueNonNull := as_non_null value; return false if null
+    fctx.block(WasmRefType.any) { nonNullLabel =>
+      instrs += LOCAL_GET(valueParam)
+      instrs += BR_ON_NON_NULL(nonNullLabel)
+      instrs += I32_CONST(I32(0))
+      instrs += RETURN
+    }
+    instrs += LOCAL_SET(valueNonNullLocal)
+
+    // switch (typeData.kind)
+    fctx.switch(WasmInt32) { () =>
+      instrs += LOCAL_GET(typeDataParam)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), kindIdx)
+    }(
+      // case anyPrimitiveKind => false
+      (KindVoid to KindLastPrimitive).toList -> { () =>
+        instrs += I32_CONST(I32(0))
+      },
+      // case KindObject => true
+      List(KindObject) -> { () =>
+        instrs += I32_CONST(I32(1))
+      },
+      // for each boxed class, the corresponding primitive type test
+      List(KindBoxedUnit) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.isUndef))
+      },
+      List(KindBoxedBoolean) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.BooleanRef)))
+      },
+      List(KindBoxedCharacter) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+        instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+      },
+      List(KindBoxedByte) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.ByteRef)))
+      },
+      List(KindBoxedShort) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.ShortRef)))
+      },
+      List(KindBoxedInteger) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.IntRef)))
+      },
+      List(KindBoxedLong) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+        instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+      },
+      List(KindBoxedFloat) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.FloatRef)))
+      },
+      List(KindBoxedDouble) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.typeTest(IRTypes.DoubleRef)))
+      },
+      List(KindBoxedString) -> { () =>
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.isString))
+      },
+      // case KindJSType => trap (TODO: don't trap for JS *class*es)
+      List(KindJSType) -> { () =>
+        instrs += UNREACHABLE
+      }
+    ) { () =>
+      // case _ =>
+
+      /* If `typeData` represents an ancestor of a hijacked classes, we have to
+       * answer `true` if `valueNonNull` is a primitive instance of any of the
+       * hijacked classes that ancestor class/interface. For example, for
+       * `Comparable`, we have to answer `true` if `valueNonNull` is a primitive
+       * boolean, number or string.
+       *
+       * To do that, we use `jsValueType` and `typeData.specialInstanceTypes`.
+       *
+       * We test whether `jsValueType(valueNonNull)` is in the set represented by
+       * `specialInstanceTypes`. Since the latter is a bitset where the bit
+       * indices correspond to the values returned by `jsValueType`, we have to
+       * test whether
+       *
+       * ((1 << jsValueType(valueNonNull)) & specialInstanceTypes) != 0
+       *
+       * Since computing `jsValueType` is somewhat expensive, we first test
+       * whether `specialInstanceTypes != 0` before calling `jsValueType`.
+       */
+      instrs += LOCAL_GET(typeDataParam)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), specialInstanceTypesIdx)
+      instrs += LOCAL_TEE(specialInstanceTypesLocal)
+      instrs += I32_CONST(I32(0))
+      instrs += I32_NE
+      fctx.ifThen() {
+        // Load (1 << jsValueType(valueNonNull))
+        instrs += I32_CONST(I32(1))
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
+        instrs += I32_SHL
+
+        // if ((... & specialInstanceTypes) != 0)
+        instrs += LOCAL_GET(specialInstanceTypesLocal)
+        instrs += I32_AND
+        instrs += I32_CONST(I32(0))
+        instrs += I32_NE
+        fctx.ifThen() {
+          // then return true
+          instrs += I32_CONST(I32(1))
+          instrs += RETURN
+        }
+      }
+
+      // Get the vtable and delegate to isAssignableFrom
+
+      // Load typeData
+      instrs += LOCAL_GET(typeDataParam)
+
+      // Load the vtable; return false if it is not one of our object
+      fctx.block(objectRefType) { ourObjectLabel =>
+        // Try cast to jl.Object
+        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += BR_ON_CAST(
+          CastFlags(false, false),
+          ourObjectLabel,
+          HeapType(WasmHeapType.Simple.Any),
+          HeapType(objectRefType.heapType)
+        )
+
+        // on cast fail, return false
+        instrs += I32_CONST(I32(0))
+        instrs += RETURN
+      }
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(IRNames.ObjectClass)), StructFieldIdx.vtable)
+
+      // Call isAssignableFrom
+      instrs += CALL(FuncIdx(WasmFunctionName.isAssignableFrom))
+    }
 
     fctx.buildAndAddToContext()
   }
@@ -829,16 +1011,16 @@ object HelperFunctions {
             instrs += LOCAL_GET(valueParam)
             instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
           }(
-            // case typeFalse, typeTrue =>
-            List(0, 1) -> { () =>
+            // case JSValueTypeFalse, JSValueTypeTrue => typeDataOf[jl.Boolean]
+            List(JSValueTypeFalse, JSValueTypeTrue) -> { () =>
               instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
             },
-            // case typeString =>
-            List(2) -> { () =>
+            // case JSValueTypeString => typeDataOf[jl.String]
+            List(JSValueTypeString) -> { () =>
               instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
             },
-            // case typeNumber =>
-            List(3) -> { () =>
+            // case JSValueTypeNumber => ...
+            List(JSValueTypeNumber) -> { () =>
               /* For `number`s, the result is based on the actual value, as specified by
                * [[https://www.scala-js.org/doc/semantics.html#getclass]].
                */
@@ -910,12 +1092,12 @@ object HelperFunctions {
                 }
               }
             },
-            // case typeUndefined =>
-            List(4) -> { () =>
+            // case JSValueTypeUndefined => typeDataOf[jl.Void]
+            List(JSValueTypeUndefined) -> { () =>
               instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
             }
           ) { () =>
-            // case _ (typeOther) =>
+            // case _ (JSValueTypeOther) => return null
             instrs += REF_NULL(HeapType(WasmHeapType.ClassType))
             instrs += RETURN
           }

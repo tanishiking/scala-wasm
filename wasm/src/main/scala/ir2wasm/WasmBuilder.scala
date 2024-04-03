@@ -20,6 +20,8 @@ import collection.mutable
 import java.awt.Window.Type
 import _root_.wasm4s.Defaults
 
+import EmbeddedConstants._
+
 class WasmBuilder {
   // val module = new WasmModule()
 
@@ -39,7 +41,7 @@ class WasmBuilder {
     )
 
     for ((primRef, kind) <- primRefsWithTypeData) {
-      val typeDataFieldValues = genTypeDataFieldValues(kind, primRef)
+      val typeDataFieldValues = genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef)
       val typeDataGlobal =
         genTypeDataGlobal(primRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
@@ -150,8 +152,49 @@ class WasmBuilder {
   ): List[WasmInstr] = {
     import WasmFieldName.typeData._
 
+    val className = clazz.className
+    val classInfo = ctx.getClassInfo(className)
+
+    /* See the `isInstance` helper. `specialInstanceTypes` is a bitset of the
+     * `jsValueType`s corresponding to hijacked classes that extend this class.
+     * For example, if this class is `Comparable`, we want the bitset to contain
+     * the values for `boolean`, `string` and `number` (but not `undefined`),
+     * because `jl.Boolean`, `jl.String` and `jl.Double` implement `Comparable`.
+     *
+     * When testing whether a `value` is a `Comparable`, `isInstance` will
+     * compute the `jsValueType(value)` and test whether it is part of the bit
+     * set, using `((1 << jsValueType(value)) & specialInstanceTypes) != 0`.
+     */
+    val specialInstanceTypes = {
+      if (!classInfo.isAncestorOfHijackedClass) {
+        // fast path
+        0
+      } else {
+        var bits = 0
+        if (ctx.getClassInfo(IRNames.BoxedBooleanClass).ancestors.contains(className))
+          bits |= ((1 << JSValueTypeFalse) | (1 << JSValueTypeTrue))
+        if (ctx.getClassInfo(IRNames.BoxedStringClass).ancestors.contains(className))
+          bits |= (1 << JSValueTypeString)
+        if (ctx.getClassInfo(IRNames.BoxedDoubleClass).ancestors.contains(className))
+          bits |= (1 << JSValueTypeNumber)
+        if (ctx.getClassInfo(IRNames.BoxedUnitClass).ancestors.contains(className))
+          bits |= (1 << JSValueTypeUndefined)
+        bits
+      }
+    }
+
     val kind = clazz.className match {
-      case IRNames.ObjectClass => KindObject
+      case IRNames.ObjectClass         => KindObject
+      case IRNames.BoxedUnitClass      => KindBoxedUnit
+      case IRNames.BoxedBooleanClass   => KindBoxedBoolean
+      case IRNames.BoxedCharacterClass => KindBoxedCharacter
+      case IRNames.BoxedByteClass      => KindBoxedByte
+      case IRNames.BoxedShortClass     => KindBoxedShort
+      case IRNames.BoxedIntegerClass   => KindBoxedInteger
+      case IRNames.BoxedLongClass      => KindBoxedLong
+      case IRNames.BoxedFloatClass     => KindBoxedFloat
+      case IRNames.BoxedDoubleClass    => KindBoxedDouble
+      case IRNames.BoxedStringClass    => KindBoxedString
 
       case _ =>
         clazz.kind match {
@@ -161,10 +204,14 @@ class WasmBuilder {
         }
     }
 
-    genTypeDataFieldValues(kind, IRTypes.ClassRef(clazz.className))
+    genTypeDataFieldValues(kind, specialInstanceTypes, IRTypes.ClassRef(clazz.className))
   }
 
-  private def genTypeDataFieldValues(kind: Int, typeRef: IRTypes.NonArrayTypeRef)(implicit
+  private def genTypeDataFieldValues(
+      kind: Int,
+      specialInstanceTypes: Int,
+      typeRef: IRTypes.NonArrayTypeRef
+  )(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
     val nameStr = typeRef match {
@@ -225,7 +272,9 @@ class WasmBuilder {
     nameDataValue :::
       List(
         // kind
-        I32_CONST(I32(kind))
+        I32_CONST(I32(kind)),
+        // specialInstanceTypes
+        I32_CONST(I32(specialInstanceTypes))
       ) ::: (
         // strictAncestors
         strictAncestorsValue

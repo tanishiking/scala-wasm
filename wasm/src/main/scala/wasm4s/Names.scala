@@ -301,6 +301,7 @@ object Names {
     val createClassOf = helper("createClassOf")
     val getClassOf = helper("getClassOf")
     val arrayTypeData = helper("arrayTypeData")
+    val isInstance = helper("isInstance")
     val isAssignableFromExternal = helper("isAssignableFromExternal")
     val isAssignableFrom = helper("isAssignableFrom")
     val getComponentType = helper("getComponentType")
@@ -341,9 +342,19 @@ object Names {
       final val KindDouble = 8
       final val KindArray = 9
       final val KindObject = 10 // j.l.Object
-      final val KindClass = 11
-      final val KindInterface = 12
-      final val KindJSType = 13
+      final val KindBoxedUnit = 11
+      final val KindBoxedBoolean = 12
+      final val KindBoxedCharacter = 13
+      final val KindBoxedByte = 14
+      final val KindBoxedShort = 15
+      final val KindBoxedInteger = 16
+      final val KindBoxedLong = 17
+      final val KindBoxedFloat = 18
+      final val KindBoxedDouble = 19
+      final val KindBoxedString = 20
+      final val KindClass = 21
+      final val KindInterface = 22
+      final val KindJSType = 23
 
       final val KindLastPrimitive = KindDouble
 
@@ -356,6 +367,13 @@ object Names {
 
       /** The kind of type data, an `i32`. */
       val kind = new WasmFieldName("kind")
+
+      /** A bitset of special (primitive) instance types that are instances of this type, an `i32`.
+        *
+        * From 0 to 5, the bits correspond to the values returned by the helper `jsValueType`. In
+        * addition, bits 6 and 7 represent `char` and `long`, respectively.
+        */
+      val specialInstanceTypes = new WasmFieldName("specialInstanceTypes")
 
       /** Array of the strict ancestor classes of this class.
         *
@@ -414,12 +432,13 @@ object Names {
 
       val nameDataIdx = WasmImmediate.StructFieldIdx(0)
       val kindIdx = WasmImmediate.StructFieldIdx(1)
-      val strictAncestorsIdx = WasmImmediate.StructFieldIdx(2)
-      val componentTypeIdx = WasmImmediate.StructFieldIdx(3)
-      val nameIdx = WasmImmediate.StructFieldIdx(4)
-      val classOfIdx = WasmImmediate.StructFieldIdx(5)
-      val arrayOfIdx = WasmImmediate.StructFieldIdx(6)
-      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(7)
+      val specialInstanceTypesIdx = WasmImmediate.StructFieldIdx(2)
+      val strictAncestorsIdx = WasmImmediate.StructFieldIdx(3)
+      val componentTypeIdx = WasmImmediate.StructFieldIdx(4)
+      val nameIdx = WasmImmediate.StructFieldIdx(5)
+      val classOfIdx = WasmImmediate.StructFieldIdx(6)
+      val arrayOfIdx = WasmImmediate.StructFieldIdx(7)
+      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(8)
     }
   }
 

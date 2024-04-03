@@ -106,6 +106,11 @@ object WasmStructType {
         isMutable = false
       ),
       WasmStructField(
+        WasmFieldName.typeData.specialInstanceTypes,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
         WasmFieldName.typeData.strictAncestors,
         WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.typeDataArray)),
         isMutable = false
