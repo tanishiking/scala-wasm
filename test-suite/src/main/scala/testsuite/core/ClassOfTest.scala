@@ -15,6 +15,7 @@ object ClassOfTest {
     testIsArray()
     testIsInstance()
     testIsAssignableFrom()
+    testCast()
     testGetComponentType()
   }
 
@@ -243,6 +244,16 @@ object ClassOfTest {
     testUnrelated(classOf[Interface], classOf[Array[Interface]])
     testUnrelated(classOf[Interface], classOf[Array[Array[Int]]])
     testUnrelated(classOf[Interface], classOf[Array[Array[Object]]])
+  }
+
+  def testCast(): Unit = {
+    /* This is always an identity, so there isn't anything to really test.
+     * We only make sure that everything is wired up correctly.
+     */
+
+    val child: AnyRef = new Child
+    val child2: Parent = classOf[Parent].cast(child)
+    assertSame(child, child2)
   }
 
   def testGetComponentType(): Unit = {

@@ -304,6 +304,7 @@ object Names {
     val isInstance = helper("isInstance")
     val isAssignableFromExternal = helper("isAssignableFromExternal")
     val isAssignableFrom = helper("isAssignableFrom")
+    val checkCast = helper("checkCast")
     val getComponentType = helper("getComponentType")
     val newArrayOfThisClass = helper("newArrayOfThisClass")
     val anyGetClass = helper("anyGetClass")

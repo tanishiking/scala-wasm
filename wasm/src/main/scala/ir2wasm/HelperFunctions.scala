@@ -27,6 +27,7 @@ object HelperFunctions {
     genIsInstance()
     genIsAssignableFromExternal()
     genIsAssignableFrom()
+    genCheckCast()
     genGetComponentType()
     genNewArrayOfThisClass()
     genAnyGetClass()
@@ -326,6 +327,13 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    // "checkCast": closure(checkCast, typeData)
+    instrs += ctx.getConstantStringInstr("checkCast")
+    instrs += ctx.refFuncWithDeclaration(WasmFunctionName.checkCast)
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += CALL(FuncIdx(WasmFunctionName.closure))
+    instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
+    // "isAssignableFrom": closure(isAssignableFrom, typeData)
     // "getComponentType": closure(getComponentType, typeData)
     instrs += ctx.getConstantStringInstr("getComponentType")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.getComponentType)
@@ -338,7 +346,6 @@ object HelperFunctions {
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
-    // TODO: "checkCast"
 
     // Call java.lang.Class::<init>(dataObject)
     instrs += CALL(
@@ -841,6 +848,32 @@ object HelperFunctions {
         instrs += I32_CONST(I32(0))
       }
     }
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `checkCast: (ref typeData), anyref -> anyref`.
+    *
+    * Casts the given value to the given type; subject to undefined behaviors.
+    */
+  private def genCheckCast()(implicit ctx: WasmContext): Unit = {
+    val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.checkCast,
+      List("typeData" -> typeDataType, "value" -> WasmAnyRef),
+      List(WasmAnyRef)
+    )
+
+    val List(typeDataParam, valueParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    /* Given that we only implement `CheckedBehavior.Unchecked` semantics for
+     * now, this is always the identity.
+     */
+
+    instrs += LOCAL_GET(valueParam)
 
     fctx.buildAndAddToContext()
   }
