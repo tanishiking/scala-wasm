@@ -32,3 +32,5 @@ metals.sbt
 /.worksheet/
 
 node_modules
+
+/scalajs-test-suite/fetched-sources/
