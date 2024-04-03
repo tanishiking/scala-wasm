@@ -61,7 +61,7 @@ lazy val wasm = crossProject(JVMPlatform, JSPlatform)
 
 lazy val sample = project
   .in(file("sample"))
-  .enablePlugins(WasmLinkerPlugin)
+  .enablePlugins(WasmLinkerPlugin, ScalaJSJUnitPlugin)
   .settings(
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,

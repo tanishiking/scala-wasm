@@ -26,5 +26,7 @@ jobs:
         run: sbt tests/test
       - name: Run the Sample
         run: sbt sample/run
+      - name: Test the Sample
+        run: sbt sample/test
       - name: Format
         run: sbt scalafmtCheckAll

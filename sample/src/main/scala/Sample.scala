@@ -19,6 +19,9 @@ object Main {
     println("hello world")
   }
 
+  // Tested in SampleTest.scala
+  def square(x: Int): Int = x * x
+
   private def println(x: Any): Unit =
     js.Dynamic.global.console.log("" + x)
 }
