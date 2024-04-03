@@ -60,7 +60,15 @@ final class WebAssemblyLinkerBackend(
     val builder = new WasmBuilder()
     implicit val context: WasmContext = new WasmContext(wasmModule)
 
-    val onlyModule = moduleSet.modules.head
+    val onlyModule = moduleSet.modules match {
+      case onlyModule :: Nil =>
+        onlyModule
+      case modules =>
+        throw new UnsupportedOperationException(
+          "The WebAssembly backend does not support multiple modules. Found: " +
+            modules.map(_.id.id).mkString(", ")
+        )
+    }
     val moduleID = onlyModule.id.id
 
     /* Sort by ancestor count so that superclasses always appear before
