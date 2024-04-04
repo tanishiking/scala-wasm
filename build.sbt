@@ -219,17 +219,7 @@ lazy val `scalajs-test-suite` = project
         base / "test-suite/js/src/test/require-modules",
         base / "test-suite/js/src/test/require-new-target",
         base / "test-suite/js/src/test/require-scala2",
-
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/compiler",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/javalib",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/jsinterop",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/junit",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/library",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/niobuffer",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/scalalib",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/typedarray",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/utils",
-
+        base / "test-suite/js/src/test/scala",
         base / "test-suite/js/src/test/scala-old-collections",
       )
     },
