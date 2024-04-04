@@ -53,8 +53,10 @@ trait ReadOnlyWasmContext {
     case IRTypes.PrimRef(tpe) =>
       tpe
     case IRTypes.ClassRef(className) =>
-      if (className == IRNames.ObjectClass) IRTypes.AnyType
-      else IRTypes.ClassType(className)
+      if (className == IRNames.ObjectClass || getClassInfo(className).kind.isJSType)
+        IRTypes.AnyType
+      else
+        IRTypes.ClassType(className)
     case typeRef: IRTypes.ArrayTypeRef =>
       IRTypes.ArrayType(typeRef)
   }
