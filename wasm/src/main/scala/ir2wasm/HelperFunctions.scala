@@ -40,20 +40,34 @@ object HelperFunctions {
     import WasmImmediate._
     val fctx = WasmFunctionContext(
       WasmFunctionName.stringLiteral,
-      List(
-        "offset" -> WasmInt32,
-        "size" -> WasmInt32
-      ),
+      List("offset" -> WasmInt32, "size" -> WasmInt32, "stringIndex" -> WasmInt32),
       List(WasmRefType.any)
     )
-    val List(offsetParam, sizeParam) = fctx.paramIndices
+    val List(offsetParam, sizeParam, stringIndexParam) = fctx.paramIndices
+    val str = fctx.addLocal("str", WasmRefType.any)
 
     import fctx.instrs
 
-    instrs += LOCAL_GET(offsetParam)
-    instrs += LOCAL_GET(sizeParam)
-    instrs += ARRAY_NEW_DATA(TypeIdx(WasmArrayTypeName.i16Array), DataIdx(WasmDataName.string))
-    instrs += CALL(FuncIdx(WasmFunctionName.createStringFromData))
+    fctx.block(WasmRefType.any) { cacheHit =>
+      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalStringLiteralCache))
+      instrs += LOCAL_GET(stringIndexParam)
+      instrs += ARRAY_GET(TypeIdx(WasmArrayTypeName.anyArray))
+
+      instrs += BR_ON_NON_NULL(cacheHit)
+
+      // cache miss, create a new string and cache it
+      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalStringLiteralCache))
+      instrs += LOCAL_GET(stringIndexParam)
+
+      instrs += LOCAL_GET(offsetParam)
+      instrs += LOCAL_GET(sizeParam)
+      instrs += ARRAY_NEW_DATA(TypeIdx(WasmArrayTypeName.i16Array), DataIdx(WasmDataName.string))
+      instrs += CALL(FuncIdx(WasmFunctionName.createStringFromData))
+      instrs += LOCAL_TEE(str)
+      instrs += ARRAY_SET(TypeIdx(WasmArrayTypeName.anyArray))
+
+      instrs += LOCAL_GET(str)
+    }
 
     fctx.buildAndAddToContext()
   }

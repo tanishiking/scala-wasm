@@ -115,7 +115,7 @@ trait ReadOnlyWasmContext {
 }
 
 case class StringData(
-    globalName: WasmGlobalName,
+    constantStringIndex: Int,
     offset: Int
 )
 
@@ -126,8 +126,8 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
 
   protected var stringPool = new mutable.ArrayBuffer[Byte]()
+  protected var nextConstantStringIndex: Int = 0
   private var nextConstatnStringOffset: Int = 0
-  private var nextConstantStringIndex: Int = 1
   private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
 
@@ -165,26 +165,14 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
         data
 
       case None =>
-        val globalName = WasmGlobalName.WasmGlobalConstantStringName(nextConstantStringIndex)
         val bytes = str.getBytes(StandardCharsets.UTF_16LE)
         val offset = nextConstatnStringOffset
-        val data = StringData(globalName, offset)
+        val data = StringData(nextConstantStringIndex, offset)
         constantStringGlobals(str) = data
 
-        /* We need an initial value of type (ref any), which is also a constant
-         * expression. It is not that easy to come up with such a value that
-         * does not need to reference other things right away.
-         * We use an `ref.i31 (i32.const 0)` as a trick.
-         * The real value will be filled in during initialization of the module
-         * in the Start section.
-         */
-        val initValue = WasmExpr(List(WasmInstr.I32_CONST(WasmImmediate.I32(0)), WasmInstr.REF_I31))
-
-        addGlobal(WasmGlobal(globalName, Types.WasmRefType.any, initValue, isMutable = true))
         stringPool ++= bytes
         nextConstantStringIndex += 1
         nextConstatnStringOffset += bytes.length
-
         data
     }
   }
@@ -197,6 +185,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       // constant string from the data section using "array.newData $i16Array ..."
       // The length of the array should be equal to the length of the UTF-16 encoded string
       WasmInstr.I32_CONST(WasmImmediate.I32(str.length())),
+      WasmInstr.I32_CONST(WasmImmediate.I32(data.constantStringIndex)),
       WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringLiteral))
     )
   }
@@ -471,7 +460,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       }
     }
 
+    // string
     module.addData(WasmData(WasmDataName.string, stringPool.toArray, WasmData.Mode.Passive))
+    addGlobal(
+      WasmGlobal(
+        WasmGlobalName.WasmGlobalStringLiteralCache,
+        WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray)),
+        WasmExpr(
+          List(
+            WasmInstr.I32_CONST(WasmImmediate.I32(nextConstantStringIndex)),
+            WasmInstr.ARRAY_NEW_DEFAULT(WasmImmediate.TypeIdx(WasmArrayTypeName.anyArray))
+          )
+        ),
+        isMutable = false
+      )
+    )
+
     genStartFunction(moduleInitializers, classesWithStaticInit)
     genDeclarativeElements()
   }

@@ -16,7 +16,7 @@ object Names {
         case _: WasmGlobalName.WasmJSClassName              => "g_jsclass"
         case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
         case _: WasmGlobalName.WasmGlobalITableName         => "g_itable"
-        case _: WasmGlobalName.WasmGlobalConstantStringName => "str_const"
+        case WasmGlobalName.WasmGlobalStringLiteralCache    => "str_cache"
         case _: WasmGlobalName.WasmGlobalStaticFieldName    => "f_static"
         case _: WasmGlobalName.WasmGlobalJSPrivateFieldName => "g_jspfield"
         case _: WasmFunctionName                            => "fun"
@@ -108,14 +108,6 @@ object Names {
       )
     }
 
-    final case class WasmGlobalConstantStringName private (
-        override private[wasm4s] val name: String
-    ) extends WasmGlobalName(name)
-    object WasmGlobalConstantStringName {
-      def apply(index: Int): WasmGlobalConstantStringName =
-        new WasmGlobalConstantStringName(s"conststring___$index")
-    }
-
     final case class WasmGlobalStaticFieldName private (
         override private[wasm4s] val name: String
     ) extends WasmGlobalName(name)
@@ -131,6 +123,8 @@ object Names {
       def apply(fieldName: IRNames.FieldName): WasmGlobalJSPrivateFieldName =
         new WasmGlobalJSPrivateFieldName(s"jspfield___${fieldName.nameString}")
     }
+
+    object WasmGlobalStringLiteralCache extends WasmGlobalName("string_literal")
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
