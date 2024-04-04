@@ -440,6 +440,11 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     List(WasmRefType.any)
   )
   addHelperImport(
+    WasmFunctionName.createJSClassRest,
+    List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
     WasmFunctionName.installJSField,
     List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
     Nil

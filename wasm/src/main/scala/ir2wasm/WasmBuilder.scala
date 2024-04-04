@@ -569,6 +569,7 @@ class WasmBuilder {
      */
 
     val ctor = clazz.jsConstructorDef.get
+    val allCtorParams = ctor.args ::: ctor.restParam.toList
     val ctorBody = ctor.body
 
     // Compute the pre-super environment
@@ -588,7 +589,7 @@ class WasmBuilder {
         preSuperVarDefs = None,
         hasNewTarget = true,
         receiverTyp = None,
-        ctor.args,
+        allCtorParams,
         List(preSuperEnvTyp)
       )
 
@@ -613,7 +614,7 @@ class WasmBuilder {
         Some(preSuperDecls),
         hasNewTarget = true,
         receiverTyp = None,
-        ctor.args,
+        allCtorParams,
         List(WasmAnyRef) // a js.Array
       )
 
@@ -634,7 +635,7 @@ class WasmBuilder {
         Some(preSuperDecls),
         hasNewTarget = true,
         receiverTyp = Some(WasmAnyRef),
-        ctor.args,
+        allCtorParams,
         List(WasmAnyRef)
       )
 
@@ -709,7 +710,12 @@ class WasmBuilder {
       instrs += ctx.refFuncWithDeclaration(postSuperStatsFun.name)
 
       // Call the createJSClass helper to bundle everything
-      instrs += CALL(FuncIdx(WasmFunctionName.createJSClass))
+      if (ctor.restParam.isDefined) {
+        instrs += I32_CONST(I32(ctor.args.size)) // number of fixed params
+        instrs += CALL(FuncIdx(WasmFunctionName.createJSClassRest))
+      } else {
+        instrs += CALL(FuncIdx(WasmFunctionName.createJSClass))
+      }
 
       // Store the result, locally and possibly in the global cache
       val jsClassLocal = fctx.addLocal("__jsClass", WasmRefType.any)

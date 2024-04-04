@@ -217,8 +217,8 @@ lazy val `scalajs-test-suite` = project
         base / "test-suite/js/src/test/esmodule",
         base / "test-suite/js/src/test/require-exponent-op",
         base / "test-suite/js/src/test/require-modules",
-        //base / "test-suite/js/src/test/require-new-target",
-        //base / "test-suite/js/src/test/require-scala2",
+        base / "test-suite/js/src/test/require-new-target",
+        base / "test-suite/js/src/test/require-scala2",
 
         base / "test-suite/js/src/test/scala/org/scalajs/testsuite/compiler",
         base / "test-suite/js/src/test/scala/org/scalajs/testsuite/javalib",
