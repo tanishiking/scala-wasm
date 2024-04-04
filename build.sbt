@@ -219,23 +219,15 @@ lazy val `scalajs-test-suite` = project
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
         .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala"))
-        .filterNot(endsWith(_, "/compiler/NullPointersTest.scala"))
         .filterNot(endsWith(_, "/compiler/OptimizerTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/RegressionTest.scala"))
-        .filterNot(endsWith(_, "/compiler/SAMTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
-        .filterNot(endsWith(_, "/javalib/util/TimerTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/CustomJSFunctionTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NonNativeJSTypeTest.scala"))
-        .filterNot(endsWith(_, "/library/ArrayOpsTest.scala"))
-        .filterNot(endsWith(_, "/library/WrappedDictionaryTest.scala"))
-        .filterNot(endsWith(_, "/niocharset/CharsetTest.scala"))
-        .filterNot(endsWith(_, "/typedarray/ArraysTest.scala"))
-        .filterNot(endsWith(_, "/typedarray/TypedArrayTest.scala"))
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
@@ -305,6 +297,7 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.DoubleTest",
     "org.scalajs.testsuite.javalib.lang.FloatTest",
     "org.scalajs.testsuite.javalib.util.ArraysTest",
+    "org.scalajs.testsuite.typedarray.ArraysTest",
     // hashCode of bigints and symbols
     "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
     // Various issues with identityHashCode
