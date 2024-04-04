@@ -196,19 +196,7 @@ lazy val `scalajs-test-suite` = project
     Test / unmanagedSourceDirectories ++= {
       val base = (fetchScalaJSSource / artifactPath).value
       Seq(
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/compiler",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/io",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/lang",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/math",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/net",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/security",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/util",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/junit",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/niobuffer",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/niocharset",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/scalalib",
-        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/utils",
-
+        base / "test-suite/shared/src/test/scala/",
         //base / "test-suite/shared/src/test/require-scala2/org/scalajs/testsuite/compiler",
         base / "test-suite/shared/src/test/require-scala2/org/scalajs/testsuite/scalalib",
         base / "test-suite/shared/src/test/scala-old-collections",
