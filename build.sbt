@@ -202,10 +202,10 @@ lazy val `scalajs-test-suite` = project
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/math",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/net",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/security",
-        //base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/util",
+        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/javalib/util",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/junit",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/niobuffer",
-        //base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/niocharset",
+        base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/niocharset",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/scalalib",
         base / "test-suite/shared/src/test/scala/org/scalajs/testsuite/utils",
 
@@ -248,14 +248,6 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/RegressionTest.scala"))
         .filterNot(endsWith(_, "/compiler/SAMTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/BooleanTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/ByteTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/CharacterTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/DoubleTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/FloatTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/IntegerTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/LongTest.scala"))
-        .filterNot(endsWith(_, "/javalib/lang/ShortTest.scala"))
         .filterNot(endsWith(_, "/javalib/util/TimerTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
@@ -265,7 +257,6 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/niocharset/CharsetTest.scala"))
         .filterNot(endsWith(_, "/typedarray/ArraysTest.scala"))
         .filterNot(endsWith(_, "/typedarray/TypedArrayTest.scala"))
-        .filterNot(endsWith(_, "/utils/CollectionsTestBase.scala"))
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
@@ -307,8 +298,12 @@ lazy val IgnoredTestNames: Set[String] = {
     // RuntimeError: remainder by zero
     "org.scalajs.testsuite.compiler.IntTest",
     "org.scalajs.testsuite.compiler.LongTest",
+    "org.scalajs.testsuite.javalib.lang.IntegerTest",
     "org.scalajs.testsuite.javalib.lang.MathTest",
+    // RuntimeError: dereferencing a null pointer
+    "org.scalajs.testsuite.javalib.util.Base64Test",
     // RuntimeError: illegal cast
+    "org.scalajs.testsuite.niocharset.UTF8Test",
     "org.scalajs.testsuite.scalalib.ArrayBuilderTest",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsTest",
@@ -323,6 +318,10 @@ lazy val IgnoredTestNames: Set[String] = {
     // getClass for Box classes
     "org.scalajs.testsuite.javalib.lang.ClassTest",
     "org.scalajs.testsuite.javalib.lang.ObjectTest",
+    // hashCode of floats and doubles
+    "org.scalajs.testsuite.javalib.lang.DoubleTest",
+    "org.scalajs.testsuite.javalib.lang.FloatTest",
+    "org.scalajs.testsuite.javalib.util.ArraysTest",
     // hashCode of bigints and symbols
     "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
     // Various issues with identityHashCode
@@ -335,6 +334,9 @@ lazy val IgnoredTestNames: Set[String] = {
     // CloneNotSupportedException
     "org.scalajs.testsuite.javalib.lang.ThrowablesTest",
     "org.scalajs.testsuite.javalib.math.RoundingModeTest",
+    "org.scalajs.testsuite.javalib.util.BitSetTest",
+    "org.scalajs.testsuite.javalib.util.concurrent.ConcurrentHashMapTest",
+    "org.scalajs.testsuite.javalib.util.concurrent.TimeUnitTest",
     // nonUnitBoxedPrimitiveValuesAreSerializable failed: java.lang.AssertionError: Boolean
     "org.scalajs.testsuite.javalib.io.SerializableTest",
     // No support for stack traces

@@ -19,6 +19,8 @@ import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Position
 import _root_.wasm4s.Defaults
 
+import EmbeddedConstants._
+
 object WasmExpressionBuilder {
   def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
       ctx: TypeDefinableWasmContext,
@@ -41,6 +43,7 @@ object WasmExpressionBuilder {
   private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
   private val hashCodeMethodName = IRNames.MethodName("hashCode", Nil, IRTypes.IntRef)
   private val equalsMethodName = IRNames.MethodName("equals", List(ObjectRef), IRTypes.BooleanRef)
+  private val compareToMethodName = IRNames.MethodName("compareTo", List(ObjectRef), IRTypes.IntRef)
 
   private val CharSequenceClass = IRNames.ClassName("java.lang.CharSequence")
   private val ComparableClass = IRNames.ClassName("java.lang.Comparable")
@@ -439,6 +442,45 @@ private class WasmExpressionBuilder private (
           // the value must be a `string`; it already has the right type
           pushArgs(argsLocals)
           genHijackedClassCall(IRNames.BoxedStringClass)
+        } else if (t.method.name == compareToMethodName) {
+          /* The only method of jl.Comparable. Here the value can be a boolean,
+           * a number or a string. We use `jsValueType` to dispatch to Wasm-side
+           * implementations because they have to perform casts on their arguments.
+           */
+          assert(argsLocals.size == 1)
+
+          val receiverLocal = fctx.addSyntheticLocal(Types.WasmRefType.any)
+          instrs += LOCAL_TEE(receiverLocal)
+
+          val jsValueTypeLocal = fctx.addSyntheticLocal(Types.WasmInt32)
+          instrs += CALL(FuncIdx(WasmFunctionName.jsValueType))
+          instrs += LOCAL_TEE(jsValueTypeLocal)
+
+          import wasm.wasm4s.{WasmFunctionSignature => Sig}
+          fctx.switch(Sig(List(Types.WasmInt32), Nil), Sig(Nil, List(Types.WasmInt32))) { () =>
+            // scrutinee is already on the stack
+          }(
+            // case JSValueTypeFalse | JSValueTypeTrue =>
+            List(JSValueTypeFalse, JSValueTypeTrue) -> { () =>
+              // the jsValueTypeLocal is the boolean value, thanks to the chosen encoding
+              instrs += LOCAL_GET(jsValueTypeLocal)
+              pushArgs(argsLocals)
+              genHijackedClassCall(IRNames.BoxedBooleanClass)
+            },
+            // case JSValueTypeString =>
+            List(JSValueTypeString) -> { () =>
+              instrs += LOCAL_GET(receiverLocal)
+              // no need to unbox for string
+              pushArgs(argsLocals)
+              genHijackedClassCall(IRNames.BoxedStringClass)
+            }
+          ) { () =>
+            // case _ (JSValueTypeNumber) =>
+            instrs += LOCAL_GET(receiverLocal)
+            genUnbox(IRTypes.DoubleType)
+            pushArgs(argsLocals)
+            genHijackedClassCall(IRNames.BoxedDoubleClass)
+          }
         } else {
           /* It must be a method of j.l.Object and it can be any value.
            * hashCode() and equals() are overridden in all hijacked classes; we
