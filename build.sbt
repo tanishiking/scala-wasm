@@ -197,8 +197,7 @@ lazy val `scalajs-test-suite` = project
       val base = (fetchScalaJSSource / artifactPath).value
       Seq(
         base / "test-suite/shared/src/test/scala/",
-        //base / "test-suite/shared/src/test/require-scala2/org/scalajs/testsuite/compiler",
-        base / "test-suite/shared/src/test/require-scala2/org/scalajs/testsuite/scalalib",
+        base / "test-suite/shared/src/test/require-scala2/",
         base / "test-suite/shared/src/test/scala-old-collections",
 
         base / "test-suite/js/src/test/require-dynamic-import",
@@ -236,6 +235,7 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/RegressionTest.scala"))
         .filterNot(endsWith(_, "/compiler/SAMTest.scala"))
+        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
         .filterNot(endsWith(_, "/javalib/util/TimerTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
