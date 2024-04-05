@@ -36,6 +36,9 @@ final class WasmBinaryWriter(module: WasmModule) {
   private val typeIdxValues: Map[WasmTypeName, Int] =
     allTypeDefinitions.map(_.name).zipWithIndex.toMap
 
+  private val dataIdxValues: Map[WasmDataName, Int] =
+    module.data.map(_.name).zipWithIndex.toMap
+
   private val allFunctionNames: List[WasmFunctionName] = {
     val importedFunctionNames = module.imports.collect {
       case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
@@ -96,7 +99,10 @@ final class WasmBinaryWriter(module: WasmModule) {
     if (module.startFunction.isDefined)
       writeSection(fullOutput, SectionStart)(writeStartSection(_))
     writeSection(fullOutput, SectionElement)(writeElementSection(_))
+    if (module.data.nonEmpty)
+      writeSection(fullOutput, SectionDataCount)(writeDataCountSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
+    writeSection(fullOutput, SectionData)(writeDataSection(_))
     writeCustomSection(fullOutput, "name")(writeNameCustomSection(_))
 
     fullOutput.result()
@@ -236,6 +242,20 @@ final class WasmBinaryWriter(module: WasmModule) {
     }
   }
 
+  /** https://webassembly.github.io/spec/core/binary/modules.html#data-section
+    */
+  private def writeDataSection(buf: Buffer): Unit = {
+    buf.vec(module.data) { data =>
+      data.mode match {
+        case WasmData.Mode.Passive => buf.byte(1)
+      }
+      buf.vec(data.bytes)(buf.byte)
+    }
+  }
+
+  private def writeDataCountSection(buf: Buffer): Unit =
+    buf.u32(module.data.size)
+
   private def writeCodeSection(buf: Buffer): Unit = {
     buf.vec(module.definedFunctions) { func =>
       buf.byteLengthSubSection(writeFunc(_, func))
@@ -287,6 +307,9 @@ final class WasmBinaryWriter(module: WasmModule) {
 
   private def writeTypeIdx(buf: Buffer, typeName: WasmTypeName): Unit =
     buf.u32(typeIdxValues(typeName))
+
+  private def writeDataIdx(buf: Buffer, dataName: WasmDataName): Unit =
+    buf.u32(dataIdxValues(dataName))
 
   private def writeTypeIdxs33(buf: Buffer, typeName: WasmTypeName): Unit =
     buf.s33OfUInt(typeIdxValues(typeName))
@@ -368,6 +391,7 @@ final class WasmBinaryWriter(module: WasmModule) {
       case labelIdx: LabelIdx    => writeLabelIdx(buf, labelIdx)
       case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
       case TypeIdx(value)        => writeTypeIdx(buf, value)
+      case DataIdx(value)        => writeDataIdx(buf, value)
       case TableIdx(value)       => ???
       case TagIdx(value)         => writeTagIdx(buf, value)
       case LocalIdx(value)       => writeLocalIdx(buf, value)
@@ -452,7 +476,7 @@ object WasmBinaryWriter {
       byte((bits >>> 56).toByte)
     }
 
-    def vec[A](elems: List[A])(op: A => Unit): Unit = {
+    def vec[A](elems: Iterable[A])(op: A => Unit): Unit = {
       u32(elems.size)
       for (elem <- elems)
         op(elem)

@@ -22,6 +22,7 @@ object Names {
         case _: WasmFunctionName                            => "fun"
         case _: WasmFieldName                               => "field"
         case _: WasmTagName                                 => "tag"
+        case _: WasmDataName                                => "data"
         case _: WasmExportName                              => "export"
         case _: WasmTypeName.WasmFunctionTypeName           => "ty"
         case _: WasmTypeName.WasmStructTypeName             => "struct"
@@ -297,6 +298,7 @@ object Names {
     // Wasm internal helpers
 
     val createStringFromData = helper("createStringFromData")
+    val stringLiteral = helper("stringLiteral")
     val typeDataName = helper("typeDataName")
     val createClassOf = helper("createClassOf")
     val getClassOf = helper("getClassOf")
@@ -553,6 +555,12 @@ object Names {
       extends WasmName(name)
   object WasmTagName {
     def fromStr(str: String): WasmTagName = new WasmTagName(str)
+  }
+
+  final case class WasmDataName private (override private[wasm4s] val name: String)
+      extends WasmName(name)
+  object WasmDataName {
+    val string = WasmDataName("string")
   }
 
   final case class WasmExportName private (override private[wasm4s] val name: String)

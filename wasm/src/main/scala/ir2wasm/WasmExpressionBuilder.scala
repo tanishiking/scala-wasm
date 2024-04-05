@@ -637,7 +637,7 @@ private class WasmExpressionBuilder private (
         instrs += WasmInstr.REF_NULL(HeapType(Types.WasmHeapType.Simple.None))
 
       case v: IRTrees.StringLiteral =>
-        instrs += ctx.getConstantStringInstr(v.value)
+        instrs ++= ctx.getConstantStringInstr(v.value)
 
       case v: IRTrees.ClassOf =>
         v.typeRef match {
@@ -2182,7 +2182,7 @@ private class WasmExpressionBuilder private (
               instrs += I32_EQ
               instrs += BR_IF(label)
             case IRTrees.StringLiteral(value) =>
-              instrs += ctx.getConstantStringInstr(value)
+              instrs ++= ctx.getConstantStringInstr(value)
               instrs += CALL(FuncIdx(WasmFunctionName.is))
               instrs += BR_IF(label)
             case IRTrees.Null() =>

@@ -19,6 +19,7 @@ import wasm4s.Defaults
 object HelperFunctions {
 
   def genGlobalHelpers()(implicit ctx: WasmContext): Unit = {
+    genStringLiteral()
     genCreateStringFromData()
     genTypeDataName()
     genCreateClassOf()
@@ -32,6 +33,29 @@ object HelperFunctions {
     genNewArrayOfThisClass()
     genAnyGetClass()
     genNewArrayObject()
+  }
+
+  private def genStringLiteral()(implicit ctx: WasmContext): Unit = {
+    import WasmTypeName.WasmArrayTypeName
+    import WasmImmediate._
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.stringLiteral,
+      List(
+        "offset" -> WasmInt32,
+        "size" -> WasmInt32
+      ),
+      List(WasmRefType.any)
+    )
+    val List(offsetParam, sizeParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    instrs += LOCAL_GET(offsetParam)
+    instrs += LOCAL_GET(sizeParam)
+    instrs += ARRAY_NEW_DATA(TypeIdx(WasmArrayTypeName.i16Array), DataIdx(WasmDataName.string))
+    instrs += CALL(FuncIdx(WasmFunctionName.createStringFromData))
+
+    fctx.buildAndAddToContext()
   }
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
@@ -53,7 +77,7 @@ object HelperFunctions {
 
     val lenLocal = fctx.addLocal("len", WasmInt32)
     val iLocal = fctx.addLocal("i", WasmInt32)
-    val resultLocal = fctx.addLocal("restul", WasmRefType.any)
+    val resultLocal = fctx.addLocal("result", WasmRefType.any)
 
     // len := data.length
     instrs += LOCAL_GET(dataParam)
@@ -283,16 +307,16 @@ object HelperFunctions {
      */
     instrs += CALL(FuncIdx(WasmFunctionName.jsNewObject))
     // "__typeData": typeData (TODO hide this better? although nobody will notice anyway)
-    instrs += ctx.getConstantStringInstr("__typeData")
+    instrs ++= ctx.getConstantStringInstr("__typeData")
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "name": typeDataName(typeData)
-    instrs += ctx.getConstantStringInstr("name")
+    instrs ++= ctx.getConstantStringInstr("name")
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isPrimitive": (typeData.kind <= KindLastPrimitive)
-    instrs += ctx.getConstantStringInstr("isPrimitive")
+    instrs ++= ctx.getConstantStringInstr("isPrimitive")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
     instrs += I32_CONST(I32(WasmFieldName.typeData.KindLastPrimitive))
@@ -300,7 +324,7 @@ object HelperFunctions {
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isArrayClass": (typeData.kind == KindArray)
-    instrs += ctx.getConstantStringInstr("isArrayClass")
+    instrs ++= ctx.getConstantStringInstr("isArrayClass")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
     instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
@@ -308,7 +332,7 @@ object HelperFunctions {
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isInterface": (typeData.kind == KindInterface)
-    instrs += ctx.getConstantStringInstr("isInterface")
+    instrs ++= ctx.getConstantStringInstr("isInterface")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
     instrs += I32_CONST(I32(WasmFieldName.typeData.KindInterface))
@@ -316,32 +340,32 @@ object HelperFunctions {
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isInstance": closure(isInstance, typeData)
-    instrs += ctx.getConstantStringInstr("isInstance")
+    instrs ++= ctx.getConstantStringInstr("isInstance")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.isInstance)
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isAssignableFrom": closure(isAssignableFrom, typeData)
-    instrs += ctx.getConstantStringInstr("isAssignableFrom")
+    instrs ++= ctx.getConstantStringInstr("isAssignableFrom")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.isAssignableFromExternal)
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "checkCast": closure(checkCast, typeData)
-    instrs += ctx.getConstantStringInstr("checkCast")
+    instrs ++= ctx.getConstantStringInstr("checkCast")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.checkCast)
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "isAssignableFrom": closure(isAssignableFrom, typeData)
     // "getComponentType": closure(getComponentType, typeData)
-    instrs += ctx.getConstantStringInstr("getComponentType")
+    instrs ++= ctx.getConstantStringInstr("getComponentType")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.getComponentType)
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
     // "newArrayOfThisClass": closure(newArrayOfThisClass, typeData)
-    instrs += ctx.getConstantStringInstr("newArrayOfThisClass")
+    instrs ++= ctx.getConstantStringInstr("newArrayOfThisClass")
     instrs += ctx.refFuncWithDeclaration(WasmFunctionName.newArrayOfThisClass)
     instrs += LOCAL_GET(typeDataParam)
     instrs += CALL(FuncIdx(WasmFunctionName.closure))
@@ -708,7 +732,7 @@ object HelperFunctions {
 
     // load ref.cast<typeData> from["__typeData"] (as a JS selection)
     instrs += LOCAL_GET(fromParam)
-    instrs += ctx.getConstantStringInstr("__typeData")
+    instrs ++= ctx.getConstantStringInstr("__typeData")
     instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
     instrs += REF_CAST(HeapType(typeDataType.heapType))
 
@@ -944,7 +968,7 @@ object HelperFunctions {
 
     // lengthsLen := lengths.length // as a JS field access
     instrs += LOCAL_GET(lengthsParam)
-    instrs += ctx.getConstantStringInstr("length")
+    instrs ++= ctx.getConstantStringInstr("length")
     instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
     instrs += CALL(FuncIdx(WasmFunctionName.unbox(IRTypes.IntRef)))
     instrs += LOCAL_TEE(lengthsLenLocal)

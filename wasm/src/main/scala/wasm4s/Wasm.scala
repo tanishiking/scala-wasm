@@ -50,6 +50,17 @@ case class WasmLocal(
 final case class WasmTag(val name: WasmTagName, val typ: WasmFunctionTypeName)
     extends WasmNamedDefinitionField[WasmTagName]
 
+final case class WasmData(val name: WasmDataName, val bytes: Array[Byte], mode: WasmData.Mode)
+    extends WasmNamedDefinitionField[WasmDataName]
+
+object WasmData {
+  sealed abstract class Mode
+  object Mode {
+    case object Passive extends Mode
+    // final case class Active
+  }
+}
+
 case class WasmGlobal(
     val name: WasmGlobalName,
     val typ: WasmType,
@@ -259,6 +270,7 @@ class WasmModule(
     // val tables: List[WasmTable] = Nil,
     // val memories: List[WasmMemory] = Nil,
     private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer(),
+    private val _data: mutable.ListBuffer[WasmData] = new mutable.ListBuffer(),
     private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
     private val _exports: mutable.ListBuffer[WasmExport] = new mutable.ListBuffer(),
     private var _startFunction: Option[WasmFunctionName] = None,
@@ -274,6 +286,7 @@ class WasmModule(
   def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes += typ
   def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes += typ
   def addTag(tag: WasmTag): Unit = _tags += tag
+  def addData(data: WasmData): Unit = _data += data
   def addGlobal(typ: WasmGlobal): Unit = _globals += typ
   def addExport(exprt: WasmExport): Unit = _exports += exprt
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
@@ -298,6 +311,7 @@ class WasmModule(
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def tags: List[WasmTag] = _tags.toList
+  def data: List[WasmData] = _data.toList
   def globals = _globals.toList
   def exports = _exports.toList
   def startFunction: Option[WasmFunctionName] = _startFunction
