@@ -165,7 +165,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
         data
 
       case None =>
-        val bytes = str.getBytes(StandardCharsets.UTF_16LE)
+        val bytes = encodeStringToWTF16LE(str)
         val offset = nextConstatnStringOffset
         val data = StringData(nextConstantStringIndex, offset)
         constantStringGlobals(str) = data
@@ -183,7 +183,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       WasmInstr.I32_CONST(WasmImmediate.I32(data.offset)),
       // Assuming that the stringLiteral method will instantiate the
       // constant string from the data section using "array.newData $i16Array ..."
-      // The length of the array should be equal to the length of the UTF-16 encoded string
+      // The length of the array should be equal to the length of the WTF-16 encoded string
       WasmInstr.I32_CONST(WasmImmediate.I32(str.length())),
       WasmInstr.I32_CONST(WasmImmediate.I32(data.constantStringIndex)),
       WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringLiteral))
@@ -217,6 +217,32 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
     if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
     else inferTypeFromTypeRef(typeRef.base)
+  }
+
+  /** http://simonsapin.github.io/wtf-8/#encoding-ill-formed-utf-16
+    */
+  private def encodeStringToWTF16LE(input: String): Array[Byte] = {
+    val result = scala.collection.mutable.ArrayBuffer[Int]()
+    var i = 0
+    while (i < input.length) {
+      val codePoint = input.codePointAt(i)
+      if (codePoint < 0x10000) {
+        // BMP code point
+        result += codePoint
+        i += Character.charCount(codePoint)
+      } else {
+        // Supplementary code point
+        val highSurrogate = ((codePoint - 0x10000) >> 10) + 0xD800
+        val lowSurrogate = ((codePoint - 0x10000) & 0x3FF) + 0xDC00
+        result += highSurrogate
+        result += lowSurrogate
+        i += 2
+      }
+    }
+
+    result
+      .flatMap(codeUnit => Seq((codeUnit & 0xFF).toByte, ((codeUnit >> 8) & 0xFF).toByte))
+      .toArray
   }
 }
 

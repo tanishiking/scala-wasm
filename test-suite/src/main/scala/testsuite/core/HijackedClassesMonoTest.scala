@@ -4,10 +4,8 @@ import testsuite.Assert.ok
 
 object HijackedClassesMonoTest {
   def main(): Unit = {
-    ok(
-      testInteger(5) &&
-        testString("foo")
-    )
+    ok(testInteger(5))
+    ok(testString("foo"))
   }
 
   def testInteger(x: Int): Boolean = {
@@ -18,4 +16,5 @@ object HijackedClassesMonoTest {
     foo.length() == 3 &&
     foo.hashCode() == 101574
   }
+
 }
