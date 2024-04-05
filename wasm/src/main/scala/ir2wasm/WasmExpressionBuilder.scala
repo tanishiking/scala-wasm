@@ -1526,6 +1526,9 @@ private class WasmExpressionBuilder private (
       }
     } // end block $done
 
+    if (t.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
+
     t.tpe
   }
 
@@ -1565,6 +1568,9 @@ private class WasmExpressionBuilder private (
     // reload the result onto the stack
     for (resultLocal <- resultLocals)
       instrs += LOCAL_GET(resultLocal)
+
+    if (t.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
 
     t.tpe
   }
@@ -1607,6 +1613,10 @@ private class WasmExpressionBuilder private (
     instrs += BLOCK(fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)), Some(label))
     genTree(t.body, expectedType)
     instrs += END
+
+    if (t.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
+
     expectedType
   }
 

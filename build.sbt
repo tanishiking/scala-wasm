@@ -219,7 +219,6 @@ lazy val `scalajs-test-suite` = project
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
         .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala"))
-        .filterNot(endsWith(_, "/compiler/OptimizerTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
@@ -263,9 +262,10 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // RuntimeError: remainder by zero
+    // RuntimeError: divide by zero / remainder by zero
     "org.scalajs.testsuite.compiler.IntTest",
     "org.scalajs.testsuite.compiler.LongTest",
+    "org.scalajs.testsuite.compiler.OptimizerTest",
     "org.scalajs.testsuite.javalib.lang.IntegerTest",
     "org.scalajs.testsuite.javalib.lang.MathTest",
     // RuntimeError: dereferencing a null pointer
