@@ -1108,11 +1108,54 @@ private class WasmExpressionBuilder private (
         }
 
       case IRTypes.ArrayType(arrayTypeRef) =>
-        /* TODO This is not correct for reference array types. It treats
-         * every reference array type as if it were Array[jl.Object].
-         */
-        val structTypeName = WasmStructTypeName(arrayTypeRef)
-        instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+        arrayTypeRef match {
+          case IRTypes.ArrayTypeRef(
+                IRTypes.ClassRef(IRNames.ObjectClass) | _: IRTypes.PrimRef,
+                1
+              ) =>
+            // For primitive arrays and exactly Array[Object], a REF_TEST is enough
+            val structTypeName = WasmStructTypeName(arrayTypeRef)
+            instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
+
+          case _ =>
+            /* Non-Object reference arra types need a sophisticated type test
+             * based on assignability of component types.
+             */
+            import wasm.wasm4s.{WasmFunctionSignature => Sig}
+            fctx.block(Sig(List(Types.WasmAnyRef), List(Types.WasmInt32))) { doneLabel =>
+              fctx.block(Sig(List(Types.WasmAnyRef), List(Types.WasmAnyRef))) { notARefArrayLabel =>
+                // Try and cast to the generic representation first
+                val refArrayStructTypeName = WasmStructTypeName(arrayTypeRef)
+                val refArrayHeapType = Types.WasmHeapType.Type(refArrayStructTypeName)
+                instrs += BR_ON_CAST_FAIL(
+                  CastFlags(true, false),
+                  notARefArrayLabel,
+                  HeapType(Types.WasmHeapType.Simple.Any),
+                  HeapType(refArrayHeapType)
+                )
+
+                // refArrayValue := the generic representation
+                val refArrayValueLocal =
+                  fctx.addSyntheticLocal(Types.WasmRefType(refArrayHeapType))
+                instrs += LOCAL_SET(refArrayValueLocal)
+
+                // Load typeDataOf(arrayTypeRef)
+                genLoadArrayTypeData(arrayTypeRef)
+
+                // Load refArrayValue.vtable
+                instrs += LOCAL_GET(refArrayValueLocal)
+                instrs += STRUCT_GET(TypeIdx(refArrayStructTypeName), StructFieldIdx.vtable)
+
+                // Call isAssignableFrom and return its result
+                instrs += CALL(FuncIdx(WasmFunctionName.isAssignableFrom))
+                instrs += BR(doneLabel)
+              }
+
+              // Here, the value is not a reference array type, so return false
+              instrs += DROP
+              instrs += I32_CONST(I32(0))
+            }
+        }
 
       case testType: IRTypes.RecordType =>
         throw new AssertionError(s"Illegal type in IsInstanceOf: $testType")

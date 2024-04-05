@@ -1,6 +1,9 @@
 package testsuite.core
 
-import testsuite.Assert.ok
+import java.io.Serializable
+import java.lang.Cloneable
+
+import testsuite.Assert._
 import testsuite.Assert
 
 object ClassOfTest {
@@ -10,6 +13,9 @@ object ClassOfTest {
     testIsPrimitive()
     testIsInterface()
     testIsArray()
+    testIsInstance()
+    testIsAssignableFrom()
+    testCast()
     testGetComponentType()
   }
 
@@ -48,6 +54,8 @@ object ClassOfTest {
     Assert.assertSame(false, classOf[AnyRef].isPrimitive())
     Assert.assertSame(false, classOf[String].isPrimitive())
     Assert.assertSame(false, classOf[CharSequence].isPrimitive())
+    Assert.assertSame(false, classOf[Cloneable].isPrimitive())
+    Assert.assertSame(false, classOf[Serializable].isPrimitive())
     Assert.assertSame(false, classOf[java.lang.Iterable[Any]].isPrimitive())
     Assert.assertSame(false, classOf[Array[Int]].isPrimitive())
     Assert.assertSame(false, classOf[Array[String]].isPrimitive())
@@ -66,6 +74,8 @@ object ClassOfTest {
     Assert.assertSame(false, classOf[Array[CharSequence]].isInterface())
 
     Assert.assertSame(true, classOf[CharSequence].isInterface())
+    Assert.assertSame(true, classOf[Cloneable].isInterface())
+    Assert.assertSame(true, classOf[Serializable].isInterface())
     Assert.assertSame(true, classOf[java.lang.Iterable[Any]].isInterface())
   }
 
@@ -74,11 +84,176 @@ object ClassOfTest {
     Assert.assertSame(false, classOf[String].isArray())
     Assert.assertSame(false, classOf[Int].isArray())
     Assert.assertSame(false, classOf[CharSequence].isArray())
+    Assert.assertSame(false, classOf[Cloneable].isArray())
+    Assert.assertSame(false, classOf[Serializable].isArray())
     Assert.assertSame(false, classOf[java.lang.Iterable[Any]].isArray())
 
     Assert.assertSame(true, classOf[Array[Int]].isArray())
     Assert.assertSame(true, classOf[Array[String]].isArray())
     Assert.assertSame(true, classOf[Array[CharSequence]].isArray())
+  }
+
+  def testIsInstance(): Unit = {
+    def test(expected: Boolean, cls: Class[_], value: Any): Unit =
+      assertSame(expected, cls.isInstance(value))
+
+    test(false, classOf[AnyRef], null)
+    test(true, classOf[AnyRef], 5)
+    test(true, classOf[AnyRef], 'A')
+    test(true, classOf[AnyRef], "foo")
+    test(true, classOf[AnyRef], ())
+    test(true, classOf[AnyRef], new AnyRef)
+    test(true, classOf[AnyRef], new Parent)
+    test(true, classOf[AnyRef], new Array[Int](1))
+
+    test(false, classOf[Comparable[_]], null)
+    test(false, classOf[Comparable[_]], ())
+    test(true, classOf[Comparable[_]], 5)
+    test(true, classOf[Comparable[_]], "foo")
+    test(true, classOf[Comparable[_]], true)
+    test(true, classOf[Comparable[_]], 6L)
+    test(true, classOf[Comparable[_]], 'A')
+    test(false, classOf[CharSequence], 5)
+    test(true, classOf[CharSequence], "foo")
+    test(false, classOf[CharSequence], 5L)
+    test(false, classOf[CharSequence], 'A')
+
+    test(false, classOf[Child], null)
+    test(true, classOf[Parent], new Parent)
+    test(true, classOf[Parent], new Child)
+    test(false, classOf[Child], new Parent)
+    test(true, classOf[Child], new Child)
+    test(false, classOf[Child], 5)
+
+    test(false, classOf[Interface], null)
+    test(true, classOf[Interface], new Parent)
+    test(false, classOf[OtherInterface], new Parent)
+    test(true, classOf[Interface], new Child)
+    test(true, classOf[OtherInterface], new Child)
+    test(false, classOf[Interface], 5)
+
+    test(false, classOf[Array[Int]], null)
+    test(true, classOf[Array[Int]], new Array[Int](1))
+    test(false, classOf[Array[Int]], new Array[Byte](1))
+    test(true, classOf[Array[String]], new Array[String](1))
+    test(true, classOf[Array[Object]], new Array[String](1))
+    test(false, classOf[Array[Interface]], new Array[String](1))
+
+    test(true, classOf[Character], 'A')
+    test(false, classOf[Character], 5)
+    test(true, classOf[Integer], 5)
+    test(false, classOf[Integer], 5.5)
+    test(true, classOf[java.lang.Boolean], true)
+    test(false, classOf[java.lang.Boolean], 5)
+    test(true, classOf[java.lang.Void], ())
+    test(false, classOf[java.lang.Void], 5)
+  }
+
+  def testIsAssignableFrom(): Unit = {
+    def testEquiv(cls1: Class[_], cls2: Class[_]): Unit = {
+      assertSame(true, cls1.isAssignableFrom(cls2))
+      assertSame(true, cls2.isAssignableFrom(cls1))
+    }
+
+    def testStrictSuper(cls1: Class[_], cls2: Class[_]): Unit = {
+      assertSame(true, cls1.isAssignableFrom(cls2))
+      assertSame(false, cls2.isAssignableFrom(cls1))
+    }
+
+    def testUnrelated(cls1: Class[_], cls2: Class[_]): Unit = {
+      assertSame(false, cls1.isAssignableFrom(cls2))
+      assertSame(false, cls2.isAssignableFrom(cls1))
+    }
+
+    // Same class is always assignable, including primitives and even void
+    testEquiv(classOf[Int], classOf[Int])
+    testEquiv(classOf[Unit], classOf[Unit])
+    testEquiv(classOf[Object], classOf[Object])
+    testEquiv(classOf[String], classOf[String])
+    testEquiv(classOf[Comparable[_]], classOf[Comparable[_]])
+    testEquiv(classOf[Array[Int]], classOf[Array[Int]])
+    testEquiv(classOf[Interface], classOf[Interface])
+    testEquiv(classOf[OtherInterface], classOf[OtherInterface])
+    testEquiv(classOf[Parent], classOf[Parent])
+    testEquiv(classOf[Child], classOf[Child])
+
+    // Primitives are not assignable to/from anything elsething else
+    testUnrelated(classOf[Int], classOf[Unit])
+    testUnrelated(classOf[Int], classOf[Double])
+    testUnrelated(classOf[Int], classOf[Object])
+    testUnrelated(classOf[Int], classOf[String])
+    testUnrelated(classOf[Int], classOf[Comparable[_]])
+    testUnrelated(classOf[Int], classOf[Cloneable])
+    testUnrelated(classOf[Int], classOf[Serializable])
+
+    // Everything non-primitive is assignable to Object, including arrays
+    testStrictSuper(classOf[Object], classOf[String])
+    testStrictSuper(classOf[Object], classOf[Cloneable])
+    testStrictSuper(classOf[Object], classOf[Serializable])
+    testStrictSuper(classOf[Object], classOf[Comparable[_]])
+    testStrictSuper(classOf[Object], classOf[Array[Int]])
+    testStrictSuper(classOf[Object], classOf[Array[Array[String]]])
+
+    // Subclasses are assignable to superclasses
+    testStrictSuper(classOf[Interface], classOf[OtherInterface])
+    testStrictSuper(classOf[Interface], classOf[Parent])
+    testStrictSuper(classOf[Interface], classOf[Child])
+    testStrictSuper(classOf[OtherInterface], classOf[Child])
+    testStrictSuper(classOf[Parent], classOf[Child])
+
+    // Unrelated classes are not assignable
+    testUnrelated(classOf[String], classOf[Parent])
+    testUnrelated(classOf[Parent], classOf[OtherInterface])
+    testUnrelated(classOf[Parent], classOf[Cloneable])
+    testUnrelated(classOf[Parent], classOf[Serializable])
+    testUnrelated(classOf[Comparable[_]], classOf[Cloneable])
+    testUnrelated(classOf[Comparable[_]], classOf[Serializable])
+    testUnrelated(classOf[Comparable[_]], classOf[Parent])
+
+    // Arrays are covariant
+    testStrictSuper(classOf[Array[Object]], classOf[Array[String]])
+    testStrictSuper(classOf[Array[Object]], classOf[Array[Interface]])
+    testStrictSuper(classOf[Array[Object]], classOf[Array[Array[Int]]])
+    testStrictSuper(classOf[Array[Interface]], classOf[Array[Parent]])
+    testStrictSuper(classOf[Array[Parent]], classOf[Array[Child]])
+
+    // Arrays are Cloneable, including covariantly
+    testStrictSuper(classOf[Cloneable], classOf[Array[Int]])
+    testStrictSuper(classOf[Cloneable], classOf[Array[Object]])
+    testStrictSuper(classOf[Cloneable], classOf[Array[String]])
+    testStrictSuper(classOf[Cloneable], classOf[Array[Array[Int]]])
+    testStrictSuper(classOf[Cloneable], classOf[Array[Array[Object]]])
+    testStrictSuper(classOf[Array[Cloneable]], classOf[Array[Array[Int]]])
+    testStrictSuper(classOf[Array[Cloneable]], classOf[Array[Array[Array[String]]]])
+    testUnrelated(classOf[Array[Cloneable]], classOf[Array[Int]])
+
+    // Arrays are Serializable, including covariantly
+    testStrictSuper(classOf[Serializable], classOf[Array[Int]])
+    testStrictSuper(classOf[Serializable], classOf[Array[Object]])
+    testStrictSuper(classOf[Serializable], classOf[Array[String]])
+    testStrictSuper(classOf[Serializable], classOf[Array[Array[Int]]])
+    testStrictSuper(classOf[Serializable], classOf[Array[Array[Object]]])
+    testStrictSuper(classOf[Array[Serializable]], classOf[Array[Array[Int]]])
+    testStrictSuper(classOf[Array[Serializable]], classOf[Array[Array[Array[String]]]])
+    testUnrelated(classOf[Array[Serializable]], classOf[Array[Int]])
+
+    // Arrays are unrelated to other interfaces
+    testUnrelated(classOf[Interface], classOf[Array[Int]])
+    testUnrelated(classOf[Interface], classOf[Array[Object]])
+    testUnrelated(classOf[Interface], classOf[Array[String]])
+    testUnrelated(classOf[Interface], classOf[Array[Interface]])
+    testUnrelated(classOf[Interface], classOf[Array[Array[Int]]])
+    testUnrelated(classOf[Interface], classOf[Array[Array[Object]]])
+  }
+
+  def testCast(): Unit = {
+    /* This is always an identity, so there isn't anything to really test.
+     * We only make sure that everything is wired up correctly.
+     */
+
+    val child: AnyRef = new Child
+    val child2: Parent = classOf[Parent].cast(child)
+    assertSame(child, child2)
   }
 
   def testGetComponentType(): Unit = {
@@ -112,6 +287,11 @@ object ClassOfTest {
       classOf[Array[ClassForUniqueGetComponentTypeTest]].getComponentType()
     )
   }
+
+  trait Interface
+  trait OtherInterface extends Interface
+  class Parent extends Interface
+  class Child extends Parent with OtherInterface
 
   class ClassForUniqueGetComponentTypeTest
 }

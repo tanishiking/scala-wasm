@@ -42,6 +42,9 @@ trait ReadOnlyWasmContext {
       throw new IllegalArgumentException(s"Interface $iface is not registed.")
     )
 
+  def getClassInfoOption(name: IRNames.ClassName): Option[WasmClassInfo] =
+    classInfo.get(name)
+
   def getClassInfo(name: IRNames.ClassName): WasmClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
 
@@ -599,6 +602,7 @@ object WasmContext {
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
       val isAbstract: Boolean,
+      val hasRuntimeTypeInfo: Boolean,
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
       val jsNativeMembers: Map[IRNames.MethodName, IRTrees.JSNativeLoadSpec]
   ) {
