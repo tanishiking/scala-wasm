@@ -223,10 +223,8 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
-        .filterNot(endsWith(_, "/jsinterop/CustomJSFunctionTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/NonNativeJSTypeTest.scala"))
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
@@ -283,6 +281,7 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.compiler.RegressionJSTest",
     "org.scalajs.testsuite.jsinterop.FunctionTest",
     "org.scalajs.testsuite.jsinterop.MiscInteropTest",
+    "org.scalajs.testsuite.jsinterop.NonNativeJSTypeTest",
     "org.scalajs.testsuite.jsinterop.SpecialTest",
     "org.scalajs.testsuite.jsinterop.SymbolTest",
     // RuntimeError: unreachable (in the `isInstance` helper)

@@ -365,12 +365,12 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   )
   addHelperImport(
     WasmFunctionName.closureRest,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThisRest,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef, WasmInt32),
     List(WasmRefType.any)
   )
 
