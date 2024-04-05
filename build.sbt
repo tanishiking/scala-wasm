@@ -222,7 +222,6 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/compiler/OptimizerTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
-        .filterNot(endsWith(_, "/compiler/RegressionTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
         .filterNot(endsWith(_, "/jsinterop/CustomJSFunctionTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
@@ -274,6 +273,7 @@ lazy val IgnoredTestNames: Set[String] = {
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
     // RuntimeError: illegal cast
+    "org.scalajs.testsuite.compiler.RegressionTest",
     "org.scalajs.testsuite.niocharset.UTF8Test",
     "org.scalajs.testsuite.scalalib.ArrayBuilderTest",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>

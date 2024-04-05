@@ -190,14 +190,24 @@ private class WasmExpressionBuilder private (
     t.lhs match {
       case sel: IRTrees.Select =>
         val className = sel.field.name.className
-        val fieldName = WasmFieldName(sel.field.name)
-        val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
+        val classInfo = ctx.getClassInfo(className)
 
         // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
         genTreeAuto(sel.qualifier)
 
-        genTree(t.rhs, t.lhs.tpe)
-        instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
+        if (!classInfo.hasInstances) {
+          /* The field may not exist in that case, and we cannot look it up.
+           * However we necessarily have a `null` receiver if we reach this
+           * point, so we can trap as NPE.
+           */
+          instrs += UNREACHABLE
+        } else {
+          val fieldName = WasmFieldName(sel.field.name)
+          val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
+
+          genTree(t.rhs, t.lhs.tpe)
+          instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
+        }
 
       case sel: IRTrees.SelectStatic =>
         genTree(t.rhs, sel.tpe)
@@ -354,7 +364,17 @@ private class WasmExpressionBuilder private (
       instrs += CALL(FuncIdx(funcName))
     }
 
-    if (!receiverClassInfo.isAncestorOfHijackedClass) {
+    if (!receiverClassInfo.hasInstances) {
+      /* If the target class info does not have any instance, the only possible
+       * for the receiver is `null`. We can therefore immediately trap for an
+       * NPE. It is important to short-cut this path because the reachability
+       * analysis may have dead-code eliminated the target method method
+       * entirely, which means we do not know its signature and therefore
+       * cannot emit the corresponding vtable/itable calls.
+       */
+      genTreeAuto(t.receiver)
+      instrs += UNREACHABLE // NPE
+    } else if (!receiverClassInfo.isAncestorOfHijackedClass) {
       // Standard dispatch codegen
       genReceiverNotNull()
       instrs += LOCAL_TEE(receiverLocalForDispatch)
@@ -723,13 +743,24 @@ private class WasmExpressionBuilder private (
 
   private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
     val className = sel.field.name.className
-    val fieldName = WasmFieldName(sel.field.name)
-    val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
+    val classInfo = ctx.getClassInfo(className)
 
     // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
     genTreeAuto(sel.qualifier)
 
-    instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(className)), idx)
+    if (!classInfo.hasInstances) {
+      /* The field may not exist in that case, and we cannot look it up.
+       * However we necessarily have a `null` receiver if we reach this point,
+       * so we can trap as NPE.
+       */
+      instrs += UNREACHABLE
+    } else {
+      val fieldName = WasmFieldName(sel.field.name)
+      val idx = classInfo.getFieldIdx(sel.field.name)
+
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(className)), idx)
+    }
+
     sel.tpe
   }
 

@@ -648,6 +648,7 @@ object WasmContext {
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
+      private var _hasInstances: Boolean,
       val isAbstract: Boolean,
       val hasRuntimeTypeInfo: Boolean,
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
@@ -655,6 +656,12 @@ object WasmContext {
   ) {
     private val fieldIdxByName: Map[IRNames.FieldName, Int] =
       allFieldDefs.map(_.name.name).zipWithIndex.map(p => p._1 -> (p._2 + classFieldOffset)).toMap
+
+    // See caller in Preprocessor.preprocess
+    def setHasInstances(): Unit =
+      _hasInstances = true
+
+    def hasInstances: Boolean = _hasInstances
 
     def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
 

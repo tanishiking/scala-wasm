@@ -26,8 +26,10 @@ object Preprocessor {
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    val kind = clazz.kind
+
     val allFieldDefs: List[IRTrees.FieldDef] =
-      if (clazz.kind.isClass) {
+      if (kind.isClass) {
         val inheritedFields = clazz.superClass match {
           case None      => Nil
           case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
@@ -44,7 +46,7 @@ object Preprocessor {
       }
 
     val classMethodInfos = {
-      if (clazz.kind.isClass || clazz.kind == ClassKind.HijackedClass) {
+      if (kind.isClass || kind == ClassKind.HijackedClass) {
         clazz.methods
           .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
           .map(method => makeWasmFunctionInfo(clazz, method))
@@ -74,19 +76,26 @@ object Preprocessor {
       clazz.name.name,
       new WasmClassInfo(
         clazz.name.name,
-        clazz.kind,
+        kind,
         clazz.jsClassCaptures,
         classMethodInfos,
         allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
         clazz.ancestors,
+        clazz.hasInstances,
         !clazz.hasDirectInstances,
         hasRuntimeTypeInfo,
         clazz.jsNativeLoadSpec,
         clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
       )
     )
+
+    /* Work around https://github.com/scala-js/scala-js/issues/4972
+     * Manually mark all ancestors of instantiated classes as having instances.
+     */
+    if (clazz.hasDirectInstances && !kind.isJSType)
+      clazz.ancestors.foreach(ancestor => ctx.getClassInfo(ancestor).setHasInstances())
   }
 
   private def makeWasmFunctionInfo(
@@ -133,7 +142,8 @@ object Preprocessor {
             receiver.tpe match {
               case IRTypes.ClassType(className) =>
                 val classInfo = ctx.getClassInfo(className)
-                classInfo.maybeAddAbstractMethod(methodName.name, ctx)
+                if (classInfo.hasInstances)
+                  classInfo.maybeAddAbstractMethod(methodName.name, ctx)
               case _ =>
                 ()
             }
