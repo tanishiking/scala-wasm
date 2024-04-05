@@ -17,6 +17,7 @@ import wasm.ir2wasm.WasmExpressionBuilder
 
 import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
+import java.nio.charset.StandardCharsets
 
 trait ReadOnlyWasmContext {
   import WasmContext._
@@ -113,13 +114,20 @@ trait ReadOnlyWasmContext {
   }
 }
 
+case class StringData(
+    constantStringIndex: Int,
+    offset: Int
+)
+
 trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
-  protected val constantStringGlobals = LinkedHashMap.empty[String, WasmGlobalName]
+  protected val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
   protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
 
-  private var nextConstantStringIndex: Int = 1
+  protected var stringPool = new mutable.ArrayBuffer[Byte]()
+  protected var nextConstantStringIndex: Int = 0
+  private var nextConstatnStringOffset: Int = 0
   private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
 
@@ -151,33 +159,35 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
     }
   }
 
-  def addConstantStringGlobal(str: String): WasmGlobalName = {
+  def addConstantStringGlobal(str: String): StringData = {
     constantStringGlobals.get(str) match {
-      case Some(globalName) =>
-        globalName
+      case Some(data) =>
+        data
 
       case None =>
-        val globalName = WasmGlobalName.WasmGlobalConstantStringName(nextConstantStringIndex)
-        constantStringGlobals(str) = globalName
+        val bytes = encodeStringToWTF16LE(str)
+        val offset = nextConstatnStringOffset
+        val data = StringData(nextConstantStringIndex, offset)
+        constantStringGlobals(str) = data
 
-        /* We need an initial value of type (ref any), which is also a constant
-         * expression. It is not that easy to come up with such a value that
-         * does not need to reference other things right away.
-         * We use an `ref.i31 (i32.const 0)` as a trick.
-         * The real value will be filled in during initialization of the module
-         * in the Start section.
-         */
-        val initValue = WasmExpr(List(WasmInstr.I32_CONST(WasmImmediate.I32(0)), WasmInstr.REF_I31))
-
-        addGlobal(WasmGlobal(globalName, Types.WasmRefType.any, initValue, isMutable = true))
+        stringPool ++= bytes
         nextConstantStringIndex += 1
-        globalName
+        nextConstatnStringOffset += bytes.length
+        data
     }
   }
 
-  def getConstantStringInstr(str: String): WasmInstr = {
-    val globalName = addConstantStringGlobal(str)
-    WasmInstr.GLOBAL_GET(WasmImmediate.GlobalIdx(globalName))
+  def getConstantStringInstr(str: String): List[WasmInstr] = {
+    val data = addConstantStringGlobal(str)
+    List(
+      WasmInstr.I32_CONST(WasmImmediate.I32(data.offset)),
+      // Assuming that the stringLiteral method will instantiate the
+      // constant string from the data section using "array.newData $i16Array ..."
+      // The length of the array should be equal to the length of the WTF-16 encoded string
+      WasmInstr.I32_CONST(WasmImmediate.I32(str.length())),
+      WasmInstr.I32_CONST(WasmImmediate.I32(data.constantStringIndex)),
+      WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringLiteral))
+    )
   }
 
   def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
@@ -207,6 +217,32 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
     if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
     else inferTypeFromTypeRef(typeRef.base)
+  }
+
+  /** http://simonsapin.github.io/wtf-8/#encoding-ill-formed-utf-16
+    */
+  private def encodeStringToWTF16LE(input: String): Array[Byte] = {
+    val result = scala.collection.mutable.ArrayBuffer[Int]()
+    var i = 0
+    while (i < input.length) {
+      val codePoint = input.codePointAt(i)
+      if (codePoint < 0x10000) {
+        // BMP code point
+        result += codePoint
+        i += Character.charCount(codePoint)
+      } else {
+        // Supplementary code point
+        val highSurrogate = ((codePoint - 0x10000) >> 10) + 0xD800
+        val lowSurrogate = ((codePoint - 0x10000) & 0x3FF) + 0xDC00
+        result += highSurrogate
+        result += lowSurrogate
+        i += 2
+      }
+    }
+
+    result
+      .flatMap(codeUnit => Seq((codeUnit & 0xFF).toByte, ((codeUnit >> 8) & 0xFF).toByte))
+      .toArray
   }
 }
 
@@ -450,6 +486,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       }
     }
 
+    // string
+    module.addData(WasmData(WasmDataName.string, stringPool.toArray, WasmData.Mode.Passive))
+    addGlobal(
+      WasmGlobal(
+        WasmGlobalName.WasmGlobalStringLiteralCache,
+        WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray)),
+        WasmExpr(
+          List(
+            WasmInstr.I32_CONST(WasmImmediate.I32(nextConstantStringIndex)),
+            WasmInstr.ARRAY_NEW_DEFAULT(WasmImmediate.TypeIdx(WasmArrayTypeName.anyArray))
+          )
+        ),
+        isMutable = false
+      )
+    )
+
     genStartFunction(moduleInitializers, classesWithStaticInit)
     genDeclarativeElements()
   }
@@ -489,18 +541,6 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       instrs += WasmInstr.GLOBAL_SET(
         WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(fieldName))
       )
-    }
-
-    // Initialize the constant string globals
-
-    for ((str, globalName) <- constantStringGlobals) {
-      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.emptyString))
-      for (c <- str) {
-        instrs += WasmInstr.I32_CONST(WasmImmediate.I32(c.toInt))
-        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.charToString))
-        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringConcat))
-      }
-      instrs += WasmInstr.GLOBAL_SET(WasmImmediate.GlobalIdx(globalName))
     }
 
     // Emit the static initializers

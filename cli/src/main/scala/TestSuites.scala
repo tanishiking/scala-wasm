@@ -36,6 +36,7 @@ object TestSuites {
     TestSuite("testsuite.core.ToStringTest"),
     TestSuite("testsuite.core.UnitPatMatTest"),
     TestSuite("testsuite.core.MatchTest"),
-    TestSuite("testsuite.core.WrapUnwrapThrowableTest")
+    TestSuite("testsuite.core.WrapUnwrapThrowableTest"),
+    TestSuite("testsuite.core.StringEncodingTest")
   )
 }

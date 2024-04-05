@@ -15,24 +15,26 @@ val writePackageJSON = taskKey[Unit](
 Global / scalaJSLinkerImpl / fullClasspath :=
   (wasm.jvm / Compile / fullClasspath).value
 
-inThisBuild(Def.settings(
-  scalacOptions ++= Seq(
-    "-encoding",
-    "utf-8",
-    "-feature",
-    "-deprecation",
-    "-Xfatal-warnings",
-  ),
-  scalaJSLinkerConfig ~= {
-    _.withESFeatures(_.withESVersion(ESVersion.ES2016))
-  },
-  jsEnv := {
-    // Enable support for exnref and try_table
-    new NodeJSEnv(
-      NodeJSEnv.Config().withArgs(List("--experimental-wasm-exnref"))
-    )
-  },
-))
+inThisBuild(
+  Def.settings(
+    scalacOptions ++= Seq(
+      "-encoding",
+      "utf-8",
+      "-feature",
+      "-deprecation",
+      "-Xfatal-warnings"
+    ),
+    scalaJSLinkerConfig ~= {
+      _.withESFeatures(_.withESVersion(ESVersion.ES2016))
+    },
+    jsEnv := {
+      // Enable support for exnref and try_table
+      new NodeJSEnv(
+        NodeJSEnv.Config().withArgs(List("--experimental-wasm-exnref"))
+      )
+    }
+  )
+)
 
 lazy val cli = project
   .in(file("cli"))
@@ -46,11 +48,11 @@ lazy val cli = project
     },
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1"
-    ),
+    )
   )
   .dependsOn(
-    wasm.js,
-    // tests // for TestSuites constant
+    wasm.js
+      // tests // for TestSuites constant
   )
 
 lazy val wasm = crossProject(JVMPlatform, JSPlatform)
@@ -62,7 +64,7 @@ lazy val wasm = crossProject(JVMPlatform, JSPlatform)
     scalaVersion := scalaV,
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-linker" % "1.16.0"
-    ),
+    )
   )
 
 lazy val sample = project
@@ -70,7 +72,7 @@ lazy val sample = project
   .enablePlugins(WasmLinkerPlugin, ScalaJSJUnitPlugin)
   .settings(
     scalaVersion := scalaV,
-    scalaJSUseMainModuleInitializer := true,
+    scalaJSUseMainModuleInitializer := true
   )
 
 lazy val testSuite = project
@@ -79,16 +81,18 @@ lazy val testSuite = project
   .settings(
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,
+    scalacOptions -= "-Xfatal-warnings", // for unpaired surrogate code units in StringEncodingTest.scala
     Compile / jsEnv := {
       val cp = Attributed
         .data((Compile / fullClasspath).value)
         .mkString(";")
       val env = Map(
         "SCALAJS_CLASSPATH" -> cp,
-        "SCALAJS_MODE" -> "testsuite",
+        "SCALAJS_MODE" -> "testsuite"
       )
       new NodeJSEnv(
-        NodeJSEnv.Config()
+        NodeJSEnv
+          .Config()
           .withEnv(env)
           .withArgs(List("--enable-source-maps", "--experimental-wasm-exnref"))
       )
@@ -111,11 +115,14 @@ lazy val tests = project
       _.withModuleKind(ModuleKind.ESModule)
         .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs")),
     },
-    test := Def.sequential(
-      (testSuite / Compile / run).toTask(""),
-      (Test / test)
-    ).value
-  ).dependsOn(cli)
+    test := Def
+      .sequential(
+        (testSuite / Compile / run).toTask(""),
+        (Test / test)
+      )
+      .value
+  )
+  .dependsOn(cli)
 
 lazy val `scalajs-test-suite` = project
   .in(file("scalajs-test-suite"))

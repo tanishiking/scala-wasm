@@ -279,6 +279,8 @@ object WasmInstr {
   case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmInstr("array.new_default", 0xFB07, List(i))
   case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32)
       extends WasmInstr("array.new_fixed", 0xFB08, List(i, size))
+  case class ARRAY_NEW_DATA(i: TypeIdx, d: DataIdx)
+      extends WasmInstr("array.new_data", 0xFB09, List(i, d))
   case class ARRAY_GET(i: TypeIdx) extends WasmInstr("array.get", 0xFB0B, List(i))
   case class ARRAY_GET_S(i: TypeIdx) extends WasmInstr("array.get_s", 0xFB0C, List(i))
   case class ARRAY_GET_U(i: TypeIdx) extends WasmInstr("array.get_u", 0xFB0D, List(i))
@@ -335,6 +337,7 @@ object WasmImmediate {
   case class LabelIdx(val value: Int) extends WasmImmediate
   case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
   case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
+  case class DataIdx(val value: WasmDataName) extends WasmImmediate
   case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: WasmTagName) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate

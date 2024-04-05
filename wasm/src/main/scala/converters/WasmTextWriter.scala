@@ -32,9 +32,9 @@ class WasmTextWriter {
         module.exports.foreach(writeExport)
         module.startFunction.foreach(writeStart)
         module.elements.foreach(writeElement)
+        module.data.foreach(writeData)
       }
     )
-    // context.gcTypes
   }
 
   private def writeGCTypeDefinition(
@@ -257,6 +257,18 @@ class WasmTextWriter {
     )
   }
 
+  private def writeData(data: WasmData)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "data", {
+        b.appendElement(data.name.show)
+        data.mode match {
+          case WasmData.Mode.Passive => ()
+        }
+        b.appendElement("\"" + data.bytes.map("\\%02x".format(_)).mkString + "\"")
+      }
+    )
+  }
+
   private def writeImmediate(i: WasmImmediate, instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     def floatString(v: Double): String = {
       if (v.isNaN()) "nan"
@@ -290,8 +302,8 @@ class WasmTextWriter {
       case WasmImmediate.LabelIdx(i) => s"$$${i.toString}" // `loop 0` seems to be invalid
       case WasmImmediate.LabelIdxVector(indices) =>
         indices.map(i => "$" + i.value).mkString(" ")
-      case WasmImmediate.TagIdx(name) =>
-        name.show
+      case WasmImmediate.TagIdx(name)  => name.show
+      case WasmImmediate.DataIdx(name) => name.show
       case WasmImmediate.CatchClauseVector(clauses) =>
         for (clause <- clauses) {
           b.appendElement("(" + clause.mnemonic)
