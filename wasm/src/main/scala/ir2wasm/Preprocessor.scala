@@ -156,6 +156,8 @@ object Preprocessor {
 
     for (method <- clazz.methods)
       traverser.traverseMethodDef(method)
+    for (jsConstructor <- clazz.jsConstructorDef)
+      traverser.traverseJSConstructorDef(jsConstructor)
     for (export <- clazz.exportedMembers)
       traverser.traverseJSMethodPropDef(export)
   }

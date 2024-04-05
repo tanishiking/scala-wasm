@@ -222,7 +222,6 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
