@@ -218,10 +218,10 @@ lazy val `scalajs-test-suite` = project
 
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
-        .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala"))
-        .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
-        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
-        .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
+        .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala")) // reflective calls
+        .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala")) // reflective calls
+        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala")) // reflective calls
+        .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala")) // js.dynamicImport (multi-modules)
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
