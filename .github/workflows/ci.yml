@@ -26,5 +26,18 @@ jobs:
         run: sbt tests/test
       - name: Run the Sample
         run: sbt sample/run
+      - name: Test the Sample
+        run: sbt sample/test
+
+      # Scala.js test suite - separated in multiple steps to see at a glance where things fail
+      - name: Fetch Scala.js sources for the test suite
+        run: sbt scalajs-test-suite/fetchScalaJSSource
+      - name: Compile the Scala.js test suite
+        run: sbt scalajs-test-suite/Test/compile
+      - name: Link the Scala.js test suite
+        run: sbt scalajs-test-suite/Test/fastLinkJS
+      - name: Run the Scala.js test suite
+        run: sbt scalajs-test-suite/test
+
       - name: Format
         run: sbt scalafmtCheckAll

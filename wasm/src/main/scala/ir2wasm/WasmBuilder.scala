@@ -497,17 +497,19 @@ class WasmBuilder {
     val structType = transformClassCommon(clazz)
     val heapType = WasmHeapType.Type(structType.name)
 
-    // global instance
-    // (global name (ref null type))
-    val global = WasmGlobal(
-      Names.WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name),
-      WasmRefNullType(heapType),
-      WasmExpr(List(REF_NULL(WasmImmediate.HeapType(heapType)))),
-      isMutable = true
-    )
-    ctx.addGlobal(global)
+    if (clazz.hasInstances) {
+      // global instance
+      // (global name (ref null type))
+      val global = WasmGlobal(
+        Names.WasmGlobalName.WasmModuleInstanceName.fromIR(clazz.name.name),
+        WasmRefNullType(heapType),
+        WasmExpr(List(REF_NULL(WasmImmediate.HeapType(heapType)))),
+        isMutable = true
+      )
+      ctx.addGlobal(global)
 
-    genLoadModuleFunc(clazz)
+      genLoadModuleFunc(clazz)
+    }
   }
 
   private def transformJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -531,13 +533,15 @@ class WasmBuilder {
       }
     }
 
-    genCreateJSClassFunction(clazz)
+    if (clazz.hasInstances) {
+      genCreateJSClassFunction(clazz)
 
-    if (clazz.jsClassCaptures.isEmpty)
-      genLoadJSClassFunction(clazz)
+      if (clazz.jsClassCaptures.isEmpty)
+        genLoadJSClassFunction(clazz)
 
-    if (clazz.kind == ClassKind.JSModuleClass)
-      genLoadJSModuleFunction(clazz)
+      if (clazz.kind == ClassKind.JSModuleClass)
+        genLoadJSModuleFunction(clazz)
+    }
   }
 
   private def genCreateJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {

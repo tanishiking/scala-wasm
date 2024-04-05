@@ -37,7 +37,7 @@ object LibraryPatches {
       }.get
 
     derivedIRFiles.map { derived =>
-      derived.flatten ++ Seq(StackTraceIRFile, leanerJSExceptionIRFile) ++ irFiles
+      derived.flatten ++ Seq(StackTraceIRFile) ++ irFiles ++ Seq(leanerJSExceptionIRFile)
     }
   }
 
@@ -71,6 +71,16 @@ object LibraryPatches {
           MethodIdent(m("extract", List(O), arrayOfSTERef)),
           NON,
           List(paramDef("jsError", AnyType)),
+          ArrayType(arrayOfSTERef),
+          Some(
+            ArrayValue(arrayOfSTERef, Nil)
+          )
+        )(EOH.withInline(true), NOV),
+        MethodDef(
+          EMF,
+          MethodIdent(m("getCurrentStackTrace", Nil, arrayOfSTERef)),
+          NON,
+          Nil,
           ArrayType(arrayOfSTERef),
           Some(
             ArrayValue(arrayOfSTERef, Nil)
