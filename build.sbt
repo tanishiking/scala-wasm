@@ -227,6 +227,9 @@ lazy val `scalajs-test-suite` = project
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
     Test / scalacOptions += "-P:scalajs:nowarnGlobalExecutionContext",
 
+    scalaJSLinkerConfig ~= { _.withSemantics(build.TestSuiteLinkerOptions.semantics _) },
+    Test / scalaJSModuleInitializers ++= build.TestSuiteLinkerOptions.moduleInitializers,
+
     scalaJSLinkerConfig ~= { _.withESFeatures(_.withESVersion(ESVersion.ES2016)) },
 
     Test / jsEnvInput := {
@@ -286,8 +289,6 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.compiler.ReflectionTest",
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     "org.scalajs.testsuite.jsinterop.ModulesTest",
-    // correctInitializers failed: java.lang.AssertionError: array lengths differed, expected.length=5 actual.length=0
-    "org.scalajs.testsuite.compiler.ModuleInitializersTest",
     // getClass for Box classes
     "org.scalajs.testsuite.javalib.lang.ClassTest",
     "org.scalajs.testsuite.javalib.lang.ObjectTest",
