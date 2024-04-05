@@ -633,9 +633,13 @@ private class WasmExpressionBuilder private (
         IRTypes.NothingType
 
       case _ =>
-        IRTypes.BoxedClassToPrimType.get(t.className) match {
+        val namespace = IRTrees.MemberNamespace.forNonStaticCall(t.flags)
+        val targetClassName =
+          ctx.getClassInfo(t.className).resolvePublicMethod(namespace, t.method.name)(ctx)
+
+        IRTypes.BoxedClassToPrimType.get(targetClassName) match {
           case None =>
-            genTree(t.receiver, IRTypes.ClassType(t.className))
+            genTree(t.receiver, IRTypes.ClassType(targetClassName))
             instrs += REF_AS_NOT_NULL
 
           case Some(primReceiverType) =>
@@ -649,8 +653,8 @@ private class WasmExpressionBuilder private (
         }
 
         genArgs(t.args, t.method.name)
-        val namespace = IRTrees.MemberNamespace.forNonStaticCall(t.flags)
-        val funcName = Names.WasmFunctionName(namespace, t.className, t.method.name)
+
+        val funcName = Names.WasmFunctionName(namespace, targetClassName, t.method.name)
         instrs += CALL(FuncIdx(funcName))
         if (t.tpe == IRTypes.NothingType)
           instrs += UNREACHABLE

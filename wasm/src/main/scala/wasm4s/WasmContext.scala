@@ -1,5 +1,7 @@
 package wasm.wasm4s
 
+import scala.annotation.tailrec
+
 import scala.collection.mutable
 import scala.collection.mutable.LinkedHashMap
 
@@ -678,11 +680,33 @@ object WasmContext {
       }
     }
 
-    def getMethodInfo(methodName: IRNames.MethodName): WasmFunctionInfo = {
-      methods.find(_.name.simpleName == methodName.nameString).getOrElse {
-        throw new IllegalArgumentException(
-          s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
-        )
+    @tailrec
+    private def resolvePublicMethodOpt(
+        methodName: IRNames.MethodName
+    )(implicit ctx: ReadOnlyWasmContext): Option[IRNames.ClassName] = {
+      if (methods.exists(_.name.simpleName == methodName.nameString)) {
+        Some(name)
+      } else {
+        superClass match {
+          case None =>
+            None
+          case Some(superClass) =>
+            ctx.getClassInfo(superClass).resolvePublicMethodOpt(methodName)
+        }
+      }
+    }
+
+    def resolvePublicMethod(namespace: IRTrees.MemberNamespace, methodName: IRNames.MethodName)(
+        implicit ctx: ReadOnlyWasmContext
+    ): IRNames.ClassName = {
+      if (isInterface || namespace != IRTrees.MemberNamespace.Public) {
+        name
+      } else {
+        resolvePublicMethodOpt(methodName).getOrElse {
+          throw new AssertionError(
+            s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
+          )
+        }
       }
     }
 

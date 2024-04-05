@@ -219,7 +219,6 @@ lazy val `scalajs-test-suite` = project
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
         .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala"))
-        .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
         .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
@@ -285,6 +284,7 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.jsinterop.SpecialTest",
     "org.scalajs.testsuite.jsinterop.SymbolTest",
     // RuntimeError: unreachable (in the `isInstance` helper)
+    "org.scalajs.testsuite.compiler.ReflectionTest",
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     "org.scalajs.testsuite.jsinterop.ModulesTest",
     // correctInitializers failed: java.lang.AssertionError: array lengths differed, expected.length=5 actual.length=0
