@@ -53,8 +53,10 @@ trait ReadOnlyWasmContext {
     case IRTypes.PrimRef(tpe) =>
       tpe
     case IRTypes.ClassRef(className) =>
-      if (className == IRNames.ObjectClass) IRTypes.AnyType
-      else IRTypes.ClassType(className)
+      if (className == IRNames.ObjectClass || getClassInfo(className).kind.isJSType)
+        IRTypes.AnyType
+      else
+        IRTypes.ClassType(className)
     case typeRef: IRTypes.ArrayTypeRef =>
       IRTypes.ArrayType(typeRef)
   }
@@ -437,6 +439,11 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   addHelperImport(
     WasmFunctionName.createJSClass,
     List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func),
+    List(WasmRefType.any)
+  )
+  addHelperImport(
+    WasmFunctionName.createJSClassRest,
+    List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(

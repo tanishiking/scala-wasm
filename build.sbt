@@ -217,19 +217,9 @@ lazy val `scalajs-test-suite` = project
         base / "test-suite/js/src/test/esmodule",
         base / "test-suite/js/src/test/require-exponent-op",
         base / "test-suite/js/src/test/require-modules",
-        //base / "test-suite/js/src/test/require-new-target",
-        //base / "test-suite/js/src/test/require-scala2",
-
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/compiler",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/javalib",
-        //base / "test-suite/js/src/test/scala/org/scalajs/testsuite/jsinterop",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/junit",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/library",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/niobuffer",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/scalalib",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/typedarray",
-        base / "test-suite/js/src/test/scala/org/scalajs/testsuite/utils",
-
+        base / "test-suite/js/src/test/require-new-target",
+        base / "test-suite/js/src/test/require-scala2",
+        base / "test-suite/js/src/test/scala",
         base / "test-suite/js/src/test/scala-old-collections",
       )
     },
@@ -257,6 +247,7 @@ lazy val `scalajs-test-suite` = project
         .filterNot(endsWith(_, "/javalib/lang/LongTest.scala"))
         .filterNot(endsWith(_, "/javalib/lang/ShortTest.scala"))
         .filterNot(endsWith(_, "/javalib/util/TimerTest.scala"))
+        .filterNot(endsWith(_, "/jsinterop/CustomJSFunctionTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
         .filterNot(endsWith(_, "/jsinterop/NonNativeJSTypeTest.scala"))
@@ -315,6 +306,10 @@ lazy val IgnoredTestNames: Set[String] = {
     // Various run-time errors and JS exceptions
     "org.scalajs.testsuite.compiler.InteroperabilityTest",
     "org.scalajs.testsuite.compiler.RegressionJSTest",
+    "org.scalajs.testsuite.jsinterop.FunctionTest",
+    "org.scalajs.testsuite.jsinterop.MiscInteropTest",
+    "org.scalajs.testsuite.jsinterop.SpecialTest",
+    "org.scalajs.testsuite.jsinterop.SymbolTest",
     // RuntimeError: unreachable (in the `isInstance` helper)
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     "org.scalajs.testsuite.jsinterop.ModulesTest",
@@ -327,6 +322,8 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
     // Various issues with identityHashCode
     "org.scalajs.testsuite.javalib.lang.SystemTest",
+    // Missing initialization of @JSExportStatic things
+    "org.scalajs.testsuite.jsinterop.JSExportStaticTest",
     // TypeError: WebAssembly objects are opaque
     "org.scalajs.testsuite.javalib.lang.SystemJSTest",
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>

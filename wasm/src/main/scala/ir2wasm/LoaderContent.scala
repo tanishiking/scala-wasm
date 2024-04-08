@@ -215,6 +215,17 @@ const scalaJSHelpers = {
       }
     };
   },
+  createJSClassRest: (data, superClass, preSuperStats, superArgs, postSuperStats, n) => {
+    return class extends superClass {
+      constructor(...args) {
+        var fixedArgs = args.slice(0, n);
+        var restArg = args.slice(n);
+        var preSuperEnv = preSuperStats(data, new.target, ...fixedArgs, restArg);
+        super(...superArgs(data, preSuperEnv, new.target, ...fixedArgs, restArg));
+        postSuperStats(data, preSuperEnv, new.target, this, ...fixedArgs, restArg);
+      }
+    };
+  },
   installJSField: (instance, name, value) => {
     Object.defineProperty(instance, name, {
       value: value,

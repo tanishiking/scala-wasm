@@ -282,6 +282,7 @@ object Names {
 
     val newSymbol = helper("newSymbol")
     val createJSClass = helper("createJSClass")
+    val createJSClassRest = helper("createJSClassRest")
     val installJSField = helper("installJSField")
     val installJSMethod = helper("installJSMethod")
     val installJSProperty = helper("installJSProperty")
