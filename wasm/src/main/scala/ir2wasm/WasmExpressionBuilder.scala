@@ -202,17 +202,17 @@ private class WasmExpressionBuilder private (
            */
           instrs += UNREACHABLE
         } else {
-          val fieldName = WasmFieldName(sel.field.name)
+          val fieldName = WasmFieldName.forClassInstanceField(sel.field.name)
           val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
 
           genTree(t.rhs, t.lhs.tpe)
-          instrs += STRUCT_SET(TypeIdx(WasmStructTypeName(className)), idx)
+          instrs += STRUCT_SET(TypeIdx(WasmStructTypeName.forClass(className)), idx)
         }
 
       case sel: IRTrees.SelectStatic =>
         genTree(t.rhs, sel.tpe)
         instrs += GLOBAL_SET(
-          GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(sel.field.name))
+          GlobalIdx(Names.WasmGlobalName.forStaticField(sel.field.name))
         )
 
       case sel: IRTrees.ArraySelect =>
@@ -221,7 +221,7 @@ private class WasmExpressionBuilder private (
           case IRTypes.ArrayType(arrayTypeRef) =>
             // Get the underlying array; implicit trap on null
             instrs += STRUCT_GET(
-              TypeIdx(WasmStructTypeName(arrayTypeRef)),
+              TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)),
               StructFieldIdx.uniqueRegularField
             )
             genTree(sel.index, IRTypes.IntType)
@@ -240,7 +240,7 @@ private class WasmExpressionBuilder private (
 
       case sel: IRTrees.JSPrivateSelect =>
         genTree(sel.qualifier, IRTypes.AnyType)
-        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(sel.field.name)))
+        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.forJSPrivateField(sel.field.name)))
         genTree(t.rhs, IRTypes.AnyType)
         instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
@@ -336,7 +336,7 @@ private class WasmExpressionBuilder private (
       if (receiverClassInfo.isInterface)
         Types.WasmHeapType.ObjectType
       else
-        Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(receiverClassName))
+        Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.forClass(receiverClassName))
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
@@ -558,7 +558,7 @@ private class WasmExpressionBuilder private (
       instrs += STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
-        TypeIdx(WasmStructTypeName(IRNames.ObjectClass)),
+        TypeIdx(WasmStructTypeName.forClass(IRNames.ObjectClass)),
         StructFieldIdx.itables
       )
       instrs += I32_CONST(I32(itableIdx))
@@ -566,10 +566,10 @@ private class WasmExpressionBuilder private (
         TypeIdx(WasmArrayType.itables.name)
       )
       instrs += REF_CAST(
-        HeapType(Types.WasmHeapType.Type(WasmITableTypeName(receiverClassInfo.name)))
+        HeapType(Types.WasmHeapType.Type(WasmStructTypeName.forITable(receiverClassInfo.name)))
       )
       instrs += STRUCT_GET(
-        TypeIdx(WasmITableTypeName(receiverClassInfo.name)),
+        TypeIdx(WasmStructTypeName.forITable(receiverClassInfo.name)),
         StructFieldIdx(methodIdx)
       )
       instrs += CALL_REF(
@@ -599,14 +599,14 @@ private class WasmExpressionBuilder private (
       // call.ref (type $funcType) ;; call funcref
       instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += REF_CAST(
-        HeapType(Types.WasmHeapType.Type(WasmStructTypeName(receiverClassName)))
+        HeapType(Types.WasmHeapType.Type(WasmStructTypeName.forClass(receiverClassName)))
       )
       instrs += STRUCT_GET(
-        TypeIdx(WasmStructTypeName(receiverClassName)),
+        TypeIdx(WasmStructTypeName.forClass(receiverClassName)),
         StructFieldIdx.vtable
       )
       instrs += STRUCT_GET(
-        TypeIdx(WasmVTableTypeName(receiverClassName)),
+        TypeIdx(WasmStructTypeName.forVTable(receiverClassName)),
         StructFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
       instrs += CALL_REF(
@@ -725,7 +725,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
-    GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(typeRef)))
+    GLOBAL_GET(GlobalIdx(WasmGlobalName.forVTable(typeRef)))
 
   private def genLoadArrayTypeData(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
     instrs += getNonArrayTypeDataInstr(arrayTypeRef.base)
@@ -759,10 +759,10 @@ private class WasmExpressionBuilder private (
        */
       instrs += UNREACHABLE
     } else {
-      val fieldName = WasmFieldName(sel.field.name)
+      val fieldName = WasmFieldName.forClassInstanceField(sel.field.name)
       val idx = classInfo.getFieldIdx(sel.field.name)
 
-      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(className)), idx)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.forClass(className)), idx)
     }
 
     sel.tpe
@@ -770,7 +770,7 @@ private class WasmExpressionBuilder private (
 
   private def genSelectStatic(tree: IRTrees.SelectStatic): IRTypes.Type = {
     instrs += GLOBAL_GET(
-      GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(tree.field.name))
+      GlobalIdx(Names.WasmGlobalName.forStaticField(tree.field.name))
     )
     tree.tpe
   }
@@ -779,7 +779,7 @@ private class WasmExpressionBuilder private (
     val className = fctx.enclosingClassName.getOrElse {
       throw new AssertionError(s"Cannot emit $t at ${t.pos} without enclosing class name")
     }
-    val name = WasmGlobalName.WasmModuleInstanceName.fromIR(className)
+    val name = WasmGlobalName.forModuleInstance(className)
     genTreeAuto(IRTrees.This()(IRTypes.ClassType(className))(t.pos))
     instrs += GLOBAL_SET(GlobalIdx(name))
     IRTypes.NoType
@@ -1214,10 +1214,10 @@ private class WasmExpressionBuilder private (
         case testType: IRTypes.PrimTypeWithRef =>
           testType match {
             case IRTypes.CharType =>
-              val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+              val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
               instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
             case IRTypes.LongType =>
-              val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+              val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
               instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
             case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
               throw new AssertionError(s"Illegal isInstanceOf[$testType]")
@@ -1252,7 +1252,7 @@ private class WasmExpressionBuilder private (
               instrs += CALL(FuncIdx(WasmFunctionName.instanceTest(testClassName)))
             else
               instrs += REF_TEST(
-                HeapType(Types.WasmHeapType.Type(WasmStructTypeName(testClassName)))
+                HeapType(Types.WasmHeapType.Type(WasmStructTypeName.forClass(testClassName)))
               )
         }
 
@@ -1263,7 +1263,7 @@ private class WasmExpressionBuilder private (
                 1
               ) =>
             // For primitive arrays and exactly Array[Object], a REF_TEST is enough
-            val structTypeName = WasmStructTypeName(arrayTypeRef)
+            val structTypeName = WasmStructTypeName.forArrayClass(arrayTypeRef)
             instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
           case _ =>
@@ -1274,7 +1274,7 @@ private class WasmExpressionBuilder private (
             fctx.block(Sig(List(Types.WasmAnyRef), List(Types.WasmInt32))) { doneLabel =>
               fctx.block(Sig(List(Types.WasmAnyRef), List(Types.WasmAnyRef))) { notARefArrayLabel =>
                 // Try and cast to the generic representation first
-                val refArrayStructTypeName = WasmStructTypeName(arrayTypeRef)
+                val refArrayStructTypeName = WasmStructTypeName.forArrayClass(arrayTypeRef)
                 val refArrayHeapType = Types.WasmHeapType.Type(refArrayStructTypeName)
                 instrs += BR_ON_CAST_FAIL(
                   CastFlags(true, false),
@@ -1340,7 +1340,7 @@ private class WasmExpressionBuilder private (
           val info = ctx.getClassInfo(targetClassName)
           if (info.kind.isClass) {
             instrs += REF_CAST_NULL(
-              HeapType(Types.WasmHeapType.Type(WasmStructTypeName(targetClassName)))
+              HeapType(Types.WasmHeapType.Type(WasmStructTypeName.forClass(targetClassName)))
             )
           } else if (info.kind == ClassKind.HijackedClass) {
             IRTypes.BoxedClassToPrimType(targetClassName) match {
@@ -1349,10 +1349,10 @@ private class WasmExpressionBuilder private (
               case primType: IRTypes.PrimTypeWithRef =>
                 primType match {
                   case IRTypes.CharType =>
-                    val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+                    val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
                     instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
                   case IRTypes.LongType =>
-                    val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+                    val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
                     instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
                   case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
                     throw new AssertionError(s"Unexpected prim type $primType for $targetClassName")
@@ -1368,7 +1368,7 @@ private class WasmExpressionBuilder private (
           }
 
         case IRTypes.ArrayType(arrayTypeRef) =>
-          val structTypeName = WasmStructTypeName(arrayTypeRef)
+          val structTypeName = WasmStructTypeName.forArrayClass(arrayTypeRef)
           instrs += REF_CAST_NULL(HeapType(Types.WasmHeapType.Type(structTypeName)))
 
         case targetTpe: IRTypes.RecordType =>
@@ -1398,12 +1398,12 @@ private class WasmExpressionBuilder private (
           case IRTypes.CharType =>
             // Extract the `value` field (the only field) out of the box class.
             // TODO Handle null
-            val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+            val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
             instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
             instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
           case IRTypes.LongType =>
             // TODO Handle null
-            val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+            val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
             instrs += REF_CAST(HeapType(Types.WasmHeapType.Type(structTypeName)))
             instrs += STRUCT_GET(TypeIdx(structTypeName), StructFieldIdx.uniqueRegularField)
           case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
@@ -1434,7 +1434,7 @@ private class WasmExpressionBuilder private (
 
     if (!needHijackedClassDispatch) {
       val typeDataType = Types.WasmRefType(Types.WasmHeapType.Type(WasmStructTypeName.typeData))
-      val objectTypeIdx = TypeIdx(WasmStructTypeName(IRNames.ObjectClass))
+      val objectTypeIdx = TypeIdx(WasmStructTypeName.forClass(IRNames.ObjectClass))
 
       val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
 
@@ -1479,7 +1479,7 @@ private class WasmExpressionBuilder private (
         val info = ctx.getClassInfo(className)
         if (info.kind.isClass) {
           instrs += REF_CAST(
-            HeapType(Types.WasmHeapType.Type(WasmStructTypeName(className)))
+            HeapType(Types.WasmHeapType.Type(WasmStructTypeName.forClass(className)))
           )
         } else if (info.isInterface) {
           instrs += REF_CAST(
@@ -1710,7 +1710,7 @@ private class WasmExpressionBuilder private (
      * is only the case for j.l.Object).
      */
     val instanceTyp =
-      Types.WasmRefNullType(Types.WasmHeapType.Type(WasmStructTypeName(n.className)))
+      Types.WasmRefNullType(Types.WasmHeapType.Type(WasmStructTypeName.forClass(n.className)))
     val localInstance = fctx.addSyntheticLocal(instanceTyp)
 
     instrs += CALL(FuncIdx(WasmFunctionName.newDefault(n.className)))
@@ -1764,7 +1764,7 @@ private class WasmExpressionBuilder private (
     instrs += LOCAL_TEE(instanceLocal)
     instrs += LOCAL_GET(primLocal)
     instrs += STRUCT_SET(
-      TypeIdx(WasmStructTypeName(boxClassName)),
+      TypeIdx(WasmStructTypeName.forClass(boxClassName)),
       StructFieldIdx.uniqueRegularField
     )
     instrs += LOCAL_GET(instanceLocal)
@@ -1845,7 +1845,7 @@ private class WasmExpressionBuilder private (
       val idx =
         ctx.getClassInfo(SpecialNames.JSExceptionClass).getFieldIdx(SpecialNames.JSExceptionField)
 
-      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(SpecialNames.JSExceptionClass)), idx)
+      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.forClass(SpecialNames.JSExceptionClass)), idx)
     }
 
     IRTypes.AnyType
@@ -2072,7 +2072,7 @@ private class WasmExpressionBuilder private (
       case IRTypes.ArrayType(arrayTypeRef) =>
         // Get the underlying array; implicit trap on null
         instrs += STRUCT_GET(
-          TypeIdx(WasmStructTypeName(arrayTypeRef)),
+          TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)),
           StructFieldIdx.uniqueRegularField
         )
         // Get the length
@@ -2109,7 +2109,7 @@ private class WasmExpressionBuilder private (
       instrs += ARRAY_NEW_DEFAULT(TypeIdx(underlyingArrayType))
 
       // Create the array object
-      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)))
     } else {
       /* There is no Scala source code that produces `NewArray` with more than
        * one specified dimension, so this branch is not tested.
@@ -2154,7 +2154,7 @@ private class WasmExpressionBuilder private (
       case IRTypes.ArrayType(arrayTypeRef) =>
         // Get the underlying array; implicit trap on null
         instrs += STRUCT_GET(
-          TypeIdx(WasmStructTypeName(arrayTypeRef)),
+          TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)),
           StructFieldIdx.uniqueRegularField
         )
 
@@ -2224,7 +2224,7 @@ private class WasmExpressionBuilder private (
     instrs += ARRAY_NEW_FIXED(TypeIdx(underlyingArrayType), I32(t.elems.size))
 
     // Create the array object
-    instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+    instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)))
 
     t.tpe
   }
@@ -2294,7 +2294,10 @@ private class WasmExpressionBuilder private (
     instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
 
     instrs += LOCAL_GET(expr)
-    instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(IRNames.ObjectClass)), StructFieldIdx.vtable)
+    instrs += STRUCT_GET(
+      TypeIdx(WasmStructTypeName.forClass(IRNames.ObjectClass)),
+      StructFieldIdx.vtable
+    )
     instrs += STRUCT_GET(
       TypeIdx(WasmTypeName.WasmStructTypeName.typeData),
       WasmFieldName.typeData.cloneFunctionIdx
@@ -2307,7 +2310,7 @@ private class WasmExpressionBuilder private (
         val info = ctx.getClassInfo(className)
         if (!info.isInterface) // if it's interface, no need to cast from j.l.Object
           instrs += REF_CAST(
-            HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName(className)))
+            HeapType(Types.WasmHeapType.Type(WasmTypeName.WasmStructTypeName.forClass(className)))
           )
       case _ =>
         throw new IllegalArgumentException(
@@ -2381,7 +2384,7 @@ private class WasmExpressionBuilder private (
 
   private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
     genTree(tree.qualifier, IRTypes.AnyType)
-    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(tree.field.name)))
+    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.forJSPrivateField(tree.field.name)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
 
     IRTypes.AnyType

@@ -45,7 +45,9 @@ object TypeTransformer {
 
       case tpe: IRTypes.ArrayType =>
         Types.WasmRefNullType(
-          Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(tpe.arrayTypeRef))
+          Types.WasmHeapType.Type(
+            Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
+          )
         )
       case IRTypes.ClassType(className) => transformClassByName(className)
       case IRTypes.RecordType(fields)   => ???
@@ -66,7 +68,7 @@ object TypeTransformer {
           Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
         else
           Types.WasmRefNullType(
-            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName(className))
+            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.forClass(className))
           )
     }
   }

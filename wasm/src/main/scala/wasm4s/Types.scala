@@ -84,9 +84,9 @@ object Types {
       object NoExn extends Simple("noexn", 0x74)
     }
 
-    val ObjectType = Type(WasmStructTypeName(IRNames.ObjectClass))
-    val ClassType = Type(WasmStructTypeName(IRNames.ClassClass))
-    val ThrowableType = Type(WasmStructTypeName(IRNames.ThrowableClass))
-    val JSExceptionType = Type(WasmStructTypeName(SpecialNames.JSExceptionClass))
+    val ObjectType = Type(WasmStructTypeName.forClass(IRNames.ObjectClass))
+    val ClassType = Type(WasmStructTypeName.forClass(IRNames.ClassClass))
+    val ThrowableType = Type(WasmStructTypeName.forClass(IRNames.ThrowableClass))
+    val JSExceptionType = Type(WasmStructTypeName.forClass(SpecialNames.JSExceptionClass))
   }
 }
