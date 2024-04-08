@@ -8,19 +8,8 @@ import wasm.converters.WasmTextWriter
 object Names {
   // private[wasm4s] because we don't wanna access it from converters
   sealed abstract class WasmName(private[wasm4s] val name: String) {
-    def show: String = {
-      val suffix = this match {
-        case _: WasmLocalName    => "local"
-        case _: WasmGlobalName   => "global"
-        case _: WasmFunctionName => "fun"
-        case _: WasmFieldName    => "field"
-        case _: WasmTagName      => "tag"
-        case _: WasmDataName     => "data"
-        case _: WasmExportName   => "export"
-        case _: WasmTypeName     => "type"
-      }
-      s"$$${WasmName.sanitizeWatIdentifier(this.name)}___$suffix"
-    }
+    def show: String =
+      s"$$${WasmName.sanitizeWatIdentifier(this.name)}"
   }
   object WasmName {
 
