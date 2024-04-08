@@ -187,7 +187,7 @@ object HelperFunctions {
       // if typeData.kind == KindArray
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-      instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
+      instrs += I32_CONST(I32(KindArray))
       instrs += I32_EQ
       fctx.ifThenElse(WasmRefType.any) {
         // it is an array; compute its name from the component type name
@@ -212,39 +212,39 @@ object HelperFunctions {
           instrs += LOCAL_GET(componentTypeDataLocal)
           instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
         }(
-          List(WasmFieldName.typeData.KindBoolean) -> { () =>
+          List(KindBoolean) -> { () =>
             instrs += I32_CONST(I32('Z'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindChar) -> { () =>
+          List(KindChar) -> { () =>
             instrs += I32_CONST(I32('C'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindByte) -> { () =>
+          List(KindByte) -> { () =>
             instrs += I32_CONST(I32('B'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindShort) -> { () =>
+          List(KindShort) -> { () =>
             instrs += I32_CONST(I32('S'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindInt) -> { () =>
+          List(KindInt) -> { () =>
             instrs += I32_CONST(I32('I'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindLong) -> { () =>
+          List(KindLong) -> { () =>
             instrs += I32_CONST(I32('J'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindFloat) -> { () =>
+          List(KindFloat) -> { () =>
             instrs += I32_CONST(I32('F'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindDouble) -> { () =>
+          List(KindDouble) -> { () =>
             instrs += I32_CONST(I32('D'.toInt))
             instrs += CALL(FuncIdx(WasmFunctionName.charToString))
           },
-          List(WasmFieldName.typeData.KindArray) -> { () =>
+          List(KindArray) -> { () =>
             // the component type is an array; get its own name
             instrs += LOCAL_GET(componentTypeDataLocal)
             instrs += CALL(FuncIdx(WasmFunctionName.typeDataName))
@@ -333,7 +333,7 @@ object HelperFunctions {
     instrs ++= ctx.getConstantStringInstr("isPrimitive")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(WasmFieldName.typeData.KindLastPrimitive))
+    instrs += I32_CONST(I32(KindLastPrimitive))
     instrs += I32_LE_U
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
@@ -341,7 +341,7 @@ object HelperFunctions {
     instrs ++= ctx.getConstantStringInstr("isArrayClass")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray))
+    instrs += I32_CONST(I32(KindArray))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
@@ -349,7 +349,7 @@ object HelperFunctions {
     instrs ++= ctx.getConstantStringInstr("isInterface")
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(TypeIdx(WasmStructTypeName.typeData), WasmFieldName.typeData.kindIdx)
-    instrs += I32_CONST(I32(WasmFieldName.typeData.KindInterface))
+    instrs += I32_CONST(I32(KindInterface))
     instrs += I32_EQ
     instrs += CALL(FuncIdx(WasmFunctionName.box(IRTypes.BooleanRef)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsObjectPush))
@@ -493,7 +493,7 @@ object HelperFunctions {
 
         // typeData := new typeData(...)
         instrs += REF_NULL(HeapType(WasmHeapType.Simple.None)) // nameData
-        instrs += I32_CONST(I32(WasmFieldName.typeData.KindArray)) // kind = KindArray
+        instrs += I32_CONST(I32(KindArray)) // kind = KindArray
         instrs += I32_CONST(I32(0)) // specialInstanceTypes = 0
 
         // strictAncestors
