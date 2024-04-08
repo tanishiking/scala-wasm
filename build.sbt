@@ -226,8 +226,6 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // RuntimeError: divide by zero / remainder by zero
-    "org.scalajs.testsuite.compiler.OptimizerTest",
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
     // RuntimeError: illegal cast
@@ -273,6 +271,7 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.util.BitSetTest",
     "org.scalajs.testsuite.javalib.util.concurrent.ConcurrentHashMapTest",
     "org.scalajs.testsuite.javalib.util.concurrent.TimeUnitTest",
+    "org.scalajs.testsuite.compiler.OptimizerTest",
     // nonUnitBoxedPrimitiveValuesAreSerializable failed: java.lang.AssertionError: Boolean
     "org.scalajs.testsuite.javalib.io.SerializableTest",
     // No support for stack traces
