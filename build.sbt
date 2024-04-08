@@ -227,11 +227,7 @@ lazy val `scalajs-test-suite` = project
 lazy val IgnoredTestNames: Set[String] = {
   Set(
     // RuntimeError: divide by zero / remainder by zero
-    "org.scalajs.testsuite.compiler.IntTest",
-    "org.scalajs.testsuite.compiler.LongTest",
     "org.scalajs.testsuite.compiler.OptimizerTest",
-    "org.scalajs.testsuite.javalib.lang.IntegerTest",
-    "org.scalajs.testsuite.javalib.lang.MathTest",
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
     // RuntimeError: illegal cast

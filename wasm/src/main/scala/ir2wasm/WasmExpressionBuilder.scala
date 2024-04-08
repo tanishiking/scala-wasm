@@ -897,6 +897,35 @@ private class WasmExpressionBuilder private (
         instrs += CALL(FuncIdx(WasmFunctionName.stringCharAt))
         IRTypes.CharType
 
+
+      case BinaryOp.Int_/ | BinaryOp.Long_/ | BinaryOp.Int_% | BinaryOp.Long_% =>
+        // Check division by zero
+        implicit val noPos = Position.NoPosition
+        val th = IRTrees.Throw(
+          IRTrees.New(
+            IRNames.ArithmeticExceptionClass,
+            IRTrees.MethodIdent(
+              IRNames.MethodName.constructor(List(IRTypes.ClassRef(IRNames.BoxedStringClass)))
+            ),
+            List(IRTrees.StringLiteral("/ by zero "))
+          )
+        )
+        genTreeAuto(binary.rhs)
+        binary.op match {
+          case BinaryOp.Int_/ | BinaryOp.Int_%   => instrs += I32_EQZ
+          case BinaryOp.Long_/ | BinaryOp.Long_% => instrs += I64_EQZ
+          case BinaryOp.Float_/ =>
+            instrs ++= List(F32_CONST(WasmImmediate.F32(0)), F32_EQ)
+          case BinaryOp.Double_/  =>
+            instrs ++= List(F64_CONST(WasmImmediate.F64(0)), F64_EQ)
+        }
+        fctx.ifThenElse(TypeTransformer.transformType(binary.tpe)(ctx)) {
+          genThrow(th)
+        } {
+          genElementaryBinaryOp(binary)
+        }
+        binary.tpe
+
       case _ => genElementaryBinaryOp(binary)
     }
   }
