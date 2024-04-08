@@ -912,10 +912,17 @@ private class WasmExpressionBuilder private (
         )
         val resType = TypeTransformer.transformType(binary.tpe)(ctx)
 
+        val lhs = fctx.addSyntheticLocal(TypeTransformer.transformType(binary.lhs.tpe)(ctx))
+        val rhs = fctx.addSyntheticLocal(TypeTransformer.transformType(binary.rhs.tpe)(ctx))
+        genTreeAuto(binary.lhs)
+        instrs += LOCAL_SET(lhs)
+        genTreeAuto(binary.rhs)
+        instrs += LOCAL_SET(rhs)
+
         fctx.block(resType) { done =>
           fctx.block() { default =>
             fctx.block() { divisionByZero =>
-              genTreeAuto(binary.rhs)
+              instrs += LOCAL_GET(rhs)
               binary.op match {
                 case BinaryOp.Int_/ | BinaryOp.Int_%   => instrs += I32_EQZ
                 case BinaryOp.Long_/ | BinaryOp.Long_% => instrs += I64_EQZ
@@ -925,11 +932,11 @@ private class WasmExpressionBuilder private (
               // Check overflow for division
               if (binary.op == BinaryOp.Int_/ || binary.op == BinaryOp.Long_/) {
                 fctx.block() { overflow =>
-                  genTreeAuto(binary.rhs)
+                  instrs += LOCAL_GET(rhs)
                   if (binary.op == BinaryOp.Int_/) instrs ++= List(I32_CONST(-1), I32_EQ)
                   else instrs ++= List(I64_CONST(-1), I64_EQ)
                   fctx.ifThen() { // if (rhs == -1)
-                    genTreeAuto(binary.lhs)
+                    instrs += LOCAL_GET(lhs)
                     if (binary.op == BinaryOp.Int_/)
                       instrs ++= List(I32_CONST(Int.MinValue), I32_EQ)
                     else instrs ++= List(I64_CONST(Long.MinValue), I64_EQ)
@@ -950,7 +957,16 @@ private class WasmExpressionBuilder private (
             genThrow(divisionByZeroEx)
           }
           // default
-          genElementaryBinaryOp(binary)
+          instrs += LOCAL_GET(lhs)
+          instrs += LOCAL_GET(rhs)
+          instrs +=
+            (binary.op match {
+              case BinaryOp.Int_/  => I32_DIV_S
+              case BinaryOp.Int_%  => I32_REM_S
+              case BinaryOp.Long_/ => I64_DIV_S
+              case BinaryOp.Long_% => I64_REM_S
+            })
+          binary.tpe
         }
 
       case _ => genElementaryBinaryOp(binary)
