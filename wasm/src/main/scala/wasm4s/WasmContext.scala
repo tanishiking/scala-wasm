@@ -1,5 +1,7 @@
 package wasm.wasm4s
 
+import scala.annotation.tailrec
+
 import scala.collection.mutable
 import scala.collection.mutable.LinkedHashMap
 
@@ -365,12 +367,12 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   )
   addHelperImport(
     WasmFunctionName.closureRest,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThisRest,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, WasmAnyRef, WasmInt32),
     List(WasmRefType.any)
   )
 
@@ -648,6 +650,7 @@ object WasmContext {
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
       val ancestors: List[IRNames.ClassName],
+      private var _hasInstances: Boolean,
       val isAbstract: Boolean,
       val hasRuntimeTypeInfo: Boolean,
       val jsNativeLoadSpec: Option[IRTrees.JSNativeLoadSpec],
@@ -655,6 +658,12 @@ object WasmContext {
   ) {
     private val fieldIdxByName: Map[IRNames.FieldName, Int] =
       allFieldDefs.map(_.name.name).zipWithIndex.map(p => p._1 -> (p._2 + classFieldOffset)).toMap
+
+    // See caller in Preprocessor.preprocess
+    def setHasInstances(): Unit =
+      _hasInstances = true
+
+    def hasInstances: Boolean = _hasInstances
 
     def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
 
@@ -671,11 +680,33 @@ object WasmContext {
       }
     }
 
-    def getMethodInfo(methodName: IRNames.MethodName): WasmFunctionInfo = {
-      methods.find(_.name.simpleName == methodName.nameString).getOrElse {
-        throw new IllegalArgumentException(
-          s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
-        )
+    @tailrec
+    private def resolvePublicMethodOpt(
+        methodName: IRNames.MethodName
+    )(implicit ctx: ReadOnlyWasmContext): Option[IRNames.ClassName] = {
+      if (methods.exists(_.name.simpleName == methodName.nameString)) {
+        Some(name)
+      } else {
+        superClass match {
+          case None =>
+            None
+          case Some(superClass) =>
+            ctx.getClassInfo(superClass).resolvePublicMethodOpt(methodName)
+        }
+      }
+    }
+
+    def resolvePublicMethod(namespace: IRTrees.MemberNamespace, methodName: IRNames.MethodName)(
+        implicit ctx: ReadOnlyWasmContext
+    ): IRNames.ClassName = {
+      if (isInterface || namespace != IRTrees.MemberNamespace.Public) {
+        name
+      } else {
+        resolvePublicMethodOpt(methodName).getOrElse {
+          throw new AssertionError(
+            s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
+          )
+        }
       }
     }
 

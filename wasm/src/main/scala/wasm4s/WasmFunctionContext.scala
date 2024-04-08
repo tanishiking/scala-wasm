@@ -344,10 +344,68 @@ class WasmFunctionContext private (
     val typeName = ctx.addFunctionType(sig)
     val functionType = WasmFunctionType(typeName, sig)
 
-    val expr = WasmExpr(instrs.toList)
+    val dcedInstrs = localDeadCodeEliminationOfInstrs()
+
+    val expr = WasmExpr(dcedInstrs)
     val func = WasmFunction(functionName, functionType, locals.all, expr)
     ctx.addFunction(func)
     func
+  }
+
+  /** Performs local dead code elimination and produces the final list of instructions.
+    *
+    * After a stack-polymorphic instruction, the rest of the block is unreachable. In theory,
+    * WebAssembly specifies that the rest of the block should be type-checkeable no matter the
+    * contents of the stack. In practice, however, it seems V8 cannot handle `throw_ref` in such a
+    * context. It reports a validation error of the form "invalid type for throw_ref: expected
+    * exnref, found <bot>".
+    *
+    * We work around this issue by forcing a pass of local dead-code elimination. This is in fact
+    * straightforwrd: after every stack-polymorphic instruction, ignore all instructions until the
+    * next `ELSE` or `END`. The only tricky bit is that if we encounter nested
+    * `StructuredLabeledInstr`s during that process, must jump over them. That means we need to
+    * track the level of nesting at which we are.
+    */
+  private def localDeadCodeEliminationOfInstrs(): List[WasmInstr] = {
+    val resultBuilder = List.newBuilder[WasmInstr]
+
+    val iter = instrs.iterator
+    while (iter.hasNext) {
+      // Emit the current instruction
+      val instr = iter.next()
+      resultBuilder += instr
+
+      /* If it is a stack-polymorphic instruction, dead-code eliminate until the
+       * end of the current block.
+       */
+      if (instr.isInstanceOf[WasmInstr.StackPolymorphicInstr]) {
+        var nestingLevel = 0
+
+        while (nestingLevel >= 0 && iter.hasNext) {
+          val deadCodeInstr = iter.next()
+          deadCodeInstr match {
+            case END | ELSE if nestingLevel == 0 =>
+              /* We have reached the end of the original block of dead code.
+               * Actually emit this END or ELSE and then drop `nestingLevel`
+               * below 0 to end the dead code processing loop.
+               */
+              resultBuilder += deadCodeInstr
+              nestingLevel = -1 // acts as a `break` instruction
+
+            case END =>
+              nestingLevel -= 1
+
+            case _: StructuredLabeledInstr =>
+              nestingLevel += 1
+
+            case _ =>
+              ()
+          }
+        }
+      }
+    }
+
+    resultBuilder.result()
   }
 }
 

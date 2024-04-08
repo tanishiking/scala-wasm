@@ -12,6 +12,9 @@ abstract sealed class WasmInstr(
 )
 object WasmInstr {
   import WasmImmediate._
+
+  sealed trait StackPolymorphicInstr extends WasmInstr
+
   case object I32_EQZ extends WasmInstr("i32.eqz", 0x45)
   case object I64_EQZ extends WasmInstr("i64.eqz", 0x50)
   case object I32_CLZ extends WasmInstr("i32.clz", 0x67)
@@ -186,7 +189,7 @@ object WasmInstr {
     val label: Option[LabelIdx]
   }
 
-  case object UNREACHABLE extends WasmInstr("unreachable", 0x00)
+  case object UNREACHABLE extends WasmInstr("unreachable", 0x00) with StackPolymorphicInstr
   case object NOP extends WasmInstr("nop", 0x01)
   case class BLOCK(i: BlockType, label: Option[LabelIdx])
       extends StructuredLabeledInstr("block", 0x02, List(i))
@@ -196,16 +199,17 @@ object WasmInstr {
       extends StructuredLabeledInstr("if", 0x04, List(i))
   case object ELSE extends WasmInstr("else", 0x05)
   case object END extends WasmInstr("end", 0x0B)
-  case class BR(i: LabelIdx) extends WasmInstr("br", 0x0C, List(i))
+  case class BR(i: LabelIdx) extends WasmInstr("br", 0x0C, List(i)) with StackPolymorphicInstr
   case class BR_IF(i: LabelIdx) extends WasmInstr("br_if", 0x0D, List(i))
   case class BR_TABLE(i: LabelIdxVector, default: LabelIdx)
       extends WasmInstr("br_table", 0x0E, List(i, default))
-  case object RETURN extends WasmInstr("return", 0x0F)
+      with StackPolymorphicInstr
+  case object RETURN extends WasmInstr("return", 0x0F) with StackPolymorphicInstr
   case class CALL(i: FuncIdx) extends WasmInstr("call", 0x10, List(i))
   case class CALL_INDIRECT(i: TableIdx, t: TypeIdx)
       extends WasmInstr("call_indirect", 0x11, List(i, t))
-  case class THROW(i: TagIdx) extends WasmInstr("throw", 0x08, List(i))
-  case object THROW_REF extends WasmInstr("throw_ref", 0x0A)
+  case class THROW(i: TagIdx) extends WasmInstr("throw", 0x08, List(i)) with StackPolymorphicInstr
+  case object THROW_REF extends WasmInstr("throw_ref", 0x0A) with StackPolymorphicInstr
   case class TRY_TABLE(i: BlockType, cs: CatchClauseVector, label: Option[LabelIdx] = None)
       extends StructuredLabeledInstr("try_table", 0x1F, List(i, cs))
 

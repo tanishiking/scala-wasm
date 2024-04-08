@@ -218,28 +218,17 @@ lazy val `scalajs-test-suite` = project
 
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
-        .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala"))
-        .filterNot(endsWith(_, "/compiler/NullPointersTest.scala"))
-        .filterNot(endsWith(_, "/compiler/OptimizerTest.scala"))
-        .filterNot(endsWith(_, "/compiler/ReflectionTest.scala"))
-        .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala"))
-        .filterNot(endsWith(_, "/compiler/RegressionTest.scala"))
-        .filterNot(endsWith(_, "/compiler/SAMTest.scala"))
-        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala"))
-        .filterNot(endsWith(_, "/javalib/util/TimerTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/CustomJSFunctionTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/NestedJSClassTest.scala"))
-        .filterNot(endsWith(_, "/jsinterop/NonNativeJSTypeTest.scala"))
-        .filterNot(endsWith(_, "/library/ArrayOpsTest.scala"))
-        .filterNot(endsWith(_, "/library/WrappedDictionaryTest.scala"))
-        .filterNot(endsWith(_, "/niocharset/CharsetTest.scala"))
-        .filterNot(endsWith(_, "/typedarray/ArraysTest.scala"))
-        .filterNot(endsWith(_, "/typedarray/TypedArrayTest.scala"))
+        .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala")) // reflective calls
+        .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala")) // reflective calls
+        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala")) // reflective calls
+        .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala")) // js.dynamicImport (multi-modules)
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
     Test / scalacOptions += "-P:scalajs:nowarnGlobalExecutionContext",
+
+    scalaJSLinkerConfig ~= { _.withSemantics(build.TestSuiteLinkerOptions.semantics _) },
+    Test / scalaJSModuleInitializers ++= build.TestSuiteLinkerOptions.moduleInitializers,
 
     scalaJSLinkerConfig ~= { _.withESFeatures(_.withESVersion(ESVersion.ES2016)) },
 
@@ -274,14 +263,16 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // RuntimeError: remainder by zero
+    // RuntimeError: divide by zero / remainder by zero
     "org.scalajs.testsuite.compiler.IntTest",
     "org.scalajs.testsuite.compiler.LongTest",
+    "org.scalajs.testsuite.compiler.OptimizerTest",
     "org.scalajs.testsuite.javalib.lang.IntegerTest",
     "org.scalajs.testsuite.javalib.lang.MathTest",
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
     // RuntimeError: illegal cast
+    "org.scalajs.testsuite.compiler.RegressionTest",
     "org.scalajs.testsuite.niocharset.UTF8Test",
     "org.scalajs.testsuite.scalalib.ArrayBuilderTest",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
@@ -291,13 +282,13 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.compiler.RegressionJSTest",
     "org.scalajs.testsuite.jsinterop.FunctionTest",
     "org.scalajs.testsuite.jsinterop.MiscInteropTest",
+    "org.scalajs.testsuite.jsinterop.NonNativeJSTypeTest",
     "org.scalajs.testsuite.jsinterop.SpecialTest",
     "org.scalajs.testsuite.jsinterop.SymbolTest",
     // RuntimeError: unreachable (in the `isInstance` helper)
+    "org.scalajs.testsuite.compiler.ReflectionTest",
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     "org.scalajs.testsuite.jsinterop.ModulesTest",
-    // correctInitializers failed: java.lang.AssertionError: array lengths differed, expected.length=5 actual.length=0
-    "org.scalajs.testsuite.compiler.ModuleInitializersTest",
     // getClass for Box classes
     "org.scalajs.testsuite.javalib.lang.ClassTest",
     "org.scalajs.testsuite.javalib.lang.ObjectTest",
@@ -305,6 +296,7 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.DoubleTest",
     "org.scalajs.testsuite.javalib.lang.FloatTest",
     "org.scalajs.testsuite.javalib.util.ArraysTest",
+    "org.scalajs.testsuite.typedarray.ArraysTest",
     // hashCode of bigints and symbols
     "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
     // Various issues with identityHashCode
