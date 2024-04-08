@@ -284,7 +284,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   def getImportedModuleGlobal(moduleName: String): WasmGlobalName = {
-    val name = WasmGlobalName.WasmImportedModuleName(moduleName)
+    val name = WasmGlobalName.forImportedModule(moduleName)
     if (_importedModules.add(moduleName)) {
       module.addImport(
         WasmImport(
@@ -499,7 +499,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     module.addData(WasmData(WasmDataName.string, stringPool.toArray, WasmData.Mode.Passive))
     addGlobal(
       WasmGlobal(
-        WasmGlobalName.WasmGlobalStringLiteralCache,
+        WasmGlobalName.stringLiteralCache,
         WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray)),
         WasmExpr(
           List(
@@ -548,7 +548,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     for (fieldName <- _jsPrivateFieldNames) {
       instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.newSymbol))
       instrs += WasmInstr.GLOBAL_SET(
-        WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(fieldName))
+        WasmImmediate.GlobalIdx(WasmGlobalName.forJSPrivateField(fieldName))
       )
     }
 

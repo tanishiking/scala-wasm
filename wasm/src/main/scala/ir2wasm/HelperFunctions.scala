@@ -49,14 +49,14 @@ object HelperFunctions {
     import fctx.instrs
 
     fctx.block(WasmRefType.any) { cacheHit =>
-      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalStringLiteralCache))
+      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.stringLiteralCache))
       instrs += LOCAL_GET(stringIndexParam)
       instrs += ARRAY_GET(TypeIdx(WasmArrayTypeName.anyArray))
 
       instrs += BR_ON_NON_NULL(cacheHit)
 
       // cache miss, create a new string and cache it
-      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalStringLiteralCache))
+      instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.stringLiteralCache))
       instrs += LOCAL_GET(stringIndexParam)
 
       instrs += LOCAL_GET(offsetParam)
@@ -498,7 +498,7 @@ object HelperFunctions {
 
         // strictAncestors
         for (strictAncestor <- strictAncestors)
-          instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(strictAncestor)))
+          instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.forVTable(strictAncestor)))
         instrs += ARRAY_NEW_FIXED(
           TypeIdx(WasmArrayTypeName.typeDataArray),
           I32(strictAncestors.size)
@@ -1062,7 +1062,7 @@ object HelperFunctions {
     val intValueLocal = fctx.addLocal("intValue", WasmInt32)
 
     def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
-      GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(IRTypes.ClassRef(className))))
+      GLOBAL_GET(GlobalIdx(WasmGlobalName.forVTable(className)))
 
     fctx.block(WasmRefNullType(WasmHeapType.ClassType)) { nonNullClassOfLabel =>
       fctx.block(typeDataType) { gotTypeDataLabel =>
@@ -1490,13 +1490,11 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    instrs +=
-      GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalVTableName(className)))
+    instrs += GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.forVTable(className)))
 
     val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
     if (!interfaces.isEmpty)
-      instrs +=
-        GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.WasmGlobalITableName(className)))
+      instrs += GLOBAL_GET(WasmImmediate.GlobalIdx(WasmGlobalName.forITable(className)))
     else
       instrs +=
         REF_NULL(WasmImmediate.HeapType(WasmHeapType.Type(WasmArrayType.itables.name)))

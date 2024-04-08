@@ -10,25 +10,18 @@ object Names {
   sealed abstract class WasmName(private[wasm4s] val name: String) {
     def show: String = {
       val suffix = this match {
-        case _: WasmLocalName                               => "local"
-        case _: WasmGlobalName.WasmImportedModuleName       => "g_imported"
-        case _: WasmGlobalName.WasmModuleInstanceName       => "g_instance"
-        case _: WasmGlobalName.WasmJSClassName              => "g_jsclass"
-        case _: WasmGlobalName.WasmGlobalVTableName         => "g_vtable"
-        case _: WasmGlobalName.WasmGlobalITableName         => "g_itable"
-        case WasmGlobalName.WasmGlobalStringLiteralCache    => "str_cache"
-        case _: WasmGlobalName.WasmGlobalStaticFieldName    => "f_static"
-        case _: WasmGlobalName.WasmGlobalJSPrivateFieldName => "g_jspfield"
-        case _: WasmFunctionName                            => "fun"
-        case _: WasmFieldName                               => "field"
-        case _: WasmTagName                                 => "tag"
-        case _: WasmDataName                                => "data"
-        case _: WasmExportName                              => "export"
-        case _: WasmTypeName.WasmFunctionTypeName           => "ty"
-        case _: WasmTypeName.WasmStructTypeName             => "struct"
-        case _: WasmTypeName.WasmArrayTypeName              => "arr"
-        case _: WasmTypeName.WasmVTableTypeName             => "vtable"
-        case _: WasmTypeName.WasmITableTypeName             => "itable"
+        case _: WasmLocalName                     => "local"
+        case _: WasmGlobalName                    => "global"
+        case _: WasmFunctionName                  => "fun"
+        case _: WasmFieldName                     => "field"
+        case _: WasmTagName                       => "tag"
+        case _: WasmDataName                      => "data"
+        case _: WasmExportName                    => "export"
+        case _: WasmTypeName.WasmFunctionTypeName => "ty"
+        case _: WasmTypeName.WasmStructTypeName   => "struct"
+        case _: WasmTypeName.WasmArrayTypeName    => "arr"
+        case _: WasmTypeName.WasmVTableTypeName   => "vtable"
+        case _: WasmTypeName.WasmITableTypeName   => "itable"
       }
       s"$$${WasmName.sanitizeWatIdentifier(this.name)}___$suffix"
     }
@@ -58,73 +51,37 @@ object Names {
     val receiver = new WasmLocalName("___<this>")
   }
 
-  sealed abstract class WasmGlobalName(override private[wasm4s] val name: String)
+  final case class WasmGlobalName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
-    final case class WasmImportedModuleName private (
-        override private[wasm4s] val name: String
-    ) extends WasmGlobalName(name)
-    object WasmImportedModuleName {
-      def apply(moduleName: String): WasmImportedModuleName =
-        new WasmImportedModuleName(s"imported___$moduleName")
+    def forImportedModule(moduleName: String): WasmGlobalName =
+      new WasmGlobalName(s"imported.$moduleName")
+
+    def forModuleInstance(className: IRNames.ClassName): WasmGlobalName =
+      new WasmGlobalName(s"modinstace.${className.nameString}")
+
+    def forJSClassValue(className: IRNames.ClassName): WasmGlobalName =
+      new WasmGlobalName(s"jsclass.${className.nameString}")
+
+    def forVTable(className: IRNames.ClassName): WasmGlobalName =
+      new WasmGlobalName(s"vtable.L${className.nameString}")
+
+    def forVTable(typeRef: IRTypes.NonArrayTypeRef): WasmGlobalName = typeRef match {
+      case typeRef: IRTypes.PrimRef    => new WasmGlobalName(s"vtable.${typeRef.charCode}")
+      case IRTypes.ClassRef(className) => forVTable(className)
     }
 
-    final case class WasmModuleInstanceName private (override private[wasm4s] val name: String)
-        extends WasmGlobalName(name)
-    object WasmModuleInstanceName {
-      def fromIR(name: IRNames.ClassName): WasmModuleInstanceName = new WasmModuleInstanceName(
-        name.nameString
-      )
-    }
+    def forITable(className: IRNames.ClassName): WasmGlobalName =
+      new WasmGlobalName(s"itable.${className.nameString}")
 
-    final case class WasmJSClassName private (override private[wasm4s] val name: String)
-        extends WasmGlobalName(name)
-    object WasmJSClassName {
-      def apply(name: IRNames.ClassName): WasmJSClassName =
-        new WasmJSClassName(name.nameString)
-    }
+    def forStaticField(fieldName: IRNames.FieldName): WasmGlobalName =
+      new WasmGlobalName(s"static.${fieldName.nameString}")
 
-    final case class WasmGlobalVTableName private (override private[wasm4s] val name: String)
-        extends WasmGlobalName(name)
-    object WasmGlobalVTableName {
-      def apply(name: IRNames.ClassName): WasmGlobalVTableName =
-        new WasmGlobalVTableName("L" + name.nameString)
+    def forJSPrivateField(fieldName: IRNames.FieldName): WasmGlobalName =
+      new WasmGlobalName(s"jspfield.${fieldName.nameString}")
 
-      def apply(typeRef: IRTypes.NonArrayTypeRef): WasmGlobalVTableName = typeRef match {
-        case typeRef: IRTypes.PrimRef    => new WasmGlobalVTableName(typeRef.charCode.toString())
-        case IRTypes.ClassRef(className) => apply(className)
-      }
-
-      def apply(name: WasmTypeName): WasmGlobalVTableName = new WasmGlobalVTableName(
-        name.name
-      )
-    }
-
-    final case class WasmGlobalITableName private (override private[wasm4s] val name: String)
-        extends WasmGlobalName(name)
-    object WasmGlobalITableName {
-      def apply(name: IRNames.ClassName): WasmGlobalITableName = new WasmGlobalITableName(
-        name.nameString
-      )
-    }
-
-    final case class WasmGlobalStaticFieldName private (
-        override private[wasm4s] val name: String
-    ) extends WasmGlobalName(name)
-    object WasmGlobalStaticFieldName {
-      def apply(fieldName: IRNames.FieldName): WasmGlobalStaticFieldName =
-        new WasmGlobalStaticFieldName(s"static___${fieldName.nameString}")
-    }
-
-    final case class WasmGlobalJSPrivateFieldName private (
-        override private[wasm4s] val name: String
-    ) extends WasmGlobalName(name)
-    object WasmGlobalJSPrivateFieldName {
-      def apply(fieldName: IRNames.FieldName): WasmGlobalJSPrivateFieldName =
-        new WasmGlobalJSPrivateFieldName(s"jspfield___${fieldName.nameString}")
-    }
-
-    object WasmGlobalStringLiteralCache extends WasmGlobalName("string_literal")
+    val stringLiteralCache: WasmGlobalName =
+      new WasmGlobalName(s"string_literal")
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -328,6 +285,7 @@ object Names {
 
     // Fields of the typeData structs
     object typeData {
+
       /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
         *
         * It is non-null for primitives and for classes. It is null for array types, as array types

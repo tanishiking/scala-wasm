@@ -212,7 +212,7 @@ private class WasmExpressionBuilder private (
       case sel: IRTrees.SelectStatic =>
         genTree(t.rhs, sel.tpe)
         instrs += GLOBAL_SET(
-          GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(sel.field.name))
+          GlobalIdx(Names.WasmGlobalName.forStaticField(sel.field.name))
         )
 
       case sel: IRTrees.ArraySelect =>
@@ -240,7 +240,7 @@ private class WasmExpressionBuilder private (
 
       case sel: IRTrees.JSPrivateSelect =>
         genTree(sel.qualifier, IRTypes.AnyType)
-        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(sel.field.name)))
+        instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.forJSPrivateField(sel.field.name)))
         genTree(t.rhs, IRTypes.AnyType)
         instrs += CALL(FuncIdx(WasmFunctionName.jsSelectSet))
 
@@ -725,7 +725,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
-    GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalVTableName(typeRef)))
+    GLOBAL_GET(GlobalIdx(WasmGlobalName.forVTable(typeRef)))
 
   private def genLoadArrayTypeData(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
     instrs += getNonArrayTypeDataInstr(arrayTypeRef.base)
@@ -770,7 +770,7 @@ private class WasmExpressionBuilder private (
 
   private def genSelectStatic(tree: IRTrees.SelectStatic): IRTypes.Type = {
     instrs += GLOBAL_GET(
-      GlobalIdx(Names.WasmGlobalName.WasmGlobalStaticFieldName(tree.field.name))
+      GlobalIdx(Names.WasmGlobalName.forStaticField(tree.field.name))
     )
     tree.tpe
   }
@@ -779,7 +779,7 @@ private class WasmExpressionBuilder private (
     val className = fctx.enclosingClassName.getOrElse {
       throw new AssertionError(s"Cannot emit $t at ${t.pos} without enclosing class name")
     }
-    val name = WasmGlobalName.WasmModuleInstanceName.fromIR(className)
+    val name = WasmGlobalName.forModuleInstance(className)
     genTreeAuto(IRTrees.This()(IRTypes.ClassType(className))(t.pos))
     instrs += GLOBAL_SET(GlobalIdx(name))
     IRTypes.NoType
@@ -2309,7 +2309,7 @@ private class WasmExpressionBuilder private (
 
   private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
     genTree(tree.qualifier, IRTypes.AnyType)
-    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.WasmGlobalJSPrivateFieldName(tree.field.name)))
+    instrs += GLOBAL_GET(GlobalIdx(WasmGlobalName.forJSPrivateField(tree.field.name)))
     instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
 
     IRTypes.AnyType
