@@ -30,30 +30,11 @@ inThisBuild(
     jsEnv := {
       // Enable support for exnref and try_table
       new NodeJSEnv(
-        NodeJSEnv.Config().withArgs(List("--experimental-wasm-exnref"))
+        NodeJSEnv.Config().withArgs(List("--enable-source-maps", "--experimental-wasm-exnref"))
       )
     }
   )
 )
-
-lazy val cli = project
-  .in(file("cli"))
-  .enablePlugins(ScalaJSPlugin)
-  .settings(
-    name := "cli",
-    scalaVersion := scalaV,
-    scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= {
-      _.withModuleKind(ModuleKind.CommonJSModule),
-    },
-    libraryDependencies ++= Seq(
-      "org.scala-js" %%% "scala-js-macrotask-executor" % "1.1.1"
-    )
-  )
-  .dependsOn(
-    wasm.js
-      // tests // for TestSuites constant
-  )
 
 lazy val wasm = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
@@ -82,22 +63,6 @@ lazy val testSuite = project
     scalaVersion := scalaV,
     scalaJSUseMainModuleInitializer := true,
     scalacOptions -= "-Xfatal-warnings", // for unpaired surrogate code units in StringEncodingTest.scala
-    Compile / jsEnv := {
-      val cp = Attributed
-        .data((Compile / fullClasspath).value)
-        .mkString(";")
-      val env = Map(
-        "SCALAJS_CLASSPATH" -> cp,
-        "SCALAJS_MODE" -> "testsuite"
-      )
-      new NodeJSEnv(
-        NodeJSEnv
-          .Config()
-          .withEnv(env)
-          .withArgs(List("--enable-source-maps", "--experimental-wasm-exnref"))
-      )
-    },
-    Compile / jsEnvInput := (`cli` / Compile / jsEnvInput).value
   )
 
 lazy val tests = project
@@ -115,14 +80,12 @@ lazy val tests = project
       _.withModuleKind(ModuleKind.ESModule)
         .withOutputPatterns(OutputPatterns.fromJSFile("%s.mjs")),
     },
-    test := Def
-      .sequential(
-        (testSuite / Compile / run).toTask(""),
-        (Test / test)
-      )
-      .value
+    envVars += {
+      val testSuiteClasspath = Attributed.data((testSuite / Compile / fullClasspath).value)
+      "SCALAJS_CLASSPATH" -> testSuiteClasspath.mkString(";")
+    },
   )
-  .dependsOn(cli)
+  .dependsOn(wasm.js)
 
 lazy val `scalajs-test-suite` = project
   .in(file("scalajs-test-suite"))

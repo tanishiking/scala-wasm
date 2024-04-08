@@ -1,4 +1,4 @@
-package cli
+package tests
 
 object TestSuites {
   case class TestSuite(className: String, methodName: String = "main")

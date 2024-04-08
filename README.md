@@ -47,17 +47,32 @@ You can also use the `run.mjs` script to play with `@JSExportTopLevel` exports.
 
 If you encounter the `Invalid opcode 0x1f` error with Node.js, you need to use a more recent nightly build (minimum required: v22 nightly from 2024/04/01).
 
-### Test suite
+### Unit test suite
 
-Run the test suite with `tests/test`.
+Run the unit test suite with `tests/test`.
 
 - `tests/test` will
-  - Run `testSuite/run` to compile the Scala code under `test-suite` to WebAssembly
-  - Run the WebAssembly binary using NodeJS
+  - Link every test suite from `testSuite` with the WebAssembly backend
+  - Run the produced WebAssembly module and check for any uncaught error
 - Each Scala program in `test-suite` should have a `def main(): Unit` function. The test passes if the function successfully executes without throwing.
 - When you add a test,
   - Add a file under `test-suite`
-  - Add a test case to `cli/src/main/scala/TestSuites.scala` (`methodName` should be a exported function name).
+  - Add a test case to `tests/src/test/scala/tests/TestSuites.scala`
+
+### Scala.js integration test suite
+
+Run the entire Scala.js test suite, linked with the WebAssembly backend, with:
+
+```
+> scalajs-test-suite/test
+```
+
+When you modify the linker, you need to `reload` and `scalajs-test-suite/clean` for your changes to take effect.
+Since recompiling the test suite from scratch every time is slow, you can replace the `clean` by manually removing only the linker output with:
+
+```
+$ rm -r scalajs-test-suite/target/scala-2.12/scalajs-test-suite-test-fastopt/
+```
 
 ### Debugging tools
 
