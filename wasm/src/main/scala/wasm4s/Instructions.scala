@@ -148,7 +148,9 @@ object WasmInstr {
   case object F64_MAX extends WasmInstr("f64.max", 0xA5)
 
   case class I32_CONST(v: I32) extends WasmInstr("i32.const", 0x41, List(v))
+  object I32_CONST { def apply(v: Int): I32_CONST = I32_CONST(I32(v)) }
   case class I64_CONST(v: I64) extends WasmInstr("i64.const", 0x42, List(v))
+  object I64_CONST { def apply(v: Long): I64_CONST = I64_CONST(I64(v)) }
   case class F32_CONST(v: F32) extends WasmInstr("f32.const", 0x43, List(v))
   case class F64_CONST(v: F64) extends WasmInstr("f64.const", 0x44, List(v))
 
