@@ -143,7 +143,7 @@ object WasmStructType {
       ),
       WasmStructField(
         WasmFieldName.typeData.arrayOf,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmVTableTypeName.ObjectVTable)),
+        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.ObjectVTable)),
         isMutable = true
       ),
       WasmStructField(

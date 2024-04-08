@@ -538,7 +538,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
           val func = vtable.resolve(method.name)
           instrs += WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(func.name))
         }
-        instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmITableTypeName(iface.name))
+        instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
         instrs += WasmInstr.ARRAY_SET(WasmImmediate.TypeIdx(WasmTypeName.WasmArrayTypeName.itables))
       }
     }

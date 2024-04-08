@@ -455,7 +455,7 @@ object HelperFunctions {
 
     val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
     val objectVTableType = WasmRefType(
-      WasmHeapType.Type(WasmTypeName.WasmVTableTypeName.ObjectVTable)
+      WasmHeapType.Type(WasmTypeName.WasmStructTypeName.ObjectVTable)
     )
 
     /* Array classes extend Cloneable, Serializable and Object.
@@ -514,7 +514,7 @@ object HelperFunctions {
         instrs ++= ctx
           .calculateGlobalVTable(IRNames.ObjectClass)
           .map(method => WasmInstr.REF_FUNC(method.name))
-        instrs += STRUCT_NEW(TypeIdx(WasmTypeName.WasmVTableTypeName.ObjectVTable))
+        instrs += STRUCT_NEW(TypeIdx(WasmTypeName.WasmStructTypeName.ObjectVTable))
         instrs += LOCAL_TEE(arrayTypeDataLocal)
 
         // <old typeData>.arrayOf := typeData
@@ -563,7 +563,7 @@ object HelperFunctions {
 
     val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
     val objectRefType = WasmRefType(
-      WasmHeapType.Type(WasmTypeName.WasmStructTypeName(IRNames.ObjectClass))
+      WasmHeapType.Type(WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass))
     )
 
     val fctx = WasmFunctionContext(
@@ -612,7 +612,7 @@ object HelperFunctions {
       },
       List(KindBoxedCharacter) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
-        val structTypeName = WasmStructTypeName(SpecialNames.CharBoxClass)
+        val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
         instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
       },
       List(KindBoxedByte) -> { () =>
@@ -629,7 +629,7 @@ object HelperFunctions {
       },
       List(KindBoxedLong) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
-        val structTypeName = WasmStructTypeName(SpecialNames.LongBoxClass)
+        val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
         instrs += REF_TEST(HeapType(Types.WasmHeapType.Type(structTypeName)))
       },
       List(KindBoxedFloat) -> { () =>
@@ -713,7 +713,10 @@ object HelperFunctions {
         instrs += I32_CONST(I32(0))
         instrs += RETURN
       }
-      instrs += STRUCT_GET(TypeIdx(WasmStructTypeName(IRNames.ObjectClass)), StructFieldIdx.vtable)
+      instrs += STRUCT_GET(
+        TypeIdx(WasmStructTypeName.forClass(IRNames.ObjectClass)),
+        StructFieldIdx.vtable
+      )
 
       // Call isAssignableFrom
       instrs += CALL(FuncIdx(WasmFunctionName.isAssignableFrom))
@@ -1056,7 +1059,7 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    val objectTypeIdx = TypeIdx(WasmStructTypeName(IRNames.ObjectClass))
+    val objectTypeIdx = TypeIdx(WasmStructTypeName.forClass(IRNames.ObjectClass))
     val typeDataLocal = fctx.addLocal("typeData", typeDataType)
     val doubleValueLocal = fctx.addLocal("doubleValue", WasmFloat64)
     val intValueLocal = fctx.addLocal("intValue", WasmInt32)
@@ -1201,7 +1204,7 @@ object HelperFunctions {
 
     val typeDataType = WasmRefType(WasmHeapType.Type(WasmStructType.typeData.name))
     val i32ArrayType = WasmRefType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.i32Array))
-    val objectVTableType = WasmRefType(WasmHeapType.Type(WasmVTableTypeName.ObjectVTable))
+    val objectVTableType = WasmRefType(WasmHeapType.Type(WasmStructTypeName.ObjectVTable))
     val arrayTypeDataType = objectVTableType
     val itablesType = WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name))
     val nonNullObjectType = WasmRefType(WasmHeapType.ObjectType)
@@ -1297,7 +1300,7 @@ object HelperFunctions {
         List(kind) -> { () =>
           val arrayTypeRef = IRTypes.ArrayTypeRef(primRef, 1)
           instrs += ARRAY_NEW_DEFAULT(TypeIdx(WasmArrayTypeName.underlyingOf(arrayTypeRef)))
-          instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+          instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)))
           () // required for correct type inference
         }
       }: _*
@@ -1366,7 +1369,7 @@ object HelperFunctions {
 
       // load underlying; struct.new ObjectArray
       instrs += LOCAL_GET(underlyingLocal)
-      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName(arrayTypeRef)))
+      instrs += STRUCT_NEW(TypeIdx(WasmStructTypeName.forArrayClass(arrayTypeRef)))
     }
 
     fctx.buildAndAddToContext()
@@ -1444,7 +1447,7 @@ object HelperFunctions {
     val info = ctx.getClassInfo(clazz.name.name)
     if (info.ancestors.contains(IRNames.CloneableClass) && !info.isAbstract) {
       val heapType =
-        WasmHeapType.Type(WasmTypeName.WasmStructTypeName(clazz.name.name))
+        WasmHeapType.Type(WasmTypeName.WasmStructTypeName.forClass(clazz.name.name))
       val fctx = WasmFunctionContext(
         Names.WasmFunctionName.clone(clazz.name.name),
         List("from" -> WasmRefType(WasmHeapType.ObjectType)),
@@ -1466,8 +1469,14 @@ object HelperFunctions {
         val fieldIdx = info.getFieldIdx(field.name.name)
         instrs += LOCAL_GET(result)
         instrs += LOCAL_GET(from)
-        instrs += STRUCT_GET(TypeIdx(WasmTypeName.WasmStructTypeName(clazz.name.name)), fieldIdx)
-        instrs += STRUCT_SET(TypeIdx(WasmTypeName.WasmStructTypeName(clazz.name.name)), fieldIdx)
+        instrs += STRUCT_GET(
+          TypeIdx(WasmTypeName.WasmStructTypeName.forClass(clazz.name.name)),
+          fieldIdx
+        )
+        instrs += STRUCT_SET(
+          TypeIdx(WasmTypeName.WasmStructTypeName.forClass(clazz.name.name)),
+          fieldIdx
+        )
       }
       instrs += LOCAL_GET(result)
       instrs += REF_AS_NOT_NULL
@@ -1481,7 +1490,7 @@ object HelperFunctions {
     val classInfo = ctx.getClassInfo(className)
     assert(clazz.hasDirectInstances)
 
-    val structName = WasmTypeName.WasmStructTypeName(className)
+    val structName = WasmTypeName.WasmStructTypeName.forClass(className)
     val fctx = WasmFunctionContext(
       Names.WasmFunctionName.newDefault(className),
       Nil,
