@@ -38,6 +38,8 @@ jobs:
         run: sbt scalajs-test-suite/Test/fastLinkJS
       - name: Run the Scala.js test suite
         run: sbt scalajs-test-suite/test
+      - name: Link and run the Scala.js test suite with fullLinkJS
+        run: sbt 'set Global/scalaJSStage := FullOptStage' scalajs-test-suite/test
 
       # Make sure we can emit the .wat file without crashing
       - name: Link the Scala.js test suite with PrettyPrint

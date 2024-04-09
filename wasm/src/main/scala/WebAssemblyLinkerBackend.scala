@@ -126,7 +126,8 @@ final class WebAssemblyLinkerBackend(
     }
 
     def writeWasmFile(): Future[Unit] = {
-      val binaryOutput = new converters.WasmBinaryWriter(wasmModule).write()
+      val emitDebugInfo = !linkerConfig.minify
+      val binaryOutput = new converters.WasmBinaryWriter(wasmModule, emitDebugInfo).write()
       outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
     }
 
