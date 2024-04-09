@@ -295,60 +295,26 @@ class WasmTextWriter {
     }
   }
 
-  private def writeImmediate(i: WasmImmediate, instr: WasmInstr)(implicit b: WatBuilder): Unit = {
-    def floatString(v: Double): String = {
-      if (v.isNaN()) "nan"
-      else if (v == Double.PositiveInfinity) "inf"
-      else if (v == Double.NegativeInfinity) "-inf"
-      else if (v.equals(-0.0)) "-0.0"
-      else v.toString()
-    }
+  private def floatString(v: Double): String = {
+    if (v.isNaN()) "nan"
+    else if (v == Double.PositiveInfinity) "inf"
+    else if (v == Double.NegativeInfinity) "-inf"
+    else if (v.equals(-0.0)) "-0.0"
+    else v.toString()
+  }
 
-    i match {
-      case WasmImmediate.I64(v)          => b.appendElement(v.toString())
-      case WasmImmediate.I32(v)          => b.appendElement(v.toString())
-      case WasmImmediate.F64(v)          => b.appendElement(floatString(v))
-      case WasmImmediate.F32(v)          => b.appendElement(floatString(v.toDouble))
-      case WasmImmediate.LocalIdx(name)  => b.appendElement(name.show)
-      case WasmImmediate.GlobalIdx(name) => b.appendElement(name.show)
-      case i @ WasmImmediate.HeapType(ht) =>
-        instr match {
-          case _: REF_CAST | _: REF_TEST           => writeRefTypeImmediate(i, false)
-          case _: REF_CAST_NULL | _: REF_TEST_NULL => writeRefTypeImmediate(i, true)
-          case _                                   => writeHeapType(ht)
-        }
-      case WasmImmediate.FuncIdx(name)                => b.appendElement(name.show)
-      case WasmImmediate.TypeIdx(name)                => b.appendElement(name.show)
-      case WasmImmediate.StructFieldIdx(v)            => b.appendElement(v.toString)
-      case WasmImmediate.BlockType.FunctionType(name) => b.appendElement(s"(type ${name.show})")
+  private def writeBlockType(blockType: WasmImmediate.BlockType)(implicit b: WatBuilder): Unit = {
+    blockType match {
+      case WasmImmediate.BlockType.FunctionType(name) =>
+        b.appendElement(s"(type ${name.show})")
       case WasmImmediate.BlockType.ValueType(optTy) =>
         for (ty <- optTy)
           b.sameLineList("result", writeType(ty))
-      case WasmImmediate.LabelIdx(i) =>
-        b.appendElement(s"$$${i.toString}")
-      case WasmImmediate.LabelIdxVector(indices) =>
-        indices.foreach(i => b.appendElement("$" + i.value))
-      case WasmImmediate.TagIdx(name)  => b.appendElement(name.show)
-      case WasmImmediate.DataIdx(name) => b.appendElement(name.show)
-      case WasmImmediate.CatchClauseVector(clauses) =>
-        for (clause <- clauses) {
-          b.appendElement("(" + clause.mnemonic)
-          for (imm <- clause.immediates)
-            writeImmediate(imm, instr)
-          b.appendElement(")")
-        }
-      case i: WasmImmediate.CastFlags =>
-        throw new UnsupportedOperationException(
-          s"CastFlags $i must be handled directly in the instruction $instr"
-        )
     }
   }
 
-  private def writeRefTypeImmediate(i: WasmImmediate.HeapType, nullable: Boolean)(implicit
-      b: WatBuilder
-  ): Unit = {
-    writeType(WasmRefType(nullable, i.value))
-  }
+  private def writeLabelIdx(labelIdx: WasmImmediate.LabelIdx)(implicit b: WatBuilder): Unit =
+    b.appendElement(s"$$${labelIdx.value}")
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
@@ -359,30 +325,12 @@ class WasmTextWriter {
     b.appendElement(instr.mnemonic)
     instr match {
       case instr: StructuredLabeledInstr =>
-        instr.label.foreach(writeImmediate(_, instr))
+        instr.label.foreach(writeLabelIdx(_))
       case _ =>
         ()
     }
 
-    def writeBrOnCastImmediates(
-        castFlags: WasmImmediate.CastFlags,
-        label: WasmImmediate.LabelIdx,
-        from: WasmImmediate.HeapType,
-        to: WasmImmediate.HeapType
-    ): Unit = {
-      writeImmediate(label, instr)
-      writeRefTypeImmediate(from, castFlags.nullable1)
-      writeRefTypeImmediate(to, castFlags.nullable2)
-    }
-
-    instr match {
-      case BR_ON_CAST(castFlags, label, from, to) =>
-        writeBrOnCastImmediates(castFlags, label, from, to)
-      case BR_ON_CAST_FAIL(castFlags, label, from, to) =>
-        writeBrOnCastImmediates(castFlags, label, from, to)
-      case _ =>
-        instr.immediates.foreach { i => writeImmediate(i, instr) }
-    }
+    writeInstrImmediates(instr)
 
     instr match {
       case _: StructuredLabeledInstr | ELSE => b.indent()
@@ -390,6 +338,74 @@ class WasmTextWriter {
     }
   }
 
+  private def writeInstrImmediates(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+    instr match {
+      // Convenience categories
+
+      case instr: WasmSimpleInstr =>
+        ()
+      case instr: WasmBlockTypeLabeledInstr =>
+        writeBlockType(instr.blockTypeArgument)
+      case instr: WasmLabelInstr =>
+        writeLabelIdx(instr.labelArgument)
+      case instr: WasmFuncInstr =>
+        b.appendElement(instr.funcArgument.value.show)
+      case instr: WasmTypeInstr =>
+        b.appendElement(instr.typeArgument.value.show)
+      case instr: WasmTagInstr =>
+        b.appendElement(instr.tagArgument.value.show)
+      case instr: WasmLocalInstr =>
+        b.appendElement(instr.localArgument.value.show)
+      case instr: WasmGlobalInstr =>
+        b.appendElement(instr.globalArgument.value.show)
+      case instr: WasmHeapTypeInstr =>
+        writeHeapType(instr.heapTypeArgument.value)
+      case instr: WasmRefTypeInstr =>
+        writeType(instr.refTypeArgument)
+      case instr: WasmStructFieldInstr =>
+        b.appendElement(instr.structTypeIdx.value.show)
+        b.appendElement(instr.fieldIdx.value.toString())
+
+      // Specific instructions with unique-ish shapes
+
+      case I32_CONST(v) => b.appendElement(v.value.toString())
+      case I64_CONST(v) => b.appendElement(v.value.toString())
+      case F32_CONST(v) => b.appendElement(floatString(v.value.toDouble))
+      case F64_CONST(v) => b.appendElement(floatString(v.value))
+
+      case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
+        labelIdxVector.value.foreach(writeLabelIdx(_))
+        writeLabelIdx(defaultLabelIdx)
+
+      case TRY_TABLE(blockType, clauses, _) =>
+        writeBlockType(blockType)
+        for (clause <- clauses.value) {
+          b.sameLineList(
+            clause.mnemonic, {
+              clause.tag.foreach(tag => b.appendElement(tag.value.show))
+              writeLabelIdx(clause.label)
+            }
+          )
+        }
+
+      case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
+        b.appendElement(typeIdx.value.show)
+        b.appendElement(dataIdx.value.show)
+
+      case ARRAY_NEW_FIXED(typeIdx, length) =>
+        b.appendElement(typeIdx.value.show)
+        b.appendElement(Integer.toUnsignedString(length.value))
+
+      case BR_ON_CAST(labelIdx, from, to) =>
+        writeLabelIdx(labelIdx)
+        writeType(from)
+        writeType(to)
+      case BR_ON_CAST_FAIL(labelIdx, from, to) =>
+        writeLabelIdx(labelIdx)
+        writeType(from)
+        writeType(to)
+    }
+  }
 }
 
 object WasmTextWriter {

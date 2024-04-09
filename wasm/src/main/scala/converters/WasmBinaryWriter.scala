@@ -359,8 +359,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       buf.byte(opcode.toByte)
     }
 
-    for (immediate <- instr.immediates)
-      writeImmediate(buf, immediate)
+    writeInstrImmediates(buf, instr)
 
     instr match {
       case instr: WasmInstr.StructuredLabeledInstr =>
@@ -373,39 +372,89 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeImmediate(buf: Buffer, immediate: WasmImmediate): Unit = {
+  private def writeInstrImmediates(buf: Buffer, instr: WasmInstr): Unit = {
+    import WasmInstr._
+
+    def writeBrOnCast(
+        labelIdx: WasmImmediate.LabelIdx,
+        from: WasmRefType,
+        to: WasmRefType
+    ): Unit = {
+      val castFlags = ((if (from.nullable) 1 else 0) | (if (to.nullable) 2 else 0)).toByte
+      buf.byte(castFlags)
+      writeLabelIdx(buf, labelIdx)
+      writeHeapType(buf, from.heapType)
+      writeHeapType(buf, to.heapType)
+    }
+
+    instr match {
+      // Convenience categories
+
+      case instr: WasmSimpleInstr =>
+        ()
+      case instr: WasmBlockTypeLabeledInstr =>
+        writeBlockType(buf, instr.blockTypeArgument)
+      case instr: WasmLabelInstr =>
+        writeLabelIdx(buf, instr.labelArgument)
+      case instr: WasmFuncInstr =>
+        writeFuncIdx(buf, instr.funcArgument.value)
+      case instr: WasmTypeInstr =>
+        writeTypeIdx(buf, instr.typeArgument.value)
+      case instr: WasmTagInstr =>
+        writeTagIdx(buf, instr.tagArgument.value)
+      case instr: WasmLocalInstr =>
+        writeLocalIdx(buf, instr.localArgument.value)
+      case instr: WasmGlobalInstr =>
+        writeGlobalIdx(buf, instr.globalArgument.value)
+      case instr: WasmHeapTypeInstr =>
+        writeHeapType(buf, instr.heapTypeArgument.value)
+      case instr: WasmRefTypeInstr =>
+        writeHeapType(buf, instr.refTypeArgument.heapType)
+      case instr: WasmStructFieldInstr =>
+        writeTypeIdx(buf, instr.structTypeIdx.value)
+        buf.u32(instr.fieldIdx.value)
+
+      // Specific instructions with unique-ish shapes
+
+      case I32_CONST(v) => buf.i32(v.value)
+      case I64_CONST(v) => buf.i64(v.value)
+      case F32_CONST(v) => buf.f32(v.value)
+      case F64_CONST(v) => buf.f64(v.value)
+
+      case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
+        buf.vec(labelIdxVector.value)(writeLabelIdx(buf, _))
+        writeLabelIdx(buf, defaultLabelIdx)
+
+      case TRY_TABLE(blockType, clauses, _) =>
+        writeBlockType(buf, blockType)
+        buf.vec(clauses.value) { clause =>
+          buf.byte(clause.opcode.toByte)
+          clause.tag.foreach(tag => writeTagIdx(buf, tag.value))
+          writeLabelIdx(buf, clause.label)
+        }
+
+      case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
+        writeTypeIdx(buf, typeIdx.value)
+        writeDataIdx(buf, dataIdx.value)
+
+      case ARRAY_NEW_FIXED(typeIdx, length) =>
+        writeTypeIdx(buf, typeIdx.value)
+        buf.u32(length.value)
+
+      case BR_ON_CAST(labelIdx, from, to) =>
+        writeBrOnCast(labelIdx, from, to)
+      case BR_ON_CAST_FAIL(labelIdx, from, to) =>
+        writeBrOnCast(labelIdx, from, to)
+    }
+  }
+
+  private def writeBlockType(buf: Buffer, blockType: WasmImmediate.BlockType): Unit = {
     import WasmImmediate._
 
-    immediate match {
-      case I32(value) => buf.i32(value)
-      case I64(value) => buf.i64(value)
-      case F32(value) => buf.f32(value)
-      case F64(value) => buf.f64(value)
-
+    blockType match {
       case BlockType.ValueType(None)        => buf.byte(0x40)
       case BlockType.ValueType(Some(typ))   => writeType(buf, typ)
       case BlockType.FunctionType(typeName) => writeTypeIdxs33(buf, typeName)
-
-      case FuncIdx(value)        => writeFuncIdx(buf, value)
-      case labelIdx: LabelIdx    => writeLabelIdx(buf, labelIdx)
-      case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
-      case TypeIdx(value)        => writeTypeIdx(buf, value)
-      case DataIdx(value)        => writeDataIdx(buf, value)
-      case TagIdx(value)         => writeTagIdx(buf, value)
-      case LocalIdx(value)       => writeLocalIdx(buf, value)
-      case GlobalIdx(value)      => writeGlobalIdx(buf, value)
-      case HeapType(value)       => writeHeapType(buf, value)
-      case StructFieldIdx(value) => buf.u32(value)
-
-      case CatchClauseVector(clauses) =>
-        buf.vec(clauses) { clause =>
-          buf.byte(clause.opcode.toByte)
-          for (imm <- clause.immediates)
-            writeImmediate(buf, imm)
-        }
-
-      case CastFlags(nullable1, nullable2) =>
-        buf.byte(((if (nullable1) 1 else 0) | (if (nullable2) 2 else 0)).toByte)
     }
   }
 }

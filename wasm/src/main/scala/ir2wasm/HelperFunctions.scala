@@ -609,7 +609,7 @@ object HelperFunctions {
       List(KindBoxedCharacter) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
         val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
-        instrs += REF_TEST(HeapType(Types.WasmHeapType(structTypeName)))
+        instrs += REF_TEST(WasmRefType(structTypeName))
       },
       List(KindBoxedByte) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
@@ -626,7 +626,7 @@ object HelperFunctions {
       List(KindBoxedLong) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
         val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
-        instrs += REF_TEST(HeapType(Types.WasmHeapType(structTypeName)))
+        instrs += REF_TEST(WasmRefType(structTypeName))
       },
       List(KindBoxedFloat) -> { () =>
         instrs += LOCAL_GET(valueNonNullLocal)
@@ -699,10 +699,9 @@ object HelperFunctions {
         // Try cast to jl.Object
         instrs += LOCAL_GET(valueNonNullLocal)
         instrs += BR_ON_CAST(
-          CastFlags(false, false),
           ourObjectLabel,
-          HeapType(WasmHeapType.Any),
-          HeapType(objectRefType.heapType)
+          WasmRefType.any,
+          WasmRefType(objectRefType.heapType)
         )
 
         // on cast fail, return false
@@ -747,7 +746,7 @@ object HelperFunctions {
     instrs += LOCAL_GET(fromParam)
     instrs ++= ctx.getConstantStringInstr("__typeData")
     instrs += CALL(FuncIdx(WasmFunctionName.jsSelect))
-    instrs += REF_CAST(HeapType(typeDataType.heapType))
+    instrs += REF_CAST(WasmRefType(typeDataType.heapType))
 
     // delegate to isAssignableFrom
     instrs += CALL(FuncIdx(WasmFunctionName.isAssignableFrom))
@@ -1069,10 +1068,9 @@ object HelperFunctions {
           // if value is our object, jump to $ourObject
           instrs += LOCAL_GET(valueParam)
           instrs += BR_ON_CAST(
-            CastFlags(false, false),
             ourObjectLabel,
-            WasmImmediate.HeapType(WasmHeapType.Any),
-            WasmImmediate.HeapType(WasmHeapType.ObjectType)
+            WasmRefType.any,
+            WasmRefType(WasmHeapType.ObjectType)
           )
 
           // switch(jsValueType(value)) { ... }
@@ -1330,7 +1328,7 @@ object HelperFunctions {
           TypeIdx(WasmStructTypeName.typeData),
           WasmFieldName.typeData.componentTypeIdx
         )
-        instrs += REF_CAST(HeapType(arrayTypeDataType.heapType))
+        instrs += REF_CAST(WasmRefType(arrayTypeDataType.heapType))
         instrs += LOCAL_SET(arrayComponentTypeDataLocal)
 
         // i := 0
@@ -1403,10 +1401,9 @@ object HelperFunctions {
       // if expr is not an instance of Object, return false
       instrs += LOCAL_GET(exprParam)
       instrs += BR_ON_CAST_FAIL(
-        CastFlags(true, false),
         testFail,
-        HeapType(Types.WasmHeapType.Any),
-        HeapType(Types.WasmHeapType.ObjectType)
+        WasmRefType.anyref,
+        WasmRefType(Types.WasmHeapType.ObjectType)
       )
 
       // get itables and store
@@ -1456,7 +1453,7 @@ object HelperFunctions {
       val result = fctx.addSyntheticLocal(WasmRefType.nullable(heapType))
 
       instrs += LOCAL_GET(fromParam)
-      instrs += REF_CAST(HeapType(heapType))
+      instrs += REF_CAST(WasmRefType(heapType))
       instrs += LOCAL_SET(from)
 
       instrs += CALL(FuncIdx(WasmFunctionName.newDefault(clazz.name.name)))
