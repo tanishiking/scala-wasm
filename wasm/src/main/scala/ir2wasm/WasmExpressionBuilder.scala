@@ -1312,16 +1312,12 @@ private class WasmExpressionBuilder private (
         case targetTpe: IRTypes.PrimType =>
           genAsPrimType(targetTpe)
 
-        case IRTypes.AnyType | IRTypes.ClassType(IRNames.ObjectClass) =>
+        case IRTypes.AnyType =>
           ()
 
         case IRTypes.ClassType(targetClassName) =>
           val info = ctx.getClassInfo(targetClassName)
-          if (info.kind.isClass) {
-            instrs += REF_CAST(
-              Types.WasmRefType.nullable(WasmStructTypeName.forClass(targetClassName))
-            )
-          } else if (info.kind == ClassKind.HijackedClass) {
+          if (info.kind == ClassKind.HijackedClass) {
             IRTypes.BoxedClassToPrimType(targetClassName) match {
               case IRTypes.UndefType | IRTypes.StringType =>
                 ()
@@ -1339,9 +1335,15 @@ private class WasmExpressionBuilder private (
                     instrs += CALL(WasmFunctionName.unboxOrNull(primType.primRef))
                 }
             }
+          } else if (info.isAncestorOfHijackedClass) {
+            // Nothing to do; the translation is `anyref`
+            ()
+          } else if (info.kind.isClass) {
+            instrs += REF_CAST(
+              Types.WasmRefType.nullable(WasmStructTypeName.forClass(targetClassName))
+            )
           } else if (info.isInterface) {
-            if (!info.isAncestorOfHijackedClass)
-              instrs += REF_CAST(Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType))
+            instrs += REF_CAST(Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType))
           }
 
         case IRTypes.ArrayType(arrayTypeRef) =>

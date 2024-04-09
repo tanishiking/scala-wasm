@@ -230,8 +230,6 @@ lazy val IgnoredTestNames: Set[String] = {
   Set(
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
-    // RuntimeError: illegal cast
-    "org.scalajs.testsuite.niocharset.UTF8Test",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsTest",
     // Various run-time errors and JS exceptions
