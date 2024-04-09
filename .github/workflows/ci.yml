@@ -39,5 +39,9 @@ jobs:
       - name: Run the Scala.js test suite
         run: sbt scalajs-test-suite/test
 
+      # Make sure we can emit the .wat file without crashing
+      - name: Link the Scala.js test suite with PrettyPrint
+        run: sbt 'set `scalajs-test-suite`/scalaJSLinkerConfig ~= { _.withPrettyPrint(true) }' scalajs-test-suite/Test/fastLinkJS
+
       - name: Format
         run: sbt scalafmtCheckAll

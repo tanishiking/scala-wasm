@@ -53,7 +53,9 @@ lazy val sample = project
   .enablePlugins(WasmLinkerPlugin, ScalaJSJUnitPlugin)
   .settings(
     scalaVersion := scalaV,
-    scalaJSUseMainModuleInitializer := true
+    scalaJSUseMainModuleInitializer := true,
+    // Emit .wat files for exploratory and debugging purposes
+    scalaJSLinkerConfig ~= { _.withPrettyPrint(true) },
   )
 
 lazy val testSuite = project
