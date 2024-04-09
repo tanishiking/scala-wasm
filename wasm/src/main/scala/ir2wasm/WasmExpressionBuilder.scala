@@ -1372,17 +1372,26 @@ private class WasmExpressionBuilder private (
 
       case targetTpe: IRTypes.PrimTypeWithRef =>
         targetTpe match {
-          case IRTypes.CharType =>
+          case IRTypes.CharType | IRTypes.LongType =>
             // Extract the `value` field (the only field) out of the box class.
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
-            instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
-          case IRTypes.LongType =>
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
-            instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
+            import wasm.wasm4s.{WasmFunctionSignature => Sig}
+
+            val boxClass =
+              if (targetTpe == IRTypes.CharType) SpecialNames.CharBoxClass
+              else SpecialNames.LongBoxClass
+            val resultType = TypeTransformer.transformType(targetTpe)(ctx)
+
+            fctx.block(Sig(List(Types.WasmRefType.anyref), List(resultType))) { doneLabel =>
+              fctx.block(Sig(List(Types.WasmRefType.anyref), Nil)) { isNullLabel =>
+                instrs += BR_ON_NULL(isNullLabel)
+                val structTypeName = WasmStructTypeName.forClass(boxClass)
+                instrs += REF_CAST(Types.WasmRefType(structTypeName))
+                instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
+                instrs += BR(doneLabel)
+              }
+              genTree(IRTypes.zeroOf(targetTpe), targetTpe)
+            }
+
           case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
             throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
           case _ =>
