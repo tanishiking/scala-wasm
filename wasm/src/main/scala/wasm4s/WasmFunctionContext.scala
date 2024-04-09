@@ -216,27 +216,23 @@ class WasmFunctionContext private (
     }
   }
 
-  def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
+  def tryTable[A](blockType: BlockType)(clauses: List[CatchClause])(body: => A): A = {
     instrs += TRY_TABLE(blockType, clauses)
     val result = body
     instrs += END
     result
   }
 
-  def tryTable[A](resultType: WasmType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A](resultType: WasmType)(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType(resultType))(clauses)(body)
 
-  def tryTable[A]()(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A]()(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType())(clauses)(body)
 
-  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[WasmImmediate.CatchClause])(
-      body: => A
-  ): A =
+  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[CatchClause])(body: => A): A =
     tryTable(sigToBlockType(sig))(clauses)(body)
 
-  def tryTable[A](
-      resultTypes: List[WasmType]
-  )(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A](resultTypes: List[WasmType])(clauses: List[CatchClause])(body: => A): A =
     tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
 
   /** Builds a `switch` over a scrutinee using a `br_table` instruction.

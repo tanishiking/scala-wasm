@@ -344,6 +344,23 @@ object WasmInstr {
       extends WasmInstr("br_on_cast", 0xFB18)
   case class BR_ON_CAST_FAIL(label: LabelIdx, from: WasmRefType, to: WasmRefType)
       extends WasmInstr("br_on_cast_fail", 0xFB19)
+
+  // Catch clauses for TRY_TABLE
+
+  sealed abstract class CatchClause(
+      val mnemonic: String,
+      val opcode: Int,
+      val tag: Option[WasmTagName],
+      val label: LabelIdx
+  )
+
+  object CatchClause {
+    case class Catch(x: WasmTagName, l: LabelIdx) extends CatchClause("catch", 0x00, Some(x), l)
+    case class CatchRef(x: WasmTagName, l: LabelIdx)
+        extends CatchClause("catch_ref", 0x01, Some(x), l)
+    case class CatchAll(l: LabelIdx) extends CatchClause("catch_all", 0x02, None, l)
+    case class CatchAllRef(l: LabelIdx) extends CatchClause("catch_all_ref", 0x03, None, l)
+  }
 }
 
 object WasmImmediate {
@@ -372,20 +389,5 @@ object WasmImmediate {
     val vtable = StructFieldIdx(0)
     val itables = StructFieldIdx(1)
     val uniqueRegularField = StructFieldIdx(2)
-  }
-
-  sealed abstract class CatchClause(
-      val mnemonic: String,
-      val opcode: Int,
-      val tag: Option[WasmTagName],
-      val label: LabelIdx
-  )
-
-  object CatchClause {
-    case class Catch(x: WasmTagName, l: LabelIdx) extends CatchClause("catch", 0x00, Some(x), l)
-    case class CatchRef(x: WasmTagName, l: LabelIdx)
-        extends CatchClause("catch_ref", 0x01, Some(x), l)
-    case class CatchAll(l: LabelIdx) extends CatchClause("catch_all", 0x02, None, l)
-    case class CatchAllRef(l: LabelIdx) extends CatchClause("catch_all_ref", 0x03, None, l)
   }
 }
