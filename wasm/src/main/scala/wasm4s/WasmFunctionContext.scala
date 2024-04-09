@@ -8,7 +8,7 @@ import org.scalajs.ir.{Trees => IRTrees}
 
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmImmediate.{BlockType, LabelIdx}
+import wasm.wasm4s.WasmImmediate.BlockType
 import wasm.wasm4s.WasmInstr._
 
 import wasm.ir2wasm.TypeTransformer
@@ -43,24 +43,24 @@ class WasmFunctionContext private (
   def paramIndices: List[WasmLocalName] = _params.map(_.name)
 
   private val registeredLabels =
-    mutable.AnyRefMap.empty[IRNames.LabelName, (LabelIdx, IRTypes.Type)]
+    mutable.AnyRefMap.empty[IRNames.LabelName, (WasmLabelName, IRTypes.Type)]
 
   /** The instructions buffer; publicly mutable on purpose. */
   val instrs: mutable.ListBuffer[WasmInstr] = mutable.ListBuffer.empty
 
-  def genLabel(): LabelIdx = {
-    val label = LabelIdx(labelIdx)
+  def genLabel(): WasmLabelName = {
+    val label = WasmLabelName.synthetic(labelIdx)
     labelIdx += 1
     label
   }
 
-  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): LabelIdx = {
+  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): WasmLabelName = {
     val label = genLabel()
     registeredLabels(irLabelName) = (label, expectedType)
     label
   }
 
-  def getLabelFor(irLabelName: IRNames.LabelName): (LabelIdx, IRTypes.Type) = {
+  def getLabelFor(irLabelName: IRNames.LabelName): (WasmLabelName, IRTypes.Type) = {
     registeredLabels.getOrElse(
       irLabelName, {
         throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
@@ -166,7 +166,7 @@ class WasmFunctionContext private (
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
 
-  def block[A](blockType: BlockType)(body: LabelIdx => A): A = {
+  def block[A](blockType: BlockType)(body: WasmLabelName => A): A = {
     val label = genLabel()
     instrs += BLOCK(blockType, Some(label))
     val result = body(label)
@@ -174,19 +174,19 @@ class WasmFunctionContext private (
     result
   }
 
-  def block[A](resultType: WasmType)(body: LabelIdx => A): A =
+  def block[A](resultType: WasmType)(body: WasmLabelName => A): A =
     block(BlockType.ValueType(resultType))(body)
 
-  def block[A]()(body: LabelIdx => A): A =
+  def block[A]()(body: WasmLabelName => A): A =
     block(BlockType.ValueType())(body)
 
-  def block[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
+  def block[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
     block(sigToBlockType(sig))(body)
 
-  def block[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+  def block[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
     block(WasmFunctionSignature(Nil, resultTypes))(body)
 
-  def loop[A](blockType: BlockType)(body: LabelIdx => A): A = {
+  def loop[A](blockType: BlockType)(body: WasmLabelName => A): A = {
     val label = genLabel()
     instrs += LOOP(blockType, Some(label))
     val result = body(label)
@@ -194,16 +194,16 @@ class WasmFunctionContext private (
     result
   }
 
-  def loop[A](resultType: WasmType)(body: LabelIdx => A): A =
+  def loop[A](resultType: WasmType)(body: WasmLabelName => A): A =
     loop(BlockType.ValueType(resultType))(body)
 
-  def loop[A]()(body: LabelIdx => A): A =
+  def loop[A]()(body: WasmLabelName => A): A =
     loop(BlockType.ValueType())(body)
 
-  def loop[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
+  def loop[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
     loop(sigToBlockType(sig))(body)
 
-  def loop[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+  def loop[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
     loop(WasmFunctionSignature(Nil, resultTypes))(body)
 
   def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
@@ -269,7 +269,7 @@ class WasmFunctionContext private (
     val numCases = clauses.map(_._1.max).max + 1
     if (numCases >= 128)
       throw new IllegalArgumentException(s"Too many cases for switch: $numCases")
-    val dispatchVector = new Array[LabelIdx](numCases)
+    val dispatchVector = new Array[WasmLabelName](numCases)
     for {
       (clause, clauseLabel) <- clauses.zip(clauseLabels)
       caseValue <- clause._1
@@ -423,7 +423,7 @@ object WasmFunctionContext {
     final case class StructField(
         structIdx: WasmLocalName,
         structTypeName: WasmTypeName,
-        fieldIdx: WasmImmediate.StructFieldIdx
+        fieldIdx: WasmFieldIdx
     ) extends VarStorage
   }
 
@@ -458,7 +458,7 @@ object WasmFunctionContext {
             val storage = VarStorage.StructField(
               local.name,
               dataStructType.name,
-              WasmImmediate.StructFieldIdx(idx)
+              WasmFieldIdx(idx)
             )
             captureLike._1 -> storage
           }.toMap

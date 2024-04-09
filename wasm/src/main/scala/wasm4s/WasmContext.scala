@@ -709,8 +709,8 @@ object WasmContext {
       }
     }
 
-    def getFieldIdx(name: IRNames.FieldName): WasmImmediate.StructFieldIdx = {
-      WasmImmediate.StructFieldIdx(
+    def getFieldIdx(name: IRNames.FieldName): WasmFieldIdx = {
+      WasmFieldIdx(
         fieldIdxByName.getOrElse(
           name, {
             throw new AssertionError(

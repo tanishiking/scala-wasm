@@ -220,7 +220,7 @@ private class WasmExpressionBuilder private (
             // Get the underlying array; implicit trap on null
             instrs += STRUCT_GET(
               WasmStructTypeName.forArrayClass(arrayTypeRef),
-              StructFieldIdx.uniqueRegularField
+              WasmFieldIdx.uniqueRegularField
             )
             genTree(sel.index, IRTypes.IntType)
             genTree(t.rhs, sel.tpe)
@@ -556,14 +556,14 @@ private class WasmExpressionBuilder private (
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
         WasmStructTypeName.forClass(IRNames.ObjectClass),
-        StructFieldIdx.itables
+        WasmFieldIdx.itables
       )
       instrs += I32_CONST(itableIdx)
       instrs += ARRAY_GET(WasmArrayType.itables.name)
       instrs += REF_CAST(Types.WasmRefType(WasmStructTypeName.forITable(receiverClassInfo.name)))
       instrs += STRUCT_GET(
         WasmStructTypeName.forITable(receiverClassInfo.name),
-        StructFieldIdx(methodIdx)
+        WasmFieldIdx(methodIdx)
       )
       instrs += CALL_REF(methodInfo.toWasmFunctionType()(ctx).name)
     }
@@ -592,11 +592,11 @@ private class WasmExpressionBuilder private (
       instrs += REF_CAST(Types.WasmRefType(WasmStructTypeName.forClass(receiverClassName)))
       instrs += STRUCT_GET(
         WasmStructTypeName.forClass(receiverClassName),
-        StructFieldIdx.vtable
+        WasmFieldIdx.vtable
       )
       instrs += STRUCT_GET(
         WasmStructTypeName.forVTable(receiverClassName),
-        StructFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
+        WasmFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
       instrs += CALL_REF(info.toWasmFunctionType()(ctx).name)
     }
@@ -723,7 +723,7 @@ private class WasmExpressionBuilder private (
     fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
       // fast path first
       instrs += loadTypeDataInstr
-      instrs += STRUCT_GET(WasmStructTypeName.typeData, WasmFieldName.typeData.classOfIdx)
+      instrs += STRUCT_GET(WasmStructTypeName.typeData, WasmFieldIdx.typeData.classOfIdx)
       instrs += BR_ON_NON_NULL(nonNullLabel)
       // slow path
       instrs += loadTypeDataInstr
@@ -1273,7 +1273,7 @@ private class WasmExpressionBuilder private (
 
                 // Load refArrayValue.vtable
                 instrs += LOCAL_GET(refArrayValueLocal)
-                instrs += STRUCT_GET(refArrayStructTypeName, StructFieldIdx.vtable)
+                instrs += STRUCT_GET(refArrayStructTypeName, WasmFieldIdx.vtable)
 
                 // Call isAssignableFrom and return its result
                 instrs += CALL(WasmFunctionName.isAssignableFrom)
@@ -1378,12 +1378,12 @@ private class WasmExpressionBuilder private (
             // TODO Handle null
             val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
             instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, StructFieldIdx.uniqueRegularField)
+            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
           case IRTypes.LongType =>
             // TODO Handle null
             val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
             instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, StructFieldIdx.uniqueRegularField)
+            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
           case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
             throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
           case _ =>
@@ -1417,7 +1417,7 @@ private class WasmExpressionBuilder private (
       val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
 
       genTreeAuto(tree.expr)
-      instrs += STRUCT_GET(objectTypeIdx, StructFieldIdx.vtable) // implicit trap on null
+      instrs += STRUCT_GET(objectTypeIdx, WasmFieldIdx.vtable) // implicit trap on null
       instrs += LOCAL_SET(typeDataLocal)
       genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
     } else {
@@ -1741,7 +1741,7 @@ private class WasmExpressionBuilder private (
     instrs += LOCAL_GET(primLocal)
     instrs += STRUCT_SET(
       WasmStructTypeName.forClass(boxClassName),
-      StructFieldIdx.uniqueRegularField
+      WasmFieldIdx.uniqueRegularField
     )
     instrs += LOCAL_GET(instanceLocal)
 
@@ -2045,7 +2045,7 @@ private class WasmExpressionBuilder private (
         // Get the underlying array; implicit trap on null
         instrs += STRUCT_GET(
           WasmStructTypeName.forArrayClass(arrayTypeRef),
-          StructFieldIdx.uniqueRegularField
+          WasmFieldIdx.uniqueRegularField
         )
         // Get the length
         instrs += ARRAY_LEN
@@ -2127,7 +2127,7 @@ private class WasmExpressionBuilder private (
         // Get the underlying array; implicit trap on null
         instrs += STRUCT_GET(
           WasmStructTypeName.forArrayClass(arrayTypeRef),
-          StructFieldIdx.uniqueRegularField
+          WasmFieldIdx.uniqueRegularField
         )
 
         // Load the index
@@ -2266,11 +2266,11 @@ private class WasmExpressionBuilder private (
     instrs += LOCAL_GET(expr)
     instrs += STRUCT_GET(
       WasmStructTypeName.forClass(IRNames.ObjectClass),
-      StructFieldIdx.vtable
+      WasmFieldIdx.vtable
     )
     instrs += STRUCT_GET(
       WasmTypeName.WasmStructTypeName.typeData,
-      WasmFieldName.typeData.cloneFunctionIdx
+      WasmFieldIdx.typeData.cloneFunctionIdx
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
     instrs += CALL_REF(ctx.cloneFunctionTypeName)

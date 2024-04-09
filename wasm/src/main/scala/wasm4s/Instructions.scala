@@ -17,7 +17,7 @@ object WasmInstr {
 
   /** An instruction that opens a structured control block. */
   sealed trait StructuredLabeledInstr extends WasmInstr {
-    val label: Option[LabelIdx]
+    val label: Option[WasmLabelName]
   }
 
   // Convenience subclasses of instructions for writing text/binary
@@ -35,8 +35,11 @@ object WasmInstr {
       with StructuredLabeledInstr
 
   /** An instruction with a single `LabelIdx` argument. */
-  sealed abstract class WasmLabelInstr(mnemonic: String, opcode: Int, val labelArgument: LabelIdx)
-      extends WasmInstr(mnemonic, opcode)
+  sealed abstract class WasmLabelInstr(
+      mnemonic: String,
+      opcode: Int,
+      val labelArgument: WasmLabelName
+  ) extends WasmInstr(mnemonic, opcode)
 
   /** An instruction with a single `WasmFunctionName` argument. */
   sealed abstract class WasmFuncInstr(
@@ -90,7 +93,7 @@ object WasmInstr {
       mnemonic: String,
       opcode: Int,
       val structTypeName: WasmTypeName,
-      val fieldIdx: StructFieldIdx
+      val fieldIdx: WasmFieldIdx
   ) extends WasmInstr(mnemonic, opcode)
 
   // The actual instruction list
@@ -237,24 +240,24 @@ object WasmInstr {
   // https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
   case object UNREACHABLE extends WasmSimpleInstr("unreachable", 0x00) with StackPolymorphicInstr
   case object NOP extends WasmSimpleInstr("nop", 0x01)
-  case class BLOCK(i: BlockType, label: Option[LabelIdx])
+  case class BLOCK(i: BlockType, label: Option[WasmLabelName])
       extends WasmBlockTypeLabeledInstr("block", 0x02, i)
-  case class LOOP(i: BlockType, label: Option[LabelIdx])
+  case class LOOP(i: BlockType, label: Option[WasmLabelName])
       extends WasmBlockTypeLabeledInstr("loop", 0x03, i)
-  case class IF(i: BlockType, label: Option[LabelIdx] = None)
+  case class IF(i: BlockType, label: Option[WasmLabelName] = None)
       extends WasmBlockTypeLabeledInstr("if", 0x04, i)
   case object ELSE extends WasmSimpleInstr("else", 0x05)
   case object END extends WasmSimpleInstr("end", 0x0B)
-  case class BR(i: LabelIdx) extends WasmLabelInstr("br", 0x0C, i) with StackPolymorphicInstr
-  case class BR_IF(i: LabelIdx) extends WasmLabelInstr("br_if", 0x0D, i)
-  case class BR_TABLE(table: List[LabelIdx], default: LabelIdx)
+  case class BR(i: WasmLabelName) extends WasmLabelInstr("br", 0x0C, i) with StackPolymorphicInstr
+  case class BR_IF(i: WasmLabelName) extends WasmLabelInstr("br_if", 0x0D, i)
+  case class BR_TABLE(table: List[WasmLabelName], default: WasmLabelName)
       extends WasmInstr("br_table", 0x0E)
       with StackPolymorphicInstr
   case object RETURN extends WasmSimpleInstr("return", 0x0F) with StackPolymorphicInstr
   case class CALL(i: WasmFunctionName) extends WasmFuncInstr("call", 0x10, i)
   case class THROW(i: WasmTagName) extends WasmTagInstr("throw", 0x08, i) with StackPolymorphicInstr
   case object THROW_REF extends WasmSimpleInstr("throw_ref", 0x0A) with StackPolymorphicInstr
-  case class TRY_TABLE(i: BlockType, cs: List[CatchClause], label: Option[LabelIdx] = None)
+  case class TRY_TABLE(i: BlockType, cs: List[CatchClause], label: Option[WasmLabelName] = None)
       extends WasmInstr("try_table", 0x1F)
       with StructuredLabeledInstr
 
@@ -304,19 +307,19 @@ object WasmInstr {
   case class CALL_REF(i: WasmTypeName) extends WasmTypeInstr("call_ref", 0x14, i)
   case class RETURN_CALL_REF(i: WasmTypeName) extends WasmTypeInstr("return_call_ref", 0x15, i)
   case object REF_AS_NOT_NULL extends WasmSimpleInstr("ref.as_non_null", 0xD4)
-  case class BR_ON_NULL(i: LabelIdx) extends WasmLabelInstr("br_on_null", 0xD5, i)
-  case class BR_ON_NON_NULL(i: LabelIdx) extends WasmLabelInstr("br_on_non_null", 0xD6, i)
+  case class BR_ON_NULL(i: WasmLabelName) extends WasmLabelInstr("br_on_null", 0xD5, i)
+  case class BR_ON_NON_NULL(i: WasmLabelName) extends WasmLabelInstr("br_on_non_null", 0xD6, i)
 
   // ============================================================
   // gc
   case class STRUCT_NEW(i: WasmTypeName) extends WasmTypeInstr("struct.new", 0xFB00, i)
   case class STRUCT_NEW_DEFAULT(i: WasmTypeName)
       extends WasmTypeInstr("struct.new_default", 0xFB01, i)
-  case class STRUCT_GET(tyidx: WasmTypeName, fidx: StructFieldIdx)
+  case class STRUCT_GET(tyidx: WasmTypeName, fidx: WasmFieldIdx)
       extends WasmStructFieldInstr("struct.get", 0xFB02, tyidx, fidx)
   // STRUCT_GET_S
   // STRUCT_GET_U
-  case class STRUCT_SET(tyidx: WasmTypeName, fidx: StructFieldIdx)
+  case class STRUCT_SET(tyidx: WasmTypeName, fidx: WasmFieldIdx)
       extends WasmStructFieldInstr("struct.set", 0xFB05, tyidx, fidx)
 
   case class ARRAY_NEW(i: WasmTypeName) extends WasmTypeInstr("array.new", 0xFB06, i)
@@ -340,9 +343,9 @@ object WasmInstr {
   case class REF_TEST(i: WasmRefType) extends WasmRefTypeInstr("ref.test", 0xFB14, 0xFB15, i)
   case class REF_CAST(i: WasmRefType) extends WasmRefTypeInstr("ref.cast", 0xFB16, 0xFB17, i)
 
-  case class BR_ON_CAST(label: LabelIdx, from: WasmRefType, to: WasmRefType)
+  case class BR_ON_CAST(label: WasmLabelName, from: WasmRefType, to: WasmRefType)
       extends WasmInstr("br_on_cast", 0xFB18)
-  case class BR_ON_CAST_FAIL(label: LabelIdx, from: WasmRefType, to: WasmRefType)
+  case class BR_ON_CAST_FAIL(label: WasmLabelName, from: WasmRefType, to: WasmRefType)
       extends WasmInstr("br_on_cast_fail", 0xFB19)
 
   // Catch clauses for TRY_TABLE
@@ -351,15 +354,16 @@ object WasmInstr {
       val mnemonic: String,
       val opcode: Int,
       val tag: Option[WasmTagName],
-      val label: LabelIdx
+      val label: WasmLabelName
   )
 
   object CatchClause {
-    case class Catch(x: WasmTagName, l: LabelIdx) extends CatchClause("catch", 0x00, Some(x), l)
-    case class CatchRef(x: WasmTagName, l: LabelIdx)
+    case class Catch(x: WasmTagName, l: WasmLabelName)
+        extends CatchClause("catch", 0x00, Some(x), l)
+    case class CatchRef(x: WasmTagName, l: WasmLabelName)
         extends CatchClause("catch_ref", 0x01, Some(x), l)
-    case class CatchAll(l: LabelIdx) extends CatchClause("catch_all", 0x02, None, l)
-    case class CatchAllRef(l: LabelIdx) extends CatchClause("catch_all_ref", 0x03, None, l)
+    case class CatchAll(l: WasmLabelName) extends CatchClause("catch_all", 0x02, None, l)
+    case class CatchAllRef(l: WasmLabelName) extends CatchClause("catch_all_ref", 0x03, None, l)
   }
 }
 
@@ -380,14 +384,5 @@ object WasmImmediate {
       def apply(ty: WasmType): ValueType = ValueType(Some(ty))
       def apply(): ValueType = ValueType(None)
     }
-  }
-
-  case class LabelIdx(value: Int)
-
-  case class StructFieldIdx(value: Int)
-  object StructFieldIdx {
-    val vtable = StructFieldIdx(0)
-    val itables = StructFieldIdx(1)
-    val uniqueRegularField = StructFieldIdx(2)
   }
 }

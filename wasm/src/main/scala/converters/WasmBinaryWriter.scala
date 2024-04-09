@@ -63,7 +63,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private var localIdxValues: Option[Map[WasmLocalName, Int]] = None
-  private var labelsInScope: List[Option[WasmImmediate.LabelIdx]] = Nil
+  private var labelsInScope: List[Option[WasmLabelName]] = Nil
 
   private def withLocalIdxValues(values: Map[WasmLocalName, Int])(f: => Unit): Unit = {
     val saved = localIdxValues
@@ -333,7 +333,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeLabelIdx(buf: Buffer, labelIdx: WasmImmediate.LabelIdx): Unit = {
+  private def writeLabelIdx(buf: Buffer, labelIdx: WasmLabelName): Unit = {
     val relativeNumber = labelsInScope.indexOf(Some(labelIdx))
     if (relativeNumber < 0)
       throw new IllegalStateException(s"Cannot find $labelIdx in scope")
@@ -376,7 +376,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     import WasmInstr._
 
     def writeBrOnCast(
-        labelIdx: WasmImmediate.LabelIdx,
+        labelIdx: WasmLabelName,
         from: WasmRefType,
         to: WasmRefType
     ): Unit = {

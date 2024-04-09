@@ -36,6 +36,12 @@ object Names {
     val receiver = new WasmLocalName("___<this>")
   }
 
+  final case class WasmLabelName private (override private[wasm4s] val name: String)
+      extends WasmName(name)
+  object WasmLabelName {
+    def synthetic(id: Int): WasmLabelName = new WasmLabelName(id.toString())
+  }
+
   final case class WasmGlobalName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmGlobalName {
@@ -348,16 +354,26 @@ object Names {
         * is instantiated only with the classes that implement java.lang.Cloneable.
         */
       val cloneFunction = new WasmFieldName("clone")
+    }
+  }
 
-      val nameDataIdx = WasmImmediate.StructFieldIdx(0)
-      val kindIdx = WasmImmediate.StructFieldIdx(1)
-      val specialInstanceTypesIdx = WasmImmediate.StructFieldIdx(2)
-      val strictAncestorsIdx = WasmImmediate.StructFieldIdx(3)
-      val componentTypeIdx = WasmImmediate.StructFieldIdx(4)
-      val nameIdx = WasmImmediate.StructFieldIdx(5)
-      val classOfIdx = WasmImmediate.StructFieldIdx(6)
-      val arrayOfIdx = WasmImmediate.StructFieldIdx(7)
-      val cloneFunctionIdx = WasmImmediate.StructFieldIdx(8)
+  final case class WasmFieldIdx(value: Int)
+
+  object WasmFieldIdx {
+    val vtable = WasmFieldIdx(0)
+    val itables = WasmFieldIdx(1)
+    val uniqueRegularField = WasmFieldIdx(2)
+
+    object typeData {
+      val nameDataIdx = WasmFieldIdx(0)
+      val kindIdx = WasmFieldIdx(1)
+      val specialInstanceTypesIdx = WasmFieldIdx(2)
+      val strictAncestorsIdx = WasmFieldIdx(3)
+      val componentTypeIdx = WasmFieldIdx(4)
+      val nameIdx = WasmFieldIdx(5)
+      val classOfIdx = WasmFieldIdx(6)
+      val arrayOfIdx = WasmFieldIdx(7)
+      val cloneFunctionIdx = WasmFieldIdx(8)
     }
   }
 

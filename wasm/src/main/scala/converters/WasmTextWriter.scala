@@ -313,8 +313,8 @@ class WasmTextWriter {
     }
   }
 
-  private def writeLabelIdx(labelIdx: WasmImmediate.LabelIdx)(implicit b: WatBuilder): Unit =
-    b.appendElement(s"$$${labelIdx.value}")
+  private def writeLabelIdx(labelIdx: WasmLabelName)(implicit b: WatBuilder): Unit =
+    b.appendElement(labelIdx.show)
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
