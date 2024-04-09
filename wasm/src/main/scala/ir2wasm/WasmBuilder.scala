@@ -6,7 +6,6 @@ import wasm4s.WasmContext._
 import wasm4s.Names._
 import wasm4s.Types._
 import wasm4s.WasmInstr._
-import wasm4s.WasmImmediate._
 import TypeTransformer._
 
 import org.scalajs.ir.{Trees => IRTrees}
@@ -410,7 +409,7 @@ class WasmBuilder {
       // global.get $module_name
       GLOBAL_GET(globalInstanceName), // [rt]
       REF_IS_NULL, // [rt] -> [i32] (bool)
-      IF(WasmImmediate.BlockType.ValueType(None)),
+      IF(BlockType.ValueType()),
       CALL(WasmFunctionName.newDefault(clazz.name.name)),
       GLOBAL_SET(globalInstanceName),
       GLOBAL_GET(globalInstanceName),

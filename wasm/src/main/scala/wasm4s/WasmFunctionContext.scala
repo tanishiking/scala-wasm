@@ -8,7 +8,6 @@ import org.scalajs.ir.{Trees => IRTrees}
 
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmImmediate.BlockType
 import wasm.wasm4s.WasmInstr._
 
 import wasm.ir2wasm.TypeTransformer

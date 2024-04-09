@@ -37,7 +37,7 @@ object HelperFunctions {
 
   private def genStringLiteral()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmArrayTypeName
-    import WasmImmediate._
+
     val fctx = WasmFunctionContext(
       WasmFunctionName.stringLiteral,
       List("offset" -> WasmInt32, "size" -> WasmInt32, "stringIndex" -> WasmInt32),
@@ -74,7 +74,6 @@ object HelperFunctions {
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
   private def genCreateStringFromData()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmArrayTypeName
 
     val dataType = WasmRefType(WasmArrayTypeName.i16Array)
@@ -152,7 +151,6 @@ object HelperFunctions {
     *   [[https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Class.html#getName()]]
     */
   private def genTypeDataName()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName._
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -291,7 +289,6 @@ object HelperFunctions {
     * with the non-null case as a fast-path.
     */
   private def genCreateClassOf()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -412,7 +409,6 @@ object HelperFunctions {
     * performance-sensitive.
     */
   private def genGetClassOf()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -446,7 +442,6 @@ object HelperFunctions {
     * must be be strictly positive.
     */
   private def genArrayTypeData()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName._
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -549,7 +544,6 @@ object HelperFunctions {
     * [[https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-createclassdataof]].
     */
   private def genIsInstance()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
     import WasmFieldIdx.typeData._
 
@@ -719,8 +713,6 @@ object HelperFunctions {
     * This is the underlying func for the `isAssignableFrom()` closure inside class data objects.
     */
   private def genIsAssignableFromExternal()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
-
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
 
     val fctx = WasmFunctionContext(
@@ -753,7 +745,6 @@ object HelperFunctions {
     * Specified by `java.lang.Class.isAssignableFrom(Class)`.
     */
   private def genIsAssignableFrom()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName._
     import WasmFieldIdx.typeData._
 
@@ -913,7 +904,6 @@ object HelperFunctions {
     * This is the underlying func for the `getComponentType()` closure inside class data objects.
     */
   private def genGetComponentType()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -952,7 +942,6 @@ object HelperFunctions {
     * This is the underlying func for the `newArrayOfThisClass()` closure inside class data objects.
     */
   private def genNewArrayOfThisClass()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -1033,7 +1022,6 @@ object HelperFunctions {
     * [[https://www.scala-js.org/doc/semantics.html#getclass]].
     */
   private def genAnyGetClass()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName.WasmStructTypeName
 
     val typeDataType = WasmRefType(WasmStructType.typeData.name)
@@ -1185,7 +1173,6 @@ object HelperFunctions {
     * lengths, lengthIndex - 1)`.
     */
   def genNewArrayObject()(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     import WasmTypeName._
     import WasmFieldIdx.typeData._
 
@@ -1374,7 +1361,6 @@ object HelperFunctions {
     * See https://github.com/tanishiking/scala-wasm/issues/27#issuecomment-2008252049
     */
   def genInstanceTest(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     assert(clazz.kind == ClassKind.Interface)
 
     val fctx = WasmFunctionContext(
@@ -1429,7 +1415,6 @@ object HelperFunctions {
     * called on the class instance.
     */
   def genCloneFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    import WasmImmediate._
     val info = ctx.getClassInfo(clazz.name.name)
     if (info.ancestors.contains(IRNames.CloneableClass) && !info.isAbstract) {
       val heapType =

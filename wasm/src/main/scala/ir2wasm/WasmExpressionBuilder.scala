@@ -13,7 +13,6 @@ import wasm4s._
 import wasm4s.Names._
 import wasm4s.Names.WasmTypeName._
 import wasm4s.WasmInstr._
-import wasm4s.WasmImmediate._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Position

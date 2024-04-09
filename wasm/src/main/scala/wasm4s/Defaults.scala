@@ -1,7 +1,6 @@
 package wasm4s
 
 import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmImmediate._
 import wasm.wasm4s.WasmInstr
 import wasm.wasm4s.WasmInstr._
 

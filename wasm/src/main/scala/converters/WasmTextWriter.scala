@@ -303,11 +303,11 @@ class WasmTextWriter {
     else v.toString()
   }
 
-  private def writeBlockType(blockType: WasmImmediate.BlockType)(implicit b: WatBuilder): Unit = {
+  private def writeBlockType(blockType: BlockType)(implicit b: WatBuilder): Unit = {
     blockType match {
-      case WasmImmediate.BlockType.FunctionType(name) =>
+      case BlockType.FunctionType(name) =>
         b.appendElement(s"(type ${name.show})")
-      case WasmImmediate.BlockType.ValueType(optTy) =>
+      case BlockType.ValueType(optTy) =>
         for (ty <- optTy)
           b.sameLineList("result", writeType(ty))
     }

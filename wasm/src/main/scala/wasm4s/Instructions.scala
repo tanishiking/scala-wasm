@@ -8,8 +8,6 @@ import Names.WasmTypeName._
 sealed abstract class WasmInstr(val mnemonic: String, val opcode: Int)
 
 object WasmInstr {
-  import WasmImmediate._
-
   // Semantic categories of instructions
 
   /** A stack-polymorphic instruction. */
@@ -365,9 +363,8 @@ object WasmInstr {
     case class CatchAll(l: WasmLabelName) extends CatchClause("catch_all", 0x02, None, l)
     case class CatchAllRef(l: WasmLabelName) extends CatchClause("catch_all_ref", 0x03, None, l)
   }
-}
 
-object WasmImmediate {
+  // Block types
 
   /** A structured instruction can consume input and produce output on the operand stack according
     * to its annotated block type. It is given either as a type index that refers to a suitable
@@ -376,10 +373,10 @@ object WasmImmediate {
     * @see
     *   https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
     */
-  abstract sealed trait BlockType
+  sealed abstract class BlockType
   object BlockType {
     case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
-    case class ValueType private (ty: Option[WasmType]) extends BlockType
+    case class ValueType(ty: Option[WasmType]) extends BlockType
     object ValueType {
       def apply(ty: WasmType): ValueType = ValueType(Some(ty))
       def apply(): ValueType = ValueType(None)

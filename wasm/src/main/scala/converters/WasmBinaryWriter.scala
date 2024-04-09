@@ -9,7 +9,7 @@ import java.io.ByteArrayOutputStream
 import wasm.wasm4s._
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmInstr.END
+import wasm.wasm4s.WasmInstr.{BlockType, END}
 
 final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
@@ -448,9 +448,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeBlockType(buf: Buffer, blockType: WasmImmediate.BlockType): Unit = {
-    import WasmImmediate._
-
+  private def writeBlockType(buf: Buffer, blockType: BlockType): Unit = {
     blockType match {
       case BlockType.ValueType(None)        => buf.byte(0x40)
       case BlockType.ValueType(Some(typ))   => writeType(buf, typ)
