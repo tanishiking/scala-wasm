@@ -181,8 +181,6 @@ object WasmInstr {
       with StackPolymorphicInstr
   case object RETURN extends WasmInstr("return", 0x0F) with StackPolymorphicInstr
   case class CALL(i: FuncIdx) extends WasmInstr("call", 0x10, List(i))
-  case class CALL_INDIRECT(i: TableIdx, t: TypeIdx)
-      extends WasmInstr("call_indirect", 0x11, List(i, t))
   case class THROW(i: TagIdx) extends WasmInstr("throw", 0x08, List(i)) with StackPolymorphicInstr
   case object THROW_REF extends WasmInstr("throw_ref", 0x0A) with StackPolymorphicInstr
   case class TRY_TABLE(i: BlockType, cs: CatchClauseVector, label: Option[LabelIdx] = None)
@@ -311,7 +309,6 @@ object WasmImmediate {
   case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
   case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
   case class DataIdx(val value: WasmDataName) extends WasmImmediate
-  case class TableIdx(val value: Int) extends WasmImmediate
   case class TagIdx(val value: WasmTagName) extends WasmImmediate
   case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
   case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate

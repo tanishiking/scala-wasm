@@ -391,7 +391,6 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       case LabelIdxVector(value) => buf.vec(value)(writeLabelIdx(buf, _))
       case TypeIdx(value)        => writeTypeIdx(buf, value)
       case DataIdx(value)        => writeDataIdx(buf, value)
-      case TableIdx(value)       => ???
       case TagIdx(value)         => writeTagIdx(buf, value)
       case LocalIdx(value)       => writeLocalIdx(buf, value)
       case GlobalIdx(value)      => writeGlobalIdx(buf, value)

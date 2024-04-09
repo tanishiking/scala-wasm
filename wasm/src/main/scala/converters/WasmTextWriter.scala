@@ -328,9 +328,8 @@ class WasmTextWriter {
         b.appendElement(s"$$${i.toString}")
       case WasmImmediate.LabelIdxVector(indices) =>
         indices.foreach(i => b.appendElement("$" + i.value))
-      case WasmImmediate.TagIdx(name)    => b.appendElement(name.show)
-      case WasmImmediate.DataIdx(name)   => b.appendElement(name.show)
-      case WasmImmediate.TableIdx(value) => ???
+      case WasmImmediate.TagIdx(name)  => b.appendElement(name.show)
+      case WasmImmediate.DataIdx(name) => b.appendElement(name.show)
       case WasmImmediate.CatchClauseVector(clauses) =>
         for (clause <- clauses) {
           b.appendElement("(" + clause.mnemonic)
