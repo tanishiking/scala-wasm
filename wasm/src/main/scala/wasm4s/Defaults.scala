@@ -24,6 +24,5 @@ object Defaults {
     case WasmFloat64               => F64_CONST(F64(0))
     case WasmInt16                 => nonDefaultable(t)
     case WasmInt8                  => nonDefaultable(t)
-    case WasmNoType                => nonDefaultable(t)
   }
 }

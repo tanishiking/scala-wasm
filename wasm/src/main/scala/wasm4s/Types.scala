@@ -16,9 +16,6 @@ object Types {
 
   abstract sealed class WasmType(name: String, code: Byte) extends WasmStorageType(name, code)
 
-  // todo
-  case object WasmNoType extends WasmType("", 0x00)
-
   // case object WasmTypeNone extends WasmType
   case object WasmUnreachableType extends WasmType("unreachable", -0x40)
   case object WasmInt32 extends WasmType("i32", 0x7F)

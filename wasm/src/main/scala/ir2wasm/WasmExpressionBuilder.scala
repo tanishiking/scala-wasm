@@ -1502,13 +1502,17 @@ private class WasmExpressionBuilder private (
   }
 
   private def genIf(t: IRTrees.If, expectedType: IRTypes.Type): IRTypes.Type = {
-    val ty = TypeTransformer.transformType(expectedType)(ctx)
+    val ty = TypeTransformer.transformResultType(expectedType)(ctx)
     genTree(t.cond, IRTypes.BooleanType)
     fctx.ifThenElse(ty) {
       genTree(t.thenp, expectedType)
     } {
       genTree(t.elsep, expectedType)
     }
+
+    if (expectedType == IRTypes.NothingType)
+      instrs += UNREACHABLE
+
     expectedType
   }
 
@@ -2326,7 +2330,7 @@ private class WasmExpressionBuilder private (
     genTreeAuto(selector)
     instrs += LOCAL_SET(selectorLocal)
 
-    fctx.block(TypeTransformer.transformType(tree.tpe)(ctx)) { doneLabel =>
+    fctx.block(TypeTransformer.transformResultType(tree.tpe)(ctx)) { doneLabel =>
       fctx.block() { defaultLabel =>
         val caseLabels = cases.map(c => c._1 -> fctx.genLabel())
         for (caseLabel <- caseLabels)
@@ -2362,6 +2366,9 @@ private class WasmExpressionBuilder private (
       }
       genTree(defaultBody, tree.tpe)
     }
+
+    if (tree.tpe == IRTypes.NothingType)
+      instrs += UNREACHABLE
 
     tree.tpe
   }

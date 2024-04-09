@@ -331,10 +331,7 @@ object WasmImmediate {
     case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
     case class ValueType private (ty: Option[WasmType]) extends BlockType
     object ValueType {
-      def apply(ty: WasmType): ValueType = ty match {
-        case WasmNoType => ValueType(None)
-        case _          => ValueType(Some(ty))
-      }
+      def apply(ty: WasmType): ValueType = ValueType(Some(ty))
       def apply(): ValueType = ValueType(None)
     }
   }

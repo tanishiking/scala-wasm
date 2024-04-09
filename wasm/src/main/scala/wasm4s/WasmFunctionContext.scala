@@ -142,6 +142,12 @@ class WasmFunctionContext private (
   def ifThenElse(resultType: WasmType)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType(resultType))(thenp)(elsep)
 
+  def ifThenElse(sig: WasmFunctionSignature)(thenp: => Unit)(elsep: => Unit): Unit =
+    ifThenElse(sigToBlockType(sig))(thenp)(elsep)
+
+  def ifThenElse(resultTypes: List[WasmType])(thenp: => Unit)(elsep: => Unit): Unit =
+    ifThenElse(WasmFunctionSignature(Nil, resultTypes))(thenp)(elsep)
+
   def ifThenElse()(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType())(thenp)(elsep)
 
@@ -153,6 +159,9 @@ class WasmFunctionContext private (
 
   def ifThen(sig: WasmFunctionSignature)(thenp: => Unit): Unit =
     ifThen(sigToBlockType(sig))(thenp)
+
+  def ifThen(resultTypes: List[WasmType])(thenp: => Unit): Unit =
+    ifThen(WasmFunctionSignature(Nil, resultTypes))(thenp)
 
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
