@@ -35,7 +35,8 @@ You can build and run it like any other Scala.js project from sbt:
 You may want to look at the output in `sample/target/scala-2.12/sample-fastopt/` to convince yourself that it was compiled to WebAssembly.
 
 In that directory, you will also find a `main.wat` file, which is not used for execution.
-It contains the WebAsembly Text Format representation of `main.wasm`, for debugging purposes.
+It contains the WebAsembly Text Format representation of `main.wasm`, for exploratory and debugging purposes.
+This is only true by default for the `sample`.
 
 :warning: If you modify the linker code, you need to `reload` and `sample/clean` for your changes to take effect on the sample.
 
@@ -59,6 +60,9 @@ Run the unit test suite with `tests/test`.
   - Add a file under `test-suite`
   - Add a test case to `tests/src/test/scala/tests/TestSuites.scala`
 
+By default, `.wat` files are not generated, as they are quite big (several hundreds of KB for most of the tests).
+You can enable them by adding `withPrettyPrint(true)` to the linker configuration in `tests/src/test/scala/tests/CoreTests.scala`.
+
 ### Scala.js integration test suite
 
 Run the entire Scala.js test suite, linked with the WebAssembly backend, with:
@@ -72,6 +76,13 @@ Since recompiling the test suite from scratch every time is slow, you can replac
 
 ```
 $ rm -r scalajs-test-suite/target/scala-2.12/scalajs-test-suite-test-fastopt/
+```
+
+By default, `.wat` files are not generated for the Scala.js test suite, as they are very big (they exceed 100 MB).
+It is usually easier to minimize an issue in `sample/test`, but if you really want the big `.wat` file for the Scala.js test suite, you can enable it with
+
+```scala
+> set `scalajs-test-suite`/scalaJSLinkerConfig ~= { _.withPrettyPrint(true) }
 ```
 
 ### Debugging tools

@@ -106,28 +106,48 @@ final class WebAssemblyLinkerBackend(
     val jsFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, moduleID)
     val loaderJSFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, "__loader")
 
-    val textOutput = new converters.WasmTextWriter().write(wasmModule)
-    val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
-    val binaryOutput = new converters.WasmBinaryWriter(wasmModule).write()
-    val loaderOutput = LoaderContent.bytesContent
-    val jsFileOutput =
-      buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName, context.allImportedModules)
-    val jsFileOutputBytes = jsFileOutput.getBytes(StandardCharsets.UTF_8)
-
-    val filesToProduce = Set(
-      watFileName,
+    val filesToProduce0 = Set(
       wasmFileName,
       loaderJSFileName,
       jsFileName
     )
+    val filesToProduce =
+      if (linkerConfig.prettyPrint) filesToProduce0 + watFileName
+      else filesToProduce0
+
+    def maybeWriteWatFile(): Future[Unit] = {
+      if (linkerConfig.prettyPrint) {
+        val textOutput = new converters.WasmTextWriter().write(wasmModule)
+        val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
+        outputImpl.writeFull(watFileName, ByteBuffer.wrap(textOutputBytes))
+      } else {
+        Future.unit
+      }
+    }
+
+    def writeWasmFile(): Future[Unit] = {
+      val emitDebugInfo = !linkerConfig.minify
+      val binaryOutput = new converters.WasmBinaryWriter(wasmModule, emitDebugInfo).write()
+      outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
+    }
+
+    def writeLoaderFile(): Future[Unit] =
+      outputImpl.writeFull(loaderJSFileName, ByteBuffer.wrap(LoaderContent.bytesContent))
+
+    def writeJSFile(): Future[Unit] = {
+      val jsFileOutput =
+        buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName, context.allImportedModules)
+      val jsFileOutputBytes = jsFileOutput.getBytes(StandardCharsets.UTF_8)
+      outputImpl.writeFull(jsFileName, ByteBuffer.wrap(jsFileOutputBytes))
+    }
 
     for {
       existingFiles <- outputImpl.listFiles()
       _ <- Future.sequence(existingFiles.filterNot(filesToProduce).map(outputImpl.delete(_)))
-      _ <- outputImpl.writeFull(watFileName, ByteBuffer.wrap(textOutputBytes))
-      _ <- outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
-      _ <- outputImpl.writeFull(loaderJSFileName, ByteBuffer.wrap(loaderOutput))
-      _ <- outputImpl.writeFull(jsFileName, ByteBuffer.wrap(jsFileOutputBytes))
+      _ <- maybeWriteWatFile()
+      _ <- writeWasmFile()
+      _ <- writeLoaderFile()
+      _ <- writeJSFile()
     } yield {
       val reportModule = new ReportImpl.ModuleImpl(
         moduleID,

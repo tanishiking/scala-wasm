@@ -14,7 +14,7 @@ import wasm.wasm4s.Types.WasmHeapType.Func
 import wasm.wasm4s.Types.WasmHeapType.Simple
 import wasm.wasm4s.WasmInstr.END
 
-final class WasmBinaryWriter(module: WasmModule) {
+final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
 
   private val allTypeDefinitions: List[WasmTypeDefinition[_ <: WasmTypeName]] = {
@@ -103,7 +103,9 @@ final class WasmBinaryWriter(module: WasmModule) {
       writeSection(fullOutput, SectionDataCount)(writeDataCountSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
     writeSection(fullOutput, SectionData)(writeDataSection(_))
-    writeCustomSection(fullOutput, "name")(writeNameCustomSection(_))
+
+    if (emitDebugInfo)
+      writeCustomSection(fullOutput, "name")(writeNameCustomSection(_))
 
     fullOutput.result()
   }
