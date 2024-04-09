@@ -9,9 +9,6 @@ import java.io.ByteArrayOutputStream
 import wasm.wasm4s._
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types._
-import wasm.wasm4s.Types.WasmHeapType.Type
-import wasm.wasm4s.Types.WasmHeapType.Func
-import wasm.wasm4s.Types.WasmHeapType.Simple
 import wasm.wasm4s.WasmInstr.END
 
 final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
@@ -288,19 +285,23 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeType(buf: Buffer, typ: WasmStorageType): Unit = {
-    buf.byte(typ.code)
     typ match {
-      case WasmRefNullType(heapType) => writeHeapType(buf, heapType)
-      case WasmRefType(heapType)     => writeHeapType(buf, heapType)
-      case _                         => ()
+      case typ: WasmSimpleType => buf.byte(typ.binaryCode)
+      case typ: WasmPackedType => buf.byte(typ.binaryCode)
+
+      case WasmRefType(true, heapType: WasmHeapType.AbsHeapType) =>
+        buf.byte(heapType.binaryCode)
+
+      case WasmRefType(nullable, heapType) =>
+        buf.byte(if (nullable) 0x63 else 0x64)
+        writeHeapType(buf, heapType)
     }
   }
 
   private def writeHeapType(buf: Buffer, heapType: WasmHeapType): Unit = {
     heapType match {
-      case Type(typeName)   => writeTypeIdxs33(buf, typeName)
-      case Func(typeName)   => writeTypeIdxs33(buf, typeName)
-      case heapType: Simple => buf.byte(heapType.code)
+      case WasmHeapType.Type(typeName)        => writeTypeIdxs33(buf, typeName)
+      case heapType: WasmHeapType.AbsHeapType => buf.byte(heapType.binaryCode)
     }
   }
 

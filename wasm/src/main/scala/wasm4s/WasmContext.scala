@@ -252,6 +252,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 
 class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   import WasmContext._
+  import WasmRefType.anyref
 
   private val _importedModules: mutable.LinkedHashSet[String] =
     new mutable.LinkedHashSet()
@@ -290,7 +291,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         WasmImport(
           "__scalaJSImports",
           moduleName,
-          WasmImportDesc.Global(name, WasmAnyRef, isMutable = false)
+          WasmImportDesc.Global(name, anyref, isMutable = false)
         )
       )
     }
@@ -316,7 +317,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   val exceptionTagName: WasmTagName = WasmTagName("exception")
 
   locally {
-    val exceptionSig = WasmFunctionSignature(List(WasmAnyRef), Nil)
+    val exceptionSig = WasmFunctionSignature(List(anyref), Nil)
     val exceptionFunType = addFunctionType(exceptionSig)
     module.addTag(WasmTag(exceptionTagName, exceptionFunType))
   }
@@ -333,10 +334,10 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   addGCType(WasmStructType.typeData(this))
 
-  addHelperImport(WasmFunctionName.is, List(WasmAnyRef, WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.is, List(anyref, anyref), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.undef, List(), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.isUndef, List(WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.isUndef, List(anyref), List(WasmInt32))
 
   locally {
     import IRTypes._
@@ -346,10 +347,10 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         case DoubleRef => WasmFloat64
         case _         => WasmInt32
       }
-      addHelperImport(WasmFunctionName.box(primRef), List(wasmType), List(WasmAnyRef))
-      addHelperImport(WasmFunctionName.unbox(primRef), List(WasmAnyRef), List(wasmType))
-      addHelperImport(WasmFunctionName.unboxOrNull(primRef), List(WasmAnyRef), List(WasmAnyRef))
-      addHelperImport(WasmFunctionName.typeTest(primRef), List(WasmAnyRef), List(WasmInt32))
+      addHelperImport(WasmFunctionName.box(primRef), List(wasmType), List(anyref))
+      addHelperImport(WasmFunctionName.unbox(primRef), List(anyref), List(wasmType))
+      addHelperImport(WasmFunctionName.unboxOrNull(primRef), List(anyref), List(anyref))
+      addHelperImport(WasmFunctionName.typeTest(primRef), List(anyref), List(WasmInt32))
     }
   }
 
@@ -357,29 +358,29 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   addHelperImport(
     WasmFunctionName.closure,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, anyref),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThis,
-    List(WasmRefType.func, WasmAnyRef),
+    List(WasmRefType.func, anyref),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureRest,
-    List(WasmRefType.func, WasmAnyRef, WasmInt32),
+    List(WasmRefType.func, anyref, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.closureThisRest,
-    List(WasmRefType.func, WasmAnyRef, WasmInt32),
+    List(WasmRefType.func, anyref, WasmInt32),
     List(WasmRefType.any)
   )
 
   addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
   addHelperImport(WasmFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
-  addHelperImport(WasmFunctionName.jsValueToString, List(WasmAnyRef), List(WasmRefType.any))
+  addHelperImport(WasmFunctionName.jsValueToString, List(anyref), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
@@ -390,93 +391,93 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     List(WasmRefType.any, WasmRefType.any),
     List(WasmRefType.any)
   )
-  addHelperImport(WasmFunctionName.isString, List(WasmAnyRef), List(WasmInt32))
+  addHelperImport(WasmFunctionName.isString, List(anyref), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
   addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
 
-  addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsGlobalRefSet, List(WasmRefType.any, WasmAnyRef), Nil)
+  addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
+  addHelperImport(WasmFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
   addHelperImport(WasmFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.jsNewArray, Nil, List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsArrayPush, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsNewArray, Nil, List(anyref))
+  addHelperImport(WasmFunctionName.jsArrayPush, List(anyref, anyref), List(anyref))
   addHelperImport(
     WasmFunctionName.jsArraySpreadPush,
-    List(WasmAnyRef, WasmAnyRef),
-    List(WasmAnyRef)
+    List(anyref, anyref),
+    List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsNewObject, Nil, List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsNewObject, Nil, List(anyref))
   addHelperImport(
     WasmFunctionName.jsObjectPush,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
-    List(WasmAnyRef)
+    List(anyref, anyref, anyref),
+    List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsSelect, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsSelectSet, List(WasmAnyRef, WasmAnyRef, WasmAnyRef), Nil)
-  addHelperImport(WasmFunctionName.jsNew, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsFunctionApply, List(WasmAnyRef, WasmAnyRef), List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsSelect, List(anyref, anyref), List(anyref))
+  addHelperImport(WasmFunctionName.jsSelectSet, List(anyref, anyref, anyref), Nil)
+  addHelperImport(WasmFunctionName.jsNew, List(anyref, anyref), List(anyref))
+  addHelperImport(WasmFunctionName.jsFunctionApply, List(anyref, anyref), List(anyref))
   addHelperImport(
     WasmFunctionName.jsMethodApply,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
-    List(WasmAnyRef)
+    List(anyref, anyref, anyref),
+    List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsImportCall, List(WasmAnyRef), List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsImportMeta, Nil, List(WasmAnyRef))
-  addHelperImport(WasmFunctionName.jsDelete, List(WasmAnyRef, WasmAnyRef), Nil)
-  addHelperImport(WasmFunctionName.jsForInSimple, List(WasmAnyRef, WasmAnyRef), Nil)
-  addHelperImport(WasmFunctionName.jsIsTruthy, List(WasmAnyRef), List(WasmInt32))
-  addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.jsImportCall, List(anyref), List(anyref))
+  addHelperImport(WasmFunctionName.jsImportMeta, Nil, List(anyref))
+  addHelperImport(WasmFunctionName.jsDelete, List(anyref, anyref), Nil)
+  addHelperImport(WasmFunctionName.jsForInSimple, List(anyref, anyref), Nil)
+  addHelperImport(WasmFunctionName.jsIsTruthy, List(anyref), List(WasmInt32))
+  addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(anyref))
 
   for ((op, name) <- WasmFunctionName.jsUnaryOps)
-    addHelperImport(name, List(WasmAnyRef), List(WasmAnyRef))
+    addHelperImport(name, List(anyref), List(anyref))
 
   for ((op, name) <- WasmFunctionName.jsBinaryOps) {
     val resultType =
       if (op == IRTrees.JSBinaryOp.=== || op == IRTrees.JSBinaryOp.!==) WasmInt32
-      else WasmAnyRef
-    addHelperImport(name, List(WasmAnyRef, WasmAnyRef), List(resultType))
+      else anyref
+    addHelperImport(name, List(anyref, anyref), List(resultType))
   }
 
-  addHelperImport(WasmFunctionName.newSymbol, Nil, List(WasmAnyRef))
+  addHelperImport(WasmFunctionName.newSymbol, Nil, List(anyref))
   addHelperImport(
     WasmFunctionName.createJSClass,
-    List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func),
+    List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.createJSClassRest,
-    List(WasmAnyRef, WasmAnyRef, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
+    List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
     WasmFunctionName.installJSField,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(anyref, anyref, anyref),
     Nil
   )
   addHelperImport(
     WasmFunctionName.installJSMethod,
-    List(WasmAnyRef, WasmAnyRef, WasmInt32, WasmAnyRef, WasmRefType.func, WasmInt32),
+    List(anyref, anyref, WasmInt32, anyref, WasmRefType.func, WasmInt32),
     Nil
   )
   addHelperImport(
     WasmFunctionName.installJSProperty,
-    List(WasmAnyRef, WasmAnyRef, WasmInt32, WasmAnyRef, WasmFuncRef, WasmFuncRef),
+    List(anyref, anyref, WasmInt32, anyref, WasmRefType.funcref, WasmRefType.funcref),
     Nil
   )
   addHelperImport(
     WasmFunctionName.jsSuperGet,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef),
-    List(WasmAnyRef)
+    List(anyref, anyref, anyref),
+    List(anyref)
   )
   addHelperImport(
     WasmFunctionName.jsSuperSet,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef, WasmAnyRef),
+    List(anyref, anyref, anyref, anyref),
     Nil
   )
   addHelperImport(
     WasmFunctionName.jsSuperCall,
-    List(WasmAnyRef, WasmAnyRef, WasmAnyRef, WasmAnyRef),
-    List(WasmAnyRef)
+    List(anyref, anyref, anyref, anyref),
+    List(anyref)
   )
 
   def complete(
@@ -500,7 +501,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     addGlobal(
       WasmGlobal(
         WasmGlobalName.stringLiteralCache,
-        WasmRefType(WasmHeapType.Type(WasmArrayTypeName.anyArray)),
+        WasmRefType(WasmArrayTypeName.anyArray),
         WasmExpr(
           List(
             WasmInstr.I32_CONST(WasmImmediate.I32(nextConstantStringIndex)),
@@ -619,7 +620,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       val exprs = _funcDeclarations.toList.map { name =>
         WasmExpr(List(WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))))
       }
-      module.addElement(WasmElement(WasmFuncRef, exprs, WasmElement.Mode.Declarative))
+      module.addElement(WasmElement(WasmRefType.funcref, exprs, WasmElement.Mode.Declarative))
     }
   }
 }

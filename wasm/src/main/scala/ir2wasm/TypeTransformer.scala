@@ -54,13 +54,11 @@ object TypeTransformer {
     */
   def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
     t match {
-      case IRTypes.AnyType => Types.WasmAnyRef
+      case IRTypes.AnyType => Types.WasmRefType.anyref
 
       case tpe: IRTypes.ArrayType =>
-        Types.WasmRefNullType(
-          Types.WasmHeapType.Type(
-            Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
-          )
+        Types.WasmRefType.nullable(
+          Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
         )
       case IRTypes.ClassType(className) => transformClassByName(className)
       case IRTypes.RecordType(fields)   => ???
@@ -76,12 +74,12 @@ object TypeTransformer {
       case _ =>
         val info = ctx.getClassInfo(className)
         if (info.isAncestorOfHijackedClass)
-          Types.WasmAnyRef
+          Types.WasmRefType.anyref
         else if (info.isInterface)
-          Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+          Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
         else
-          Types.WasmRefNullType(
-            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.forClass(className))
+          Types.WasmRefType.nullable(
+            Names.WasmTypeName.WasmStructTypeName.forClass(className)
           )
     }
   }
@@ -98,7 +96,7 @@ object TypeTransformer {
       case IRTypes.LongType    => Types.WasmInt64
       case IRTypes.FloatType   => Types.WasmFloat32
       case IRTypes.DoubleType  => Types.WasmFloat64
-      case IRTypes.NullType    => Types.WasmRefNullrefType
+      case IRTypes.NullType    => Types.WasmRefType.nullref
 
       case IRTypes.NoType | IRTypes.NothingType =>
         throw new IllegalArgumentException(s"${t.show()} does not have a corresponding Wasm type")

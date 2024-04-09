@@ -455,7 +455,7 @@ object WasmFunctionContext {
           val dataStructType = ctx.getClosureDataStructType(captureLikes.map(_._2))
           val local = WasmLocal(
             WasmLocalName(captureParamName),
-            Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
+            Types.WasmRefType(dataStructType.name),
             isParameter = true
           )
           val localIdx = LocalIdx(local.name)
@@ -487,7 +487,7 @@ object WasmFunctionContext {
 
     val newTarget =
       if (!hasNewTarget) None
-      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmAnyRef, isParameter = true))
+      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmRefType.anyref, isParameter = true))
     val newTargetStorage = newTarget.map(local => VarStorage.Local(LocalIdx(local.name)))
 
     val receiver = receiverTyp.map { typ =>

@@ -7,79 +7,81 @@ import Names.WasmTypeName._
 import wasm.ir2wasm.SpecialNames
 
 object Types {
-  abstract sealed class WasmStorageType(
-      private val name: String,
-      val code: Byte
-  ) {
-    def show: String = name
-  }
+  sealed trait WasmStorageType
 
-  abstract sealed class WasmType(name: String, code: Byte) extends WasmStorageType(name, code)
+  sealed abstract class WasmType extends WasmStorageType
 
-  // case object WasmTypeNone extends WasmType
-  case object WasmUnreachableType extends WasmType("unreachable", -0x40)
-  case object WasmInt32 extends WasmType("i32", 0x7F)
-  case object WasmInt64 extends WasmType("i64", 0x7E)
-  case object WasmFloat32 extends WasmType("f32", 0x7D)
-  case object WasmFloat64 extends WasmType("f64", 0x7C)
-  // case object WasmVec128 extends WasmType("v128", -0x5)
+  sealed abstract class WasmSimpleType(val textName: String, val binaryCode: Byte) extends WasmType
 
-  sealed abstract class WasmPackedType(name: String, code: Byte) extends WasmStorageType(name, code)
+  case object WasmInt32 extends WasmSimpleType("i32", 0x7F)
+  case object WasmInt64 extends WasmSimpleType("i64", 0x7E)
+  case object WasmFloat32 extends WasmSimpleType("f32", 0x7D)
+  case object WasmFloat64 extends WasmSimpleType("f64", 0x7C)
+
+  sealed abstract class WasmPackedType(val textName: String, val binaryCode: Byte)
+      extends WasmStorageType
   case object WasmInt8 extends WasmPackedType("i8", 0x78)
   case object WasmInt16 extends WasmPackedType("i16", 0x77)
 
-  // shorthands
-  // https://github.com/WebAssembly/gc/blob/main/proposals/gc/MVP.md#reference-types-1
-  case object WasmFuncRef extends WasmType("funcref", 0x70)
-  case object WasmExternRef extends WasmType("externref", 0x6F)
-  case object WasmExnRef extends WasmType("exnref", 0x69)
+  final case class WasmRefType(nullable: Boolean, heapType: WasmHeapType) extends WasmType
 
-  /** shorthand for (ref null any) */
-  case object WasmAnyRef extends WasmType("anyref", 0x6E)
-  case object WasmEqRef extends WasmType("eqref", 0x6D)
-  case object WasmRefNullrefType extends WasmType("nullref", 0x71) // Shorthand for (ref null none)
-  case object WasmRefNullExternrefType
-      extends WasmType("nullexternref", 0x72) // Shorthand for (ref null noextern)
-  case class WasmRefNullType(val heapType: WasmHeapType) extends WasmType("ref null", 0x63) {
-    override def show: String = s"(ref null ${heapType.show})"
-  }
-  case class WasmRefType(val heapType: WasmHeapType) extends WasmType("ref", 0x64) {
-    override def show: String = s"(ref ${heapType.show})"
-  }
   object WasmRefType {
 
-    /** Non-null `anyref`. */
-    val any: WasmRefType = WasmRefType(WasmHeapType.Simple.Any)
+    /** Builds a non-nullable `(ref ht)` for the given `ht`. */
+    def apply(ht: WasmHeapType): WasmRefType = WasmRefType(false, ht)
 
-    /** Non-null `func`. */
-    val func: WasmRefType = WasmRefType(WasmHeapType.Simple.Func)
+    /** Builds a non-nullable `(ref typ)` for the given `typ`. */
+    def apply(typ: WasmTypeName): WasmRefType = apply(WasmHeapType(typ))
+
+    /** Builds a nullable `(ref null ht)` for the given `ht`. */
+    def nullable(ht: WasmHeapType): WasmRefType = WasmRefType(true, ht)
+
+    /** Builds a nullable `(ref null typ)` for the given `typ`. */
+    def nullable(typ: WasmTypeName): WasmRefType = nullable(WasmHeapType(typ))
+
+    /** `(ref any)`. */
+    val any: WasmRefType = apply(WasmHeapType.Any)
+
+    /** `(ref null any)`, i.e., `anyref`. */
+    val anyref: WasmRefType = nullable(WasmHeapType.Any)
+
+    /** `(ref func)`. */
+    val func: WasmRefType = apply(WasmHeapType.Func)
+
+    /** `(ref null func)`, i.e., `funcref`. */
+    val funcref: WasmRefType = nullable(WasmHeapType.Func)
+
+    /** `(ref null exn)`, i.e., `exnref`. */
+    val exnref: WasmRefType = nullable(WasmHeapType.Exn)
+
+    /** `(ref null none)`, i.e., `nullref`. */
+    val nullref: WasmRefType = nullable(WasmHeapType.None)
   }
 
-  sealed trait WasmHeapType {
-    def show: String
-  }
+  sealed trait WasmHeapType
+
   object WasmHeapType {
-    case class Type(val typ: WasmTypeName) extends WasmHeapType {
-      override def show: String = typ.show
-    }
-    case class Func(val typ: WasmFunctionTypeName) extends WasmHeapType {
-      override def show: String = typ.show
-    }
-    sealed class Simple(val name: String, val code: Byte) extends WasmHeapType {
-      override def show: String = name
-    }
-    object Simple {
-      object Func extends Simple("func", 0x70)
-      object Extern extends Simple("extern", 0x6F)
-      object Any extends Simple("any", 0x6E)
-      object Eq extends Simple("eq", 0x6D)
-      object Array extends Simple("array", 0x6A)
-      object Exn extends Simple("exn", 0x69)
-      object Struct extends Simple("struct", 0x6B)
-      object None extends Simple("none", 0x71)
-      object NoExtern extends Simple("noextern", 0x72)
-      object NoExn extends Simple("noexn", 0x74)
-    }
+    final case class Type(val typ: WasmTypeName) extends WasmHeapType
+
+    sealed abstract class AbsHeapType(
+        val textName: String,
+        val nullableRefTextName: String,
+        val binaryCode: Byte
+    ) extends WasmHeapType
+
+    case object Func extends AbsHeapType("func", "funcref", 0x70)
+    case object Extern extends AbsHeapType("extern", "externref", 0x6F)
+    case object Any extends AbsHeapType("any", "anyref", 0x6E)
+    case object Eq extends AbsHeapType("eq", "eqref", 0x6D)
+    case object Array extends AbsHeapType("array", "arrayref", 0x6A)
+    case object Exn extends AbsHeapType("exn", "exnref", 0x69)
+    case object Struct extends AbsHeapType("struct", "structref", 0x6B)
+    case object None extends AbsHeapType("none", "nullref", 0x71)
+    case object NoExtern extends AbsHeapType("noextern", "nullexternref", 0x72)
+    case object NoExn extends AbsHeapType("noexn", "nullexnref", 0x74)
+
+    def apply(typ: WasmTypeName): WasmHeapType.Type =
+      WasmHeapType.Type(typ)
 
     val ObjectType = Type(WasmStructTypeName.forClass(IRNames.ObjectClass))
     val ClassType = Type(WasmStructTypeName.forClass(IRNames.ClassClass))
