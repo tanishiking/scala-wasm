@@ -382,10 +382,6 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       case F32(value) => buf.f32(value)
       case F64(value) => buf.f64(value)
 
-      case MemArg(offset, align) =>
-        buf.u32(offset.toInt)
-        buf.u32(align.toInt)
-
       case BlockType.ValueType(None)        => buf.byte(0x40)
       case BlockType.ValueType(Some(typ))   => writeType(buf, typ)
       case BlockType.FunctionType(typeName) => writeTypeIdxs33(buf, typeName)

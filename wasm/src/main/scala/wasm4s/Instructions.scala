@@ -154,33 +154,6 @@ object WasmInstr {
   case class F32_CONST(v: F32) extends WasmInstr("f32.const", 0x43, List(v))
   case class F64_CONST(v: F64) extends WasmInstr("f64.const", 0x44, List(v))
 
-  // Memory instructions
-  // https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
-  case class I32_LOAD(v: MemArg) extends WasmInstr("i32.load", 0x28, List(v))
-  case class I64_LOAD(v: MemArg) extends WasmInstr("i64.load", 0x29, List(v))
-  case class F32_LOAD(v: MemArg) extends WasmInstr("f32.load", 0x2A, List(v))
-  case class F64_LOAD(v: MemArg) extends WasmInstr("f64.load", 0x2B, List(v))
-  case class I32_LOAD8_S(v: MemArg) extends WasmInstr("i32.load8_s", 0x2C, List(v))
-  case class I32_LOAD8_U(v: MemArg) extends WasmInstr("i32.load8_u", 0x2D, List(v))
-  case class I32_LOAD16_S(v: MemArg) extends WasmInstr("i32.load16_s", 0x2E, List(v))
-  case class I32_LOAD16_U(v: MemArg) extends WasmInstr("i32.load16_u", 0x2F, List(v))
-  case class I64_LOAD8_S(v: MemArg) extends WasmInstr("i64.load8_s", 0x30, List(v))
-  case class I64_LOAD8_U(v: MemArg) extends WasmInstr("i64.load8_u", 0x31, List(v))
-  case class I64_LOAD16_S(v: MemArg) extends WasmInstr("i64.load16_s", 0x32, List(v))
-  case class I64_LOAD16_U(v: MemArg) extends WasmInstr("i64.load16_u", 0x33, List(v))
-  case class I64_LOAD32_S(v: MemArg) extends WasmInstr("i64.load32_s", 0x34, List(v))
-  case class I64_LOAD32_U(v: MemArg) extends WasmInstr("i64.load32_u", 0x35, List(v))
-
-  case class I32_STORE(v: MemArg) extends WasmInstr("i32.store", 0x36, List(v))
-  case class I64_STORE(v: MemArg) extends WasmInstr("i64.store", 0x37, List(v))
-  case class F32_STORE(v: MemArg) extends WasmInstr("f32.store", 0x38, List(v))
-  case class F64_STORE(v: MemArg) extends WasmInstr("f64.store", 0x39, List(v))
-  case class I32_STORE8(v: MemArg) extends WasmInstr("i32.store8", 0x3A, List(v))
-  case class I32_STORE16(v: MemArg) extends WasmInstr("i32.store16", 0x3B, List(v))
-  case class I64_STORE8(v: MemArg) extends WasmInstr("i64.store8", 0x3C, List(v))
-  case class I64_STORE16(v: MemArg) extends WasmInstr("i64.store16", 0x3D, List(v))
-  case class I64_STORE32(v: MemArg) extends WasmInstr("i64.store32", 0x3E, List(v))
-
   // Control instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
   sealed abstract class StructuredLabeledInstr(
@@ -315,9 +288,6 @@ object WasmImmediate {
   case class I64(value: Long) extends WasmImmediate
   case class F32(value: Float) extends WasmImmediate
   case class F64(value: Double) extends WasmImmediate
-
-  // TODO: UInt
-  case class MemArg(offset: Long, align: Long) extends WasmImmediate
 
   /** A structured instruction can consume input and produce output on the operand stack according
     * to its annotated block type. It is given either as a type index that refers to a suitable
