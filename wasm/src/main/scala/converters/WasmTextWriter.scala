@@ -349,52 +349,52 @@ class WasmTextWriter {
       case instr: WasmLabelInstr =>
         writeLabelIdx(instr.labelArgument)
       case instr: WasmFuncInstr =>
-        b.appendElement(instr.funcArgument.value.show)
+        b.appendElement(instr.funcArgument.show)
       case instr: WasmTypeInstr =>
-        b.appendElement(instr.typeArgument.value.show)
+        b.appendElement(instr.typeArgument.show)
       case instr: WasmTagInstr =>
-        b.appendElement(instr.tagArgument.value.show)
+        b.appendElement(instr.tagArgument.show)
       case instr: WasmLocalInstr =>
-        b.appendElement(instr.localArgument.value.show)
+        b.appendElement(instr.localArgument.show)
       case instr: WasmGlobalInstr =>
-        b.appendElement(instr.globalArgument.value.show)
+        b.appendElement(instr.globalArgument.show)
       case instr: WasmHeapTypeInstr =>
-        writeHeapType(instr.heapTypeArgument.value)
+        writeHeapType(instr.heapTypeArgument)
       case instr: WasmRefTypeInstr =>
         writeType(instr.refTypeArgument)
       case instr: WasmStructFieldInstr =>
-        b.appendElement(instr.structTypeIdx.value.show)
+        b.appendElement(instr.structTypeName.show)
         b.appendElement(instr.fieldIdx.value.toString())
 
       // Specific instructions with unique-ish shapes
 
-      case I32_CONST(v) => b.appendElement(v.value.toString())
-      case I64_CONST(v) => b.appendElement(v.value.toString())
-      case F32_CONST(v) => b.appendElement(floatString(v.value.toDouble))
-      case F64_CONST(v) => b.appendElement(floatString(v.value))
+      case I32_CONST(v) => b.appendElement(v.toString())
+      case I64_CONST(v) => b.appendElement(v.toString())
+      case F32_CONST(v) => b.appendElement(floatString(v.toDouble))
+      case F64_CONST(v) => b.appendElement(floatString(v))
 
       case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
-        labelIdxVector.value.foreach(writeLabelIdx(_))
+        labelIdxVector.foreach(writeLabelIdx(_))
         writeLabelIdx(defaultLabelIdx)
 
       case TRY_TABLE(blockType, clauses, _) =>
         writeBlockType(blockType)
-        for (clause <- clauses.value) {
+        for (clause <- clauses) {
           b.sameLineList(
             clause.mnemonic, {
-              clause.tag.foreach(tag => b.appendElement(tag.value.show))
+              clause.tag.foreach(tag => b.appendElement(tag.show))
               writeLabelIdx(clause.label)
             }
           )
         }
 
       case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
-        b.appendElement(typeIdx.value.show)
-        b.appendElement(dataIdx.value.show)
+        b.appendElement(typeIdx.show)
+        b.appendElement(dataIdx.show)
 
       case ARRAY_NEW_FIXED(typeIdx, length) =>
-        b.appendElement(typeIdx.value.show)
-        b.appendElement(Integer.toUnsignedString(length.value))
+        b.appendElement(typeIdx.show)
+        b.appendElement(Integer.toUnsignedString(length))
 
       case BR_ON_CAST(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)

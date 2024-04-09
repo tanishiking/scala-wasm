@@ -184,13 +184,13 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   def getConstantStringInstr(str: String): List[WasmInstr] = {
     val data = addConstantStringGlobal(str)
     List(
-      WasmInstr.I32_CONST(WasmImmediate.I32(data.offset)),
+      WasmInstr.I32_CONST(data.offset),
       // Assuming that the stringLiteral method will instantiate the
       // constant string from the data section using "array.newData $i16Array ..."
       // The length of the array should be equal to the length of the WTF-16 encoded string
-      WasmInstr.I32_CONST(WasmImmediate.I32(str.length())),
-      WasmInstr.I32_CONST(WasmImmediate.I32(data.constantStringIndex)),
-      WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.stringLiteral))
+      WasmInstr.I32_CONST(str.length()),
+      WasmInstr.I32_CONST(data.constantStringIndex),
+      WasmInstr.CALL(WasmFunctionName.stringLiteral)
     )
   }
 
@@ -215,7 +215,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
 
   def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
     addFuncDeclaration(name)
-    WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))
+    WasmInstr.REF_FUNC(name)
   }
 
   private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
@@ -504,8 +504,8 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         WasmRefType(WasmArrayTypeName.anyArray),
         WasmExpr(
           List(
-            WasmInstr.I32_CONST(WasmImmediate.I32(nextConstantStringIndex)),
-            WasmInstr.ARRAY_NEW_DEFAULT(WasmImmediate.TypeIdx(WasmArrayTypeName.anyArray))
+            WasmInstr.I32_CONST(nextConstantStringIndex),
+            WasmInstr.ARRAY_NEW_DEFAULT(WasmArrayTypeName.anyArray)
           )
         ),
         isMutable = false
@@ -532,25 +532,23 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       val vtable = calculateVtableType(name)
       interfaces.foreach { iface =>
         val idx = getItableIdx(iface.name)
-        instrs += WasmInstr.GLOBAL_GET(WasmImmediate.GlobalIdx(globalName))
-        instrs += WasmInstr.I32_CONST(WasmImmediate.I32(idx))
+        instrs += WasmInstr.GLOBAL_GET(globalName)
+        instrs += WasmInstr.I32_CONST(idx)
 
         iface.methods.foreach { method =>
           val func = vtable.resolve(method.name)
-          instrs += WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(func.name))
+          instrs += WasmInstr.REF_FUNC(func.name)
         }
         instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
-        instrs += WasmInstr.ARRAY_SET(WasmImmediate.TypeIdx(WasmTypeName.WasmArrayTypeName.itables))
+        instrs += WasmInstr.ARRAY_SET(WasmTypeName.WasmArrayTypeName.itables)
       }
     }
 
     // Initialize the JS private field symbols
 
     for (fieldName <- _jsPrivateFieldNames) {
-      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(WasmFunctionName.newSymbol))
-      instrs += WasmInstr.GLOBAL_SET(
-        WasmImmediate.GlobalIdx(WasmGlobalName.forJSPrivateField(fieldName))
-      )
+      instrs += WasmInstr.CALL(WasmFunctionName.newSymbol)
+      instrs += WasmInstr.GLOBAL_SET(WasmGlobalName.forJSPrivateField(fieldName))
     }
 
     // Emit the static initializers
@@ -561,7 +559,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         className,
         IRNames.StaticInitializerName
       )
-      instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(funcName))
+      instrs += WasmInstr.CALL(funcName)
     }
 
     // Emit the module initializers
@@ -570,7 +568,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       def genCallStatic(className: IRNames.ClassName, methodName: IRNames.MethodName): Unit = {
         val functionName =
           WasmFunctionName(IRTrees.MemberNamespace.PublicStatic, className, methodName)
-        instrs += WasmInstr.CALL(WasmImmediate.FuncIdx(functionName))
+        instrs += WasmInstr.CALL(functionName)
       }
       implicit val noPos: Position = Position.NoPosition
 
@@ -618,7 +616,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
        * introduce these declarations.
        */
       val exprs = _funcDeclarations.toList.map { name =>
-        WasmExpr(List(WasmInstr.REF_FUNC(WasmImmediate.FuncIdx(name))))
+        WasmExpr(List(WasmInstr.REF_FUNC(name)))
       }
       module.addElement(WasmElement(WasmRefType.funcref, exprs, WasmElement.Mode.Declarative))
     }

@@ -8,7 +8,7 @@ import org.scalajs.ir.{Trees => IRTrees}
 
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmImmediate.{BlockType, LabelIdx, LocalIdx}
+import wasm.wasm4s.WasmImmediate.{BlockType, LabelIdx}
 import wasm.wasm4s.WasmInstr._
 
 import wasm.ir2wasm.TypeTransformer
@@ -40,7 +40,7 @@ class WasmFunctionContext private (
   def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
-  def paramIndices: List[LocalIdx] = _params.map(p => LocalIdx(p.name))
+  def paramIndices: List[WasmLocalName] = _params.map(_.name)
 
   private val registeredLabels =
     mutable.AnyRefMap.empty[IRNames.LabelName, (LabelIdx, IRTypes.Type)]
@@ -68,19 +68,19 @@ class WasmFunctionContext private (
     )
   }
 
-  private def addLocal(name: WasmLocalName, typ: WasmType): LocalIdx = {
+  private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {
     val local = WasmLocal(name, typ, isParameter = false)
     locals.define(local)
-    LocalIdx(name)
+    name
   }
 
-  def addLocal(name: String, typ: WasmType): LocalIdx =
+  def addLocal(name: String, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName(name), typ)
 
-  private def addLocal(name: IRNames.LocalName, typ: WasmType): LocalIdx =
+  private def addLocal(name: IRNames.LocalName, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName.fromIR(name), typ)
 
-  def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: LocalIdx => A): A = {
+  def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: WasmLocalName => A): A = {
     val savedEnv = currentEnv
     val local = addLocal(name, typ)
     currentEnv = currentEnv.updated(name, VarStorage.Local(local))
@@ -96,7 +96,7 @@ class WasmFunctionContext private (
     )
   }
 
-  def lookupLocalAssertLocalStorage(name: IRNames.LocalName): LocalIdx = {
+  def lookupLocalAssertLocalStorage(name: IRNames.LocalName): WasmLocalName = {
     (lookupLocal(name): @unchecked) match {
       case VarStorage.Local(local) => local
     }
@@ -108,7 +108,7 @@ class WasmFunctionContext private (
     name
   }
 
-  def addSyntheticLocal(typ: WasmType): LocalIdx =
+  def addSyntheticLocal(typ: WasmType): WasmLocalName =
     addLocal(genSyntheticLocalName(), typ)
 
   def genInnerFuncName(): WasmFunctionName = {
@@ -217,7 +217,7 @@ class WasmFunctionContext private (
   }
 
   def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
-    instrs += TRY_TABLE(blockType, WasmImmediate.CatchClauseVector(clauses))
+    instrs += TRY_TABLE(blockType, clauses)
     val result = body
     instrs += END
     result
@@ -314,7 +314,7 @@ class WasmFunctionContext private (
 
         // Load the scrutinee and dispatch
         scrutinee()
-        instrs += BR_TABLE(WasmImmediate.LabelIdxVector(dispatchVector.toList), defaultLabel)
+        instrs += BR_TABLE(dispatchVector.toList, defaultLabel)
 
         // Close all the case labels and emit their respective bodies
         for (clause <- clauses) {
@@ -422,10 +422,10 @@ object WasmFunctionContext {
   sealed abstract class VarStorage
 
   object VarStorage {
-    final case class Local(idx: LocalIdx) extends VarStorage
+    final case class Local(idx: WasmLocalName) extends VarStorage
 
     final case class StructField(
-        structIdx: LocalIdx,
+        structIdx: WasmLocalName,
         structTypeName: WasmTypeName,
         fieldIdx: WasmImmediate.StructFieldIdx
     ) extends VarStorage
@@ -458,10 +458,9 @@ object WasmFunctionContext {
             Types.WasmRefType(dataStructType.name),
             isParameter = true
           )
-          val localIdx = LocalIdx(local.name)
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
-              localIdx,
+              local.name,
               dataStructType.name,
               WasmImmediate.StructFieldIdx(idx)
             )
@@ -488,16 +487,16 @@ object WasmFunctionContext {
     val newTarget =
       if (!hasNewTarget) None
       else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmRefType.anyref, isParameter = true))
-    val newTargetStorage = newTarget.map(local => VarStorage.Local(LocalIdx(local.name)))
+    val newTargetStorage = newTarget.map(local => VarStorage.Local(local.name))
 
     val receiver = receiverTyp.map { typ =>
       WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
     }
-    val receiverStorage = receiver.map(local => VarStorage.Local(LocalIdx(local.name)))
+    val receiverStorage = receiver.map(local => VarStorage.Local(local.name))
 
     val normalParams = paramDefsToWasmParams(paramDefs)
     val normalParamsEnv = paramDefs.zip(normalParams).map { case (paramDef, param) =>
-      paramDef.name.name -> VarStorage.Local(LocalIdx(param.name))
+      paramDef.name.name -> VarStorage.Local(param.name)
     }
 
     val allParams =

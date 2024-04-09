@@ -397,49 +397,49 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       case instr: WasmLabelInstr =>
         writeLabelIdx(buf, instr.labelArgument)
       case instr: WasmFuncInstr =>
-        writeFuncIdx(buf, instr.funcArgument.value)
+        writeFuncIdx(buf, instr.funcArgument)
       case instr: WasmTypeInstr =>
-        writeTypeIdx(buf, instr.typeArgument.value)
+        writeTypeIdx(buf, instr.typeArgument)
       case instr: WasmTagInstr =>
-        writeTagIdx(buf, instr.tagArgument.value)
+        writeTagIdx(buf, instr.tagArgument)
       case instr: WasmLocalInstr =>
-        writeLocalIdx(buf, instr.localArgument.value)
+        writeLocalIdx(buf, instr.localArgument)
       case instr: WasmGlobalInstr =>
-        writeGlobalIdx(buf, instr.globalArgument.value)
+        writeGlobalIdx(buf, instr.globalArgument)
       case instr: WasmHeapTypeInstr =>
-        writeHeapType(buf, instr.heapTypeArgument.value)
+        writeHeapType(buf, instr.heapTypeArgument)
       case instr: WasmRefTypeInstr =>
         writeHeapType(buf, instr.refTypeArgument.heapType)
       case instr: WasmStructFieldInstr =>
-        writeTypeIdx(buf, instr.structTypeIdx.value)
+        writeTypeIdx(buf, instr.structTypeName)
         buf.u32(instr.fieldIdx.value)
 
       // Specific instructions with unique-ish shapes
 
-      case I32_CONST(v) => buf.i32(v.value)
-      case I64_CONST(v) => buf.i64(v.value)
-      case F32_CONST(v) => buf.f32(v.value)
-      case F64_CONST(v) => buf.f64(v.value)
+      case I32_CONST(v) => buf.i32(v)
+      case I64_CONST(v) => buf.i64(v)
+      case F32_CONST(v) => buf.f32(v)
+      case F64_CONST(v) => buf.f64(v)
 
       case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
-        buf.vec(labelIdxVector.value)(writeLabelIdx(buf, _))
+        buf.vec(labelIdxVector)(writeLabelIdx(buf, _))
         writeLabelIdx(buf, defaultLabelIdx)
 
       case TRY_TABLE(blockType, clauses, _) =>
         writeBlockType(buf, blockType)
-        buf.vec(clauses.value) { clause =>
+        buf.vec(clauses) { clause =>
           buf.byte(clause.opcode.toByte)
-          clause.tag.foreach(tag => writeTagIdx(buf, tag.value))
+          clause.tag.foreach(tag => writeTagIdx(buf, tag))
           writeLabelIdx(buf, clause.label)
         }
 
       case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
-        writeTypeIdx(buf, typeIdx.value)
-        writeDataIdx(buf, dataIdx.value)
+        writeTypeIdx(buf, typeIdx)
+        writeDataIdx(buf, dataIdx)
 
       case ARRAY_NEW_FIXED(typeIdx, length) =>
-        writeTypeIdx(buf, typeIdx.value)
-        buf.u32(length.value)
+        writeTypeIdx(buf, typeIdx)
+        buf.u32(length)
 
       case BR_ON_CAST(labelIdx, from, to) =>
         writeBrOnCast(labelIdx, from, to)

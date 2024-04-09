@@ -38,34 +38,40 @@ object WasmInstr {
   sealed abstract class WasmLabelInstr(mnemonic: String, opcode: Int, val labelArgument: LabelIdx)
       extends WasmInstr(mnemonic, opcode)
 
-  /** An instruction with a single `FuncIdx` argument. */
-  sealed abstract class WasmFuncInstr(mnemonic: String, opcode: Int, val funcArgument: FuncIdx)
+  /** An instruction with a single `WasmFunctionName` argument. */
+  sealed abstract class WasmFuncInstr(
+      mnemonic: String,
+      opcode: Int,
+      val funcArgument: WasmFunctionName
+  ) extends WasmInstr(mnemonic, opcode)
+
+  /** An instruction with a single `WasmTypeName` argument. */
+  sealed abstract class WasmTypeInstr(mnemonic: String, opcode: Int, val typeArgument: WasmTypeName)
       extends WasmInstr(mnemonic, opcode)
 
-  /** An instruction with a single `TypeIdx` argument. */
-  sealed abstract class WasmTypeInstr(mnemonic: String, opcode: Int, val typeArgument: TypeIdx)
+  /** An instruction with a single `WasmTagName` argument. */
+  sealed abstract class WasmTagInstr(mnemonic: String, opcode: Int, val tagArgument: WasmTagName)
       extends WasmInstr(mnemonic, opcode)
 
-  /** An instruction with a single `TagIdx` argument. */
-  sealed abstract class WasmTagInstr(mnemonic: String, opcode: Int, val tagArgument: TagIdx)
-      extends WasmInstr(mnemonic, opcode)
+  /** An instruction with a single `WasmLocalName` argument. */
+  sealed abstract class WasmLocalInstr(
+      mnemonic: String,
+      opcode: Int,
+      val localArgument: WasmLocalName
+  ) extends WasmInstr(mnemonic, opcode)
 
-  /** An instruction with a single `LocalIdx` argument. */
-  sealed abstract class WasmLocalInstr(mnemonic: String, opcode: Int, val localArgument: LocalIdx)
-      extends WasmInstr(mnemonic, opcode)
-
-  /** An instruction with a single `GlobalIdx` argument. */
+  /** An instruction with a single `WasmGlobalName` argument. */
   sealed abstract class WasmGlobalInstr(
       mnemonic: String,
       opcode: Int,
-      val globalArgument: GlobalIdx
+      val globalArgument: WasmGlobalName
   ) extends WasmInstr(mnemonic, opcode)
 
-  /** An instruction with a single `HeapType` argument. */
+  /** An instruction with a single `WasmHeapType` argument. */
   sealed abstract class WasmHeapTypeInstr(
       mnemonic: String,
       opcode: Int,
-      val heapTypeArgument: HeapType
+      val heapTypeArgument: WasmHeapType
   ) extends WasmInstr(mnemonic, opcode)
 
   /** An instruction with a single `WasmRefType` argument
@@ -79,11 +85,11 @@ object WasmInstr {
       val refTypeArgument: WasmRefType
   ) extends WasmInstr(mnemonic, if (refTypeArgument.nullable) nullOpcode else nonNullOpcode)
 
-  /** An instruction with a pair of `TypeIdx`, `StructFieldIdx` arguments. */
+  /** An instruction with a pair of `WasmTypeName`, `StructFieldIdx` arguments. */
   sealed abstract class WasmStructFieldInstr(
       mnemonic: String,
       opcode: Int,
-      val structTypeIdx: TypeIdx,
+      val structTypeName: WasmTypeName,
       val fieldIdx: StructFieldIdx
   ) extends WasmInstr(mnemonic, opcode)
 
@@ -222,12 +228,10 @@ object WasmInstr {
   case object F64_MIN extends WasmSimpleInstr("f64.min", 0xA4)
   case object F64_MAX extends WasmSimpleInstr("f64.max", 0xA5)
 
-  case class I32_CONST(v: I32) extends WasmInstr("i32.const", 0x41)
-  object I32_CONST { def apply(v: Int): I32_CONST = I32_CONST(I32(v)) }
-  case class I64_CONST(v: I64) extends WasmInstr("i64.const", 0x42)
-  object I64_CONST { def apply(v: Long): I64_CONST = I64_CONST(I64(v)) }
-  case class F32_CONST(v: F32) extends WasmInstr("f32.const", 0x43)
-  case class F64_CONST(v: F64) extends WasmInstr("f64.const", 0x44)
+  case class I32_CONST(v: Int) extends WasmInstr("i32.const", 0x41)
+  case class I64_CONST(v: Long) extends WasmInstr("i64.const", 0x42)
+  case class F32_CONST(v: Float) extends WasmInstr("f32.const", 0x43)
+  case class F64_CONST(v: Double) extends WasmInstr("f64.const", 0x44)
 
   // Control instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
@@ -243,14 +247,14 @@ object WasmInstr {
   case object END extends WasmSimpleInstr("end", 0x0B)
   case class BR(i: LabelIdx) extends WasmLabelInstr("br", 0x0C, i) with StackPolymorphicInstr
   case class BR_IF(i: LabelIdx) extends WasmLabelInstr("br_if", 0x0D, i)
-  case class BR_TABLE(i: LabelIdxVector, default: LabelIdx)
+  case class BR_TABLE(table: List[LabelIdx], default: LabelIdx)
       extends WasmInstr("br_table", 0x0E)
       with StackPolymorphicInstr
   case object RETURN extends WasmSimpleInstr("return", 0x0F) with StackPolymorphicInstr
-  case class CALL(i: FuncIdx) extends WasmFuncInstr("call", 0x10, i)
-  case class THROW(i: TagIdx) extends WasmTagInstr("throw", 0x08, i) with StackPolymorphicInstr
+  case class CALL(i: WasmFunctionName) extends WasmFuncInstr("call", 0x10, i)
+  case class THROW(i: WasmTagName) extends WasmTagInstr("throw", 0x08, i) with StackPolymorphicInstr
   case object THROW_REF extends WasmSimpleInstr("throw_ref", 0x0A) with StackPolymorphicInstr
-  case class TRY_TABLE(i: BlockType, cs: CatchClauseVector, label: Option[LabelIdx] = None)
+  case class TRY_TABLE(i: BlockType, cs: List[CatchClause], label: Option[LabelIdx] = None)
       extends WasmInstr("try_table", 0x1F)
       with StructuredLabeledInstr
 
@@ -261,11 +265,11 @@ object WasmInstr {
 
   // Variable instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#variable-instructions
-  case class LOCAL_GET(i: LocalIdx) extends WasmLocalInstr("local.get", 0x20, i)
-  case class LOCAL_SET(i: LocalIdx) extends WasmLocalInstr("local.set", 0x21, i)
-  case class LOCAL_TEE(i: LocalIdx) extends WasmLocalInstr("local.tee", 0x22, i)
-  case class GLOBAL_GET(i: GlobalIdx) extends WasmGlobalInstr("global.get", 0x23, i)
-  case class GLOBAL_SET(i: GlobalIdx) extends WasmGlobalInstr("global.set", 0x24, i)
+  case class LOCAL_GET(i: WasmLocalName) extends WasmLocalInstr("local.get", 0x20, i)
+  case class LOCAL_SET(i: WasmLocalName) extends WasmLocalInstr("local.set", 0x21, i)
+  case class LOCAL_TEE(i: WasmLocalName) extends WasmLocalInstr("local.tee", 0x22, i)
+  case class GLOBAL_GET(i: WasmGlobalName) extends WasmGlobalInstr("global.get", 0x23, i)
+  case class GLOBAL_SET(i: WasmGlobalName) extends WasmGlobalInstr("global.set", 0x24, i)
 
   // Table instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#table-instructions
@@ -280,7 +284,7 @@ object WasmInstr {
     *
     * `ref.null rt : [] -> [rtref]` (iff rt = func or rt = extern)
     */
-  case class REF_NULL(i: HeapType) extends WasmHeapTypeInstr("ref.null", 0xD0, i)
+  case class REF_NULL(i: WasmHeapType) extends WasmHeapTypeInstr("ref.null", 0xD0, i)
 
   /** checks for null. ref.is_null : [rtref] -> [i32]
     */
@@ -288,10 +292,7 @@ object WasmInstr {
 
   /** creates a reference to a given function. `ref.func $x : [] -> [funcref]` (iff $x : func $t)
     */
-  case class REF_FUNC(i: FuncIdx) extends WasmFuncInstr("ref.func", 0xD2, i)
-  object REF_FUNC {
-    def apply(i: WasmFunctionName): REF_FUNC = REF_FUNC(WasmImmediate.FuncIdx(i))
-  }
+  case class REF_FUNC(i: WasmFunctionName) extends WasmFuncInstr("ref.func", 0xD2, i)
 
   case object REF_I31 extends WasmSimpleInstr("ref.i31", 0xFB1C)
   case object I31_GET_S extends WasmSimpleInstr("i31.get_s", 0xFB1D)
@@ -300,34 +301,35 @@ object WasmInstr {
   // ============================================================
   // Typed Function References
   // https://github.com/WebAssembly/function-references
-  case class CALL_REF(i: TypeIdx) extends WasmTypeInstr("call_ref", 0x14, i)
-  case class RETURN_CALL_REF(i: TypeIdx) extends WasmTypeInstr("return_call_ref", 0x15, i)
+  case class CALL_REF(i: WasmTypeName) extends WasmTypeInstr("call_ref", 0x14, i)
+  case class RETURN_CALL_REF(i: WasmTypeName) extends WasmTypeInstr("return_call_ref", 0x15, i)
   case object REF_AS_NOT_NULL extends WasmSimpleInstr("ref.as_non_null", 0xD4)
   case class BR_ON_NULL(i: LabelIdx) extends WasmLabelInstr("br_on_null", 0xD5, i)
   case class BR_ON_NON_NULL(i: LabelIdx) extends WasmLabelInstr("br_on_non_null", 0xD6, i)
 
   // ============================================================
   // gc
-  case class STRUCT_NEW(i: TypeIdx) extends WasmTypeInstr("struct.new", 0xFB00, i)
-  object STRUCT_NEW {
-    def apply(i: WasmTypeName): STRUCT_NEW = STRUCT_NEW(WasmImmediate.TypeIdx(i))
-  }
-  case class STRUCT_NEW_DEFAULT(i: TypeIdx) extends WasmTypeInstr("struct.new_default", 0xFB01, i)
-  case class STRUCT_GET(tyidx: TypeIdx, fidx: StructFieldIdx)
+  case class STRUCT_NEW(i: WasmTypeName) extends WasmTypeInstr("struct.new", 0xFB00, i)
+  case class STRUCT_NEW_DEFAULT(i: WasmTypeName)
+      extends WasmTypeInstr("struct.new_default", 0xFB01, i)
+  case class STRUCT_GET(tyidx: WasmTypeName, fidx: StructFieldIdx)
       extends WasmStructFieldInstr("struct.get", 0xFB02, tyidx, fidx)
   // STRUCT_GET_S
   // STRUCT_GET_U
-  case class STRUCT_SET(tyidx: TypeIdx, fidx: StructFieldIdx)
+  case class STRUCT_SET(tyidx: WasmTypeName, fidx: StructFieldIdx)
       extends WasmStructFieldInstr("struct.set", 0xFB05, tyidx, fidx)
 
-  case class ARRAY_NEW(i: TypeIdx) extends WasmTypeInstr("array.new", 0xFB06, i)
-  case class ARRAY_NEW_DEFAULT(i: TypeIdx) extends WasmTypeInstr("array.new_default", 0xFB07, i)
-  case class ARRAY_NEW_FIXED(i: TypeIdx, size: I32) extends WasmInstr("array.new_fixed", 0xFB08)
-  case class ARRAY_NEW_DATA(i: TypeIdx, d: DataIdx) extends WasmInstr("array.new_data", 0xFB09)
-  case class ARRAY_GET(i: TypeIdx) extends WasmTypeInstr("array.get", 0xFB0B, i)
-  case class ARRAY_GET_S(i: TypeIdx) extends WasmTypeInstr("array.get_s", 0xFB0C, i)
-  case class ARRAY_GET_U(i: TypeIdx) extends WasmTypeInstr("array.get_u", 0xFB0D, i)
-  case class ARRAY_SET(i: TypeIdx) extends WasmTypeInstr("array.set", 0xFB0E, i)
+  case class ARRAY_NEW(i: WasmTypeName) extends WasmTypeInstr("array.new", 0xFB06, i)
+  case class ARRAY_NEW_DEFAULT(i: WasmTypeName)
+      extends WasmTypeInstr("array.new_default", 0xFB07, i)
+  case class ARRAY_NEW_FIXED(i: WasmTypeName, size: Int)
+      extends WasmInstr("array.new_fixed", 0xFB08)
+  case class ARRAY_NEW_DATA(i: WasmTypeName, d: WasmDataName)
+      extends WasmInstr("array.new_data", 0xFB09)
+  case class ARRAY_GET(i: WasmTypeName) extends WasmTypeInstr("array.get", 0xFB0B, i)
+  case class ARRAY_GET_S(i: WasmTypeName) extends WasmTypeInstr("array.get_s", 0xFB0C, i)
+  case class ARRAY_GET_U(i: WasmTypeName) extends WasmTypeInstr("array.get_u", 0xFB0D, i)
+  case class ARRAY_SET(i: WasmTypeName) extends WasmTypeInstr("array.set", 0xFB0E, i)
   case object ARRAY_LEN extends WasmSimpleInstr("array.len", 0xFB0F)
   // ARRAY_FILL,
   // ARRAY_COPY
@@ -344,12 +346,7 @@ object WasmInstr {
       extends WasmInstr("br_on_cast_fail", 0xFB19)
 }
 
-abstract sealed trait WasmImmediate
 object WasmImmediate {
-  case class I32(value: Int) extends WasmImmediate
-  case class I64(value: Long) extends WasmImmediate
-  case class F32(value: Float) extends WasmImmediate
-  case class F64(value: Double) extends WasmImmediate
 
   /** A structured instruction can consume input and produce output on the operand stack according
     * to its annotated block type. It is given either as a type index that refers to a suitable
@@ -358,7 +355,7 @@ object WasmImmediate {
     * @see
     *   https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
     */
-  abstract sealed trait BlockType extends WasmImmediate
+  abstract sealed trait BlockType
   object BlockType {
     case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
     case class ValueType private (ty: Option[WasmType]) extends BlockType
@@ -368,35 +365,26 @@ object WasmImmediate {
     }
   }
 
-  case class FuncIdx(val value: WasmFunctionName) extends WasmImmediate
-  case class LabelIdx(val value: Int) extends WasmImmediate
-  case class LabelIdxVector(val value: List[LabelIdx]) extends WasmImmediate
-  case class TypeIdx(val value: WasmTypeName) extends WasmImmediate
-  case class DataIdx(val value: WasmDataName) extends WasmImmediate
-  case class TagIdx(val value: WasmTagName) extends WasmImmediate
-  case class LocalIdx(val value: WasmLocalName) extends WasmImmediate
-  case class GlobalIdx(val value: WasmGlobalName) extends WasmImmediate
-  case class HeapType(val value: WasmHeapType) extends WasmImmediate
+  case class LabelIdx(value: Int)
 
-  case class StructFieldIdx(val value: Int) extends WasmImmediate
+  case class StructFieldIdx(value: Int)
   object StructFieldIdx {
     val vtable = StructFieldIdx(0)
     val itables = StructFieldIdx(1)
     val uniqueRegularField = StructFieldIdx(2)
   }
 
-  case class CatchClauseVector(val value: List[CatchClause]) extends WasmImmediate
-
   sealed abstract class CatchClause(
       val mnemonic: String,
       val opcode: Int,
-      val tag: Option[TagIdx],
+      val tag: Option[WasmTagName],
       val label: LabelIdx
   )
 
   object CatchClause {
-    case class Catch(x: TagIdx, l: LabelIdx) extends CatchClause("catch", 0x00, Some(x), l)
-    case class CatchRef(x: TagIdx, l: LabelIdx) extends CatchClause("catch_ref", 0x01, Some(x), l)
+    case class Catch(x: WasmTagName, l: LabelIdx) extends CatchClause("catch", 0x00, Some(x), l)
+    case class CatchRef(x: WasmTagName, l: LabelIdx)
+        extends CatchClause("catch_ref", 0x01, Some(x), l)
     case class CatchAll(l: LabelIdx) extends CatchClause("catch_all", 0x02, None, l)
     case class CatchAllRef(l: LabelIdx) extends CatchClause("catch_all_ref", 0x03, None, l)
   }
