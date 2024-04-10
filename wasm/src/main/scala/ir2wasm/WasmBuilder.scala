@@ -726,7 +726,6 @@ class WasmBuilder {
         val isStatic = methodOrProp.flags.namespace.isStatic
         instrs += LOCAL_GET(dataStructLocal)
         instrs += LOCAL_GET(jsClassLocal)
-        instrs += I32_CONST(if (isStatic) 1 else 0)
 
         val receiverTyp = if (isStatic) None else Some(WasmRefType.anyref)
 
@@ -750,7 +749,10 @@ class WasmBuilder {
             instrs += ctx.refFuncWithDeclaration(closureFuncName)
 
             instrs += I32_CONST(if (restParam.isDefined) params.size else -1)
-            instrs += CALL(WasmFunctionName.installJSMethod)
+            if (isStatic)
+              instrs += CALL(WasmFunctionName.installJSStaticMethod)
+            else
+              instrs += CALL(WasmFunctionName.installJSMethod)
 
           case IRTrees.JSPropertyDef(flags, nameTree, optGetter, optSetter) =>
             WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
@@ -797,8 +799,43 @@ class WasmBuilder {
                 instrs += ctx.refFuncWithDeclaration(closureFuncName)
             }
 
-            instrs += CALL(WasmFunctionName.installJSProperty)
+            if (isStatic)
+              instrs += CALL(WasmFunctionName.installJSStaticProperty)
+            else
+              instrs += CALL(WasmFunctionName.installJSProperty)
         }
+      }
+
+      // Static fields
+      for (fieldDef <- clazz.fields if fieldDef.flags.namespace.isStatic) {
+        // Load class value
+        instrs += LOCAL_GET(jsClassLocal)
+
+        // Load name
+        fieldDef match {
+          case IRTrees.FieldDef(_, name, _, _) =>
+            throw new AssertionError(
+              s"Unexpected private static field ${name.name.nameString} "
+                + s"in JS class ${clazz.className.nameString}"
+            )
+          case IRTrees.JSFieldDef(_, nameTree, _) =>
+            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+        }
+
+        // Generate boxed representation of the zero of the field
+        WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
+
+        instrs += CALL(WasmFunctionName.installJSField)
+      }
+
+      // Class initializer
+      for (classInit <- clazz.methods.find(_.methodName.isClassInitializer)) {
+        assert(
+          clazz.jsClassCaptures.isEmpty,
+          s"Illegal class initializer in non-static class ${clazz.className.nameString}"
+        )
+        val namespace = IRTrees.MemberNamespace.StaticConstructor
+        instrs += CALL(WasmFunctionName(namespace, clazz.className, IRNames.ClassInitializerName))
       }
 
       // Final result
