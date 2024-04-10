@@ -333,7 +333,8 @@ object WasmInstr {
   case class ARRAY_SET(i: WasmTypeName) extends WasmTypeInstr("array.set", 0xFB0E, i)
   case object ARRAY_LEN extends WasmSimpleInstr("array.len", 0xFB0F)
   // ARRAY_FILL,
-  // ARRAY_COPY
+  case class ARRAY_COPY(destType: WasmTypeName, srcType: WasmTypeName)
+      extends WasmInstr("array.copy", 0xFB11)
   // ARRAY_NEW_DATA
   // array_NEW_FIXED
 

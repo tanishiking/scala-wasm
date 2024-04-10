@@ -228,8 +228,6 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // RuntimeError: dereferencing a null pointer
-    "org.scalajs.testsuite.javalib.util.Base64Test",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsTest",
     // Various run-time errors and JS exceptions
@@ -263,12 +261,7 @@ lazy val IgnoredTestNames: Set[String] = {
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>
     // throwablesAreJSErrors failed: java.lang.AssertionError: null
     "org.scalajs.testsuite.javalib.lang.ThrowableJSTest",
-    // CloneNotSupportedException
-    "org.scalajs.testsuite.javalib.lang.ThrowablesTest",
-    "org.scalajs.testsuite.javalib.math.RoundingModeTest",
-    "org.scalajs.testsuite.javalib.util.BitSetTest",
-    "org.scalajs.testsuite.javalib.util.concurrent.ConcurrentHashMapTest",
-    "org.scalajs.testsuite.javalib.util.concurrent.TimeUnitTest",
+    // keepBreakToLabelWithinFinallyBlock_Issue2689 failed: java.lang.AssertionError: expected:<2> but was:<1>
     "org.scalajs.testsuite.compiler.OptimizerTest",
     // nonUnitBoxedPrimitiveValuesAreSerializable failed: java.lang.AssertionError: Boolean
     "org.scalajs.testsuite.javalib.io.SerializableTest",

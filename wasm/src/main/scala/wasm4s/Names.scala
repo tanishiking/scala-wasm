@@ -63,7 +63,7 @@ object Names {
     }
 
     def forITable(className: IRNames.ClassName): WasmGlobalName =
-      new WasmGlobalName(s"itable.${className.nameString}")
+      new WasmGlobalName(s"itable.L${className.nameString}")
 
     def forStaticField(fieldName: IRNames.FieldName): WasmGlobalName =
       new WasmGlobalName(s"static.${fieldName.nameString}")
@@ -72,7 +72,10 @@ object Names {
       new WasmGlobalName(s"jspfield.${fieldName.nameString}")
 
     val stringLiteralCache: WasmGlobalName =
-      new WasmGlobalName(s"string_literal")
+      new WasmGlobalName("string_literal")
+
+    val arrayClassITable: WasmGlobalName =
+      new WasmGlobalName("itable.A")
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -121,6 +124,15 @@ object Names {
       new WasmFunctionName("instanceTest", clazz.nameString)
     def clone(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("clone", clazz.nameString)
+
+    def clone(arrayBaseRef: IRTypes.NonArrayTypeRef): WasmFunctionName = {
+      val simpleName = arrayBaseRef match {
+        case IRTypes.ClassRef(_)  => "O"
+        case IRTypes.PrimRef(tpe) => tpe.primRef.charCode.toString()
+      }
+      new WasmFunctionName("cloneArray", simpleName)
+    }
+
     def loadJSClass(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("loadJSClass", clazz.nameString)
     def createJSClassOf(clazz: IRNames.ClassName): WasmFunctionName =

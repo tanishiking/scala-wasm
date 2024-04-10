@@ -441,6 +441,10 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
         writeTypeIdx(buf, typeIdx)
         buf.u32(length)
 
+      case ARRAY_COPY(destType, srcType) =>
+        writeTypeIdx(buf, destType)
+        writeTypeIdx(buf, srcType)
+
       case BR_ON_CAST(labelIdx, from, to) =>
         writeBrOnCast(labelIdx, from, to)
       case BR_ON_CAST_FAIL(labelIdx, from, to) =>

@@ -104,19 +104,22 @@ class WasmBuilder {
       isMutable = false
     )
 
-    val typeRefsWithArrays: List[(WasmStructTypeName, WasmArrayType)] = List(
-      (WasmStructTypeName.BooleanArray, WasmArrayType.i8Array),
-      (WasmStructTypeName.CharArray, WasmArrayType.i16Array),
-      (WasmStructTypeName.ByteArray, WasmArrayType.i8Array),
-      (WasmStructTypeName.ShortArray, WasmArrayType.i16Array),
-      (WasmStructTypeName.IntArray, WasmArrayType.i32Array),
-      (WasmStructTypeName.LongArray, WasmArrayType.i64Array),
-      (WasmStructTypeName.FloatArray, WasmArrayType.f32Array),
-      (WasmStructTypeName.DoubleArray, WasmArrayType.f64Array),
-      (WasmStructTypeName.ObjectArray, WasmArrayType.anyArray)
-    )
+    val objectRef = IRTypes.ClassRef(IRNames.ObjectClass)
 
-    for ((structTypeName, underlyingArrayType) <- typeRefsWithArrays) {
+    val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmStructTypeName, WasmArrayType)] =
+      List(
+        (IRTypes.BooleanRef, WasmStructTypeName.BooleanArray, WasmArrayType.i8Array),
+        (IRTypes.CharRef, WasmStructTypeName.CharArray, WasmArrayType.i16Array),
+        (IRTypes.ByteRef, WasmStructTypeName.ByteArray, WasmArrayType.i8Array),
+        (IRTypes.ShortRef, WasmStructTypeName.ShortArray, WasmArrayType.i16Array),
+        (IRTypes.IntRef, WasmStructTypeName.IntArray, WasmArrayType.i32Array),
+        (IRTypes.LongRef, WasmStructTypeName.LongArray, WasmArrayType.i64Array),
+        (IRTypes.FloatRef, WasmStructTypeName.FloatArray, WasmArrayType.f32Array),
+        (IRTypes.DoubleRef, WasmStructTypeName.DoubleArray, WasmArrayType.f64Array),
+        (objectRef, WasmStructTypeName.ObjectArray, WasmArrayType.anyArray)
+      )
+
+    for ((baseRef, structTypeName, underlyingArrayType) <- typeRefsWithArrays) {
       val underlyingArrayField = WasmStructField(
         WasmFieldName.arrayField,
         WasmRefType(underlyingArrayType.name),
@@ -129,7 +132,11 @@ class WasmBuilder {
         Some(Names.WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass))
       )
       ctx.addGCType(structType)
+
+      HelperFunctions.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
     }
+
+    genArrayClassItable()
   }
 
   def transformTopLevelExport(
@@ -437,21 +444,28 @@ class WasmBuilder {
   private def genGlobalClassItable(
       clazz: LinkedClass
   )(implicit ctx: WasmContext): Unit = {
-    val info = ctx.getClassInfo(clazz.name.name)
-    val interfaces = info.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
-    if (!interfaces.isEmpty) {
-      val itablesInit = List(
-        I32_CONST(ctx.itablesLength),
-        ARRAY_NEW_DEFAULT(WasmArrayType.itables.name)
-      )
-      val globalITable = WasmGlobal(
-        WasmGlobalName.forITable(clazz.name.name),
-        WasmRefType(WasmArrayType.itables.name),
-        init = WasmExpr(itablesInit),
-        isMutable = false
-      )
-      ctx.addGlobalITable(clazz.name.name, globalITable)
+    val info = ctx.getClassInfo(clazz.className)
+    val implementsAnyInterface = info.ancestors.exists(a => ctx.getClassInfo(a).isInterface)
+    if (implementsAnyInterface) {
+      val globalName = WasmGlobalName.forITable(clazz.className)
+      ctx.addGlobalITable(clazz.className, genITableGlobal(globalName))
     }
+  }
+
+  private def genArrayClassItable()(implicit ctx: WasmContext): Unit =
+    ctx.addGlobal(genITableGlobal(WasmGlobalName.arrayClassITable))
+
+  private def genITableGlobal(name: WasmGlobalName)(implicit ctx: WasmContext): WasmGlobal = {
+    val itablesInit = List(
+      I32_CONST(ctx.itablesLength),
+      ARRAY_NEW_DEFAULT(WasmArrayType.itables.name)
+    )
+    WasmGlobal(
+      name,
+      WasmRefType(WasmArrayType.itables.name),
+      init = WasmExpr(itablesInit),
+      isMutable = false
+    )
   }
 
   private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
