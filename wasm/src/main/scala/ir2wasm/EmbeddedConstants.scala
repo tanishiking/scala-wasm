@@ -21,7 +21,9 @@ object EmbeddedConstants {
   final val JSValueTypeString = 2
   final val JSValueTypeNumber = 3
   final val JSValueTypeUndefined = 4
-  final val JSValueTypeOther = 5
+  final val JSValueTypeBigInt = 5
+  final val JSValueTypeSymbol = 6
+  final val JSValueTypeOther = 7
 
   // Values for `typeData.kind`
 

@@ -45,7 +45,11 @@ final class WebAssemblyLinkerBackend(
     factory.multiple(
       factory.instantiateClass(ClassClass, ClassCtor),
       factory.instantiateClass(CharBoxClass, CharBoxCtor),
-      factory.instantiateClass(LongBoxClass, LongBoxCtor)
+      factory.instantiateClass(LongBoxClass, LongBoxCtor),
+
+      // See genIdentityHashCode in HelperFunctions
+      factory.callMethodStatically(BoxedDoubleClass, hashCodeMethodName),
+      factory.callMethodStatically(BoxedStringClass, hashCodeMethodName)
     )
   }
 

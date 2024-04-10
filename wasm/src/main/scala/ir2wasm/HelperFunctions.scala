@@ -33,6 +33,7 @@ object HelperFunctions {
     genNewArrayOfThisClass()
     genAnyGetClass()
     genNewArrayObject()
+    genIdentityHashCode()
   }
 
   private def genStringLiteral()(implicit ctx: WasmContext): Unit = {
@@ -1379,6 +1380,137 @@ object HelperFunctions {
       instrs += LOCAL_GET(underlyingLocal)
       instrs += STRUCT_NEW(WasmStructTypeName.forArrayClass(arrayTypeRef))
     }
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** `identityHashCode`: `anyref -> i32`.
+    *
+    * This is the implementation of `IdentityHashCode`. It is also used to compute the `hashCode()`
+    * of primitive values when dispatch is required (i.e., when the receiver type is not known to be
+    * a specific primitive or hijacked class), so it must be consistent with the implementations of
+    * `hashCode()` in hijacked classes.
+    *
+    * For `String` and `Double`, we actually call the hijacked class methods, as they are a bit
+    * involved. For `Boolean` and `Void`, we hard-code a copy here.
+    */
+  def genIdentityHashCode()(implicit ctx: WasmContext): Unit = {
+    import IRTrees.MemberNamespace.Public
+    import SpecialNames.hashCodeMethodName
+    import WasmTypeName._
+    import WasmFieldIdx.typeData._
+
+    // A global exclusively used by this function
+    ctx.addGlobal(
+      WasmGlobal(
+        WasmGlobalName.lastIDHashCode,
+        WasmInt32,
+        WasmExpr(List(I32_CONST(0))),
+        isMutable = true
+      )
+    )
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.identityHashCode,
+      List("obj" -> WasmRefType.anyref),
+      List(WasmInt32)
+    )
+
+    val List(objParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val objNonNullLocal = fctx.addLocal("objNonNull", WasmRefType.any)
+    val resultLocal = fctx.addLocal("result", WasmInt32)
+
+    // If `obj` is `null`, return 0 (by spec)
+    fctx.block(WasmRefType.any) { nonNullLabel =>
+      instrs += LOCAL_GET(objParam)
+      instrs += BR_ON_NON_NULL(nonNullLabel)
+      instrs += I32_CONST(0)
+      instrs += RETURN
+    }
+    instrs += LOCAL_TEE(objNonNullLocal)
+
+    // If `obj` is one of our objects, skip all the jsValueType tests
+    instrs += REF_TEST(WasmRefType(WasmHeapType.ObjectType))
+    instrs += I32_EQZ
+    fctx.ifThen() {
+      fctx.switch() { () =>
+        instrs += LOCAL_GET(objNonNullLocal)
+        instrs += CALL(WasmFunctionName.jsValueType)
+      }(
+        List(JSValueTypeFalse) -> { () =>
+          instrs += I32_CONST(1237) // specified by jl.Boolean.hashCode()
+          instrs += RETURN
+        },
+        List(JSValueTypeTrue) -> { () =>
+          instrs += I32_CONST(1231) // specified by jl.Boolean.hashCode()
+          instrs += RETURN
+        },
+        List(JSValueTypeString) -> { () =>
+          instrs += LOCAL_GET(objNonNullLocal)
+          instrs += CALL(WasmFunctionName(Public, IRNames.BoxedStringClass, hashCodeMethodName))
+          instrs += RETURN
+        },
+        List(JSValueTypeNumber) -> { () =>
+          instrs += LOCAL_GET(objNonNullLocal)
+          instrs += CALL(WasmFunctionName.unbox(IRTypes.DoubleRef))
+          instrs += CALL(WasmFunctionName(Public, IRNames.BoxedDoubleClass, hashCodeMethodName))
+          instrs += RETURN
+        },
+        List(JSValueTypeUndefined) -> { () =>
+          instrs += I32_CONST(0) // specified by jl.Void.hashCode(), Scala.js only
+          instrs += RETURN
+        },
+        List(JSValueTypeBigInt) -> { () =>
+          instrs += LOCAL_GET(objNonNullLocal)
+          instrs += CALL(WasmFunctionName.bigintHashCode)
+          instrs += RETURN
+        },
+        List(JSValueTypeSymbol) -> { () =>
+          fctx.block() { descriptionIsNullLabel =>
+            instrs += LOCAL_GET(objNonNullLocal)
+            instrs += CALL(WasmFunctionName.symbolDescription)
+            instrs += BR_ON_NULL(descriptionIsNullLabel)
+            instrs += CALL(WasmFunctionName(Public, IRNames.BoxedStringClass, hashCodeMethodName))
+            instrs += RETURN
+          }
+          instrs += I32_CONST(0)
+          instrs += RETURN
+        }
+      ) { () =>
+        // JSValueTypeOther -- fall through to using idHashCodeMap
+        ()
+      }
+    }
+
+    // If we get here, use the idHashCodeMap
+
+    // Read the existing idHashCode, if one exists
+    instrs += GLOBAL_GET(WasmGlobalName.idHashCodeMap)
+    instrs += LOCAL_GET(objNonNullLocal)
+    instrs += CALL(WasmFunctionName.idHashCodeGet)
+    instrs += LOCAL_TEE(resultLocal)
+
+    // If it is 0, there was no recorded idHashCode yet; allocate a new one
+    instrs += I32_EQZ
+    fctx.ifThen() {
+      // Allocate a new idHashCode
+      instrs += GLOBAL_GET(WasmGlobalName.lastIDHashCode)
+      instrs += I32_CONST(1)
+      instrs += I32_ADD
+      instrs += LOCAL_TEE(resultLocal)
+      instrs += GLOBAL_SET(WasmGlobalName.lastIDHashCode)
+
+      // Store it for next time
+      instrs += GLOBAL_GET(WasmGlobalName.idHashCodeMap)
+      instrs += LOCAL_GET(objNonNullLocal)
+      instrs += LOCAL_GET(resultLocal)
+      instrs += CALL(WasmFunctionName.idHashCodeSet)
+    }
+
+    instrs += LOCAL_GET(resultLocal)
 
     fctx.buildAndAddToContext()
   }

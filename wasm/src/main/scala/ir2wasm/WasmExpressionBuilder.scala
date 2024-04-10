@@ -40,7 +40,6 @@ object WasmExpressionBuilder {
   private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
   private val BoxedStringRef = IRTypes.ClassRef(IRNames.BoxedStringClass)
   private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
-  private val hashCodeMethodName = IRNames.MethodName("hashCode", Nil, IRTypes.IntRef)
   private val equalsMethodName = IRNames.MethodName("equals", List(ObjectRef), IRTypes.BooleanRef)
   private val compareToMethodName = IRNames.MethodName("compareTo", List(ObjectRef), IRTypes.IntRef)
 
@@ -310,6 +309,12 @@ private class WasmExpressionBuilder private (
     }
   }
 
+  /** Generates the code an `Apply` call where the receiver's type is not statically known to be a
+    * primitive or hijacked class.
+    *
+    * In that case, there is always at least a vtable/itable-based dispatch. It may also contain
+    * primitive-based dispatch if the receiver's type is an ancestor of a hijacked class.
+    */
   private def genApplyNonPrim(t: IRTrees.Apply): IRTypes.Type = {
     implicit val pos: Position = t.pos
 
@@ -378,7 +383,11 @@ private class WasmExpressionBuilder private (
       genArgs(t.args, t.method.name)
       genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
     } else {
-      /* Hijacked class dispatch codegen
+      /* Here the receiver's type is an ancestor of a hijacked class (or `any`,
+       * which is treated as `jl.Object`).
+       *
+       * We must emit additional dispatch for the possible primitive values.
+       *
        * The overall structure of the generated code is as follows:
        *
        * block resultType $done
@@ -443,7 +452,17 @@ private class WasmExpressionBuilder private (
           argsLocals
         } // end block labelNotOurObject
 
-        // Now we have a value that is not one of our objects; the (ref any) is still on the stack
+        /* Now we have a value that is not one of our objects, so it must be
+         * a JavaScript value whose representative class extends/implements the
+         * receiver class. It may be a primitive instance of a hijacked class, or
+         * any other value (whose representative class is therefore `jl.Object`).
+         *
+         * It is also *not* `char` or `long`, since those would reach
+         * `genApplyNonPrim` in their boxed form, and therefore they are
+         * "ourObject".
+         *
+         * The (ref any) is still on the stack.
+         */
 
         if (t.method.name == toStringMethodName) {
           // By spec, toString() is special
@@ -499,15 +518,16 @@ private class WasmExpressionBuilder private (
           }
         } else {
           /* It must be a method of j.l.Object and it can be any value.
-           * hashCode() and equals() are overridden in all hijacked classes; we
-           * use dedicated JavaScript helpers for those.
+           * hashCode() and equals() are overridden in all hijacked classes.
+           * We use `identityHashCode` for `hashCode` and `Object.is` for `equals`,
+           * as they coincide with the respective specifications (on purpose).
            * The other methods are never overridden and can be statically
            * resolved to j.l.Object.
            */
           pushArgs(argsLocals)
           t.method.name match {
-            case `hashCodeMethodName` =>
-              instrs += CALL(WasmFunctionName.jsValueHashCode)
+            case SpecialNames.hashCodeMethodName =>
+              instrs += CALL(WasmFunctionName.identityHashCode)
             case `equalsMethodName` =>
               instrs += CALL(WasmFunctionName.is)
             case _ =>
@@ -1759,13 +1779,9 @@ private class WasmExpressionBuilder private (
   }
 
   private def genIdentityHashCode(tree: IRTrees.IdentityHashCode): IRTypes.Type = {
-    /* TODO We should allocate ID hash codes and store them. We will probably
-     * have to store them as an additional field in all objects, together with
-     * the vtable and itable pointers.
-     */
+    // TODO Avoid dispatch when we know a more precise type than any
     genTree(tree.expr, IRTypes.AnyType)
-    instrs += DROP
-    instrs += I32_CONST(42)
+    instrs += CALL(WasmFunctionName.identityHashCode)
 
     IRTypes.IntType
   }

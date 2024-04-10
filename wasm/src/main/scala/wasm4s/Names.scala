@@ -76,6 +76,12 @@ object Names {
 
     val arrayClassITable: WasmGlobalName =
       new WasmGlobalName("itable.A")
+
+    val lastIDHashCode: WasmGlobalName =
+      new WasmGlobalName("lastIDHashCode")
+
+    val idHashCodeMap: WasmGlobalName =
+      new WasmGlobalName("idHashCodeMap")
   }
 
   // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
@@ -181,7 +187,10 @@ object Names {
     val isString = helper("isString")
 
     val jsValueType = helper("jsValueType")
-    val jsValueHashCode = helper("jsValueHashCode")
+    val bigintHashCode = helper("bigintHashCode")
+    val symbolDescription = helper("symbolDescription")
+    val idHashCodeGet = helper("idHashCodeGet")
+    val idHashCodeSet = helper("idHashCodeSet")
 
     val jsGlobalRefGet = helper("jsGlobalRefGet")
     val jsGlobalRefSet = helper("jsGlobalRefSet")
@@ -268,6 +277,7 @@ object Names {
     val newArrayOfThisClass = helper("newArrayOfThisClass")
     val anyGetClass = helper("anyGetClass")
     val newArrayObject = helper("newArrayObject")
+    val identityHashCode = helper("identityHashCode")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
