@@ -8,7 +8,6 @@ import org.scalajs.ir.{Trees => IRTrees}
 
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmImmediate.{BlockType, LabelIdx, LocalIdx}
 import wasm.wasm4s.WasmInstr._
 
 import wasm.ir2wasm.TypeTransformer
@@ -40,27 +39,27 @@ class WasmFunctionContext private (
   def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
-  def paramIndices: List[LocalIdx] = _params.map(p => LocalIdx(p.name))
+  def paramIndices: List[WasmLocalName] = _params.map(_.name)
 
   private val registeredLabels =
-    mutable.AnyRefMap.empty[IRNames.LabelName, (LabelIdx, IRTypes.Type)]
+    mutable.AnyRefMap.empty[IRNames.LabelName, (WasmLabelName, IRTypes.Type)]
 
   /** The instructions buffer; publicly mutable on purpose. */
   val instrs: mutable.ListBuffer[WasmInstr] = mutable.ListBuffer.empty
 
-  def genLabel(): LabelIdx = {
-    val label = LabelIdx(labelIdx)
+  def genLabel(): WasmLabelName = {
+    val label = WasmLabelName.synthetic(labelIdx)
     labelIdx += 1
     label
   }
 
-  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): LabelIdx = {
+  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): WasmLabelName = {
     val label = genLabel()
     registeredLabels(irLabelName) = (label, expectedType)
     label
   }
 
-  def getLabelFor(irLabelName: IRNames.LabelName): (LabelIdx, IRTypes.Type) = {
+  def getLabelFor(irLabelName: IRNames.LabelName): (WasmLabelName, IRTypes.Type) = {
     registeredLabels.getOrElse(
       irLabelName, {
         throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
@@ -68,19 +67,19 @@ class WasmFunctionContext private (
     )
   }
 
-  private def addLocal(name: WasmLocalName, typ: WasmType): LocalIdx = {
+  private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {
     val local = WasmLocal(name, typ, isParameter = false)
     locals.define(local)
-    LocalIdx(name)
+    name
   }
 
-  def addLocal(name: String, typ: WasmType): LocalIdx =
+  def addLocal(name: String, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName(name), typ)
 
-  private def addLocal(name: IRNames.LocalName, typ: WasmType): LocalIdx =
+  private def addLocal(name: IRNames.LocalName, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName.fromIR(name), typ)
 
-  def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: LocalIdx => A): A = {
+  def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: WasmLocalName => A): A = {
     val savedEnv = currentEnv
     val local = addLocal(name, typ)
     currentEnv = currentEnv.updated(name, VarStorage.Local(local))
@@ -96,7 +95,7 @@ class WasmFunctionContext private (
     )
   }
 
-  def lookupLocalAssertLocalStorage(name: IRNames.LocalName): LocalIdx = {
+  def lookupLocalAssertLocalStorage(name: IRNames.LocalName): WasmLocalName = {
     (lookupLocal(name): @unchecked) match {
       case VarStorage.Local(local) => local
     }
@@ -108,7 +107,7 @@ class WasmFunctionContext private (
     name
   }
 
-  def addSyntheticLocal(typ: WasmType): LocalIdx =
+  def addSyntheticLocal(typ: WasmType): WasmLocalName =
     addLocal(genSyntheticLocalName(), typ)
 
   def genInnerFuncName(): WasmFunctionName = {
@@ -142,6 +141,12 @@ class WasmFunctionContext private (
   def ifThenElse(resultType: WasmType)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType(resultType))(thenp)(elsep)
 
+  def ifThenElse(sig: WasmFunctionSignature)(thenp: => Unit)(elsep: => Unit): Unit =
+    ifThenElse(sigToBlockType(sig))(thenp)(elsep)
+
+  def ifThenElse(resultTypes: List[WasmType])(thenp: => Unit)(elsep: => Unit): Unit =
+    ifThenElse(WasmFunctionSignature(Nil, resultTypes))(thenp)(elsep)
+
   def ifThenElse()(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType())(thenp)(elsep)
 
@@ -154,10 +159,13 @@ class WasmFunctionContext private (
   def ifThen(sig: WasmFunctionSignature)(thenp: => Unit): Unit =
     ifThen(sigToBlockType(sig))(thenp)
 
+  def ifThen(resultTypes: List[WasmType])(thenp: => Unit): Unit =
+    ifThen(WasmFunctionSignature(Nil, resultTypes))(thenp)
+
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
 
-  def block[A](blockType: BlockType)(body: LabelIdx => A): A = {
+  def block[A](blockType: BlockType)(body: WasmLabelName => A): A = {
     val label = genLabel()
     instrs += BLOCK(blockType, Some(label))
     val result = body(label)
@@ -165,19 +173,19 @@ class WasmFunctionContext private (
     result
   }
 
-  def block[A](resultType: WasmType)(body: LabelIdx => A): A =
+  def block[A](resultType: WasmType)(body: WasmLabelName => A): A =
     block(BlockType.ValueType(resultType))(body)
 
-  def block[A]()(body: LabelIdx => A): A =
+  def block[A]()(body: WasmLabelName => A): A =
     block(BlockType.ValueType())(body)
 
-  def block[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
+  def block[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
     block(sigToBlockType(sig))(body)
 
-  def block[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+  def block[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
     block(WasmFunctionSignature(Nil, resultTypes))(body)
 
-  def loop[A](blockType: BlockType)(body: LabelIdx => A): A = {
+  def loop[A](blockType: BlockType)(body: WasmLabelName => A): A = {
     val label = genLabel()
     instrs += LOOP(blockType, Some(label))
     val result = body(label)
@@ -185,16 +193,16 @@ class WasmFunctionContext private (
     result
   }
 
-  def loop[A](resultType: WasmType)(body: LabelIdx => A): A =
+  def loop[A](resultType: WasmType)(body: WasmLabelName => A): A =
     loop(BlockType.ValueType(resultType))(body)
 
-  def loop[A]()(body: LabelIdx => A): A =
+  def loop[A]()(body: WasmLabelName => A): A =
     loop(BlockType.ValueType())(body)
 
-  def loop[A](sig: WasmFunctionSignature)(body: LabelIdx => A): A =
+  def loop[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
     loop(sigToBlockType(sig))(body)
 
-  def loop[A](resultTypes: List[WasmType])(body: LabelIdx => A): A =
+  def loop[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
     loop(WasmFunctionSignature(Nil, resultTypes))(body)
 
   def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
@@ -207,27 +215,23 @@ class WasmFunctionContext private (
     }
   }
 
-  def tryTable[A](blockType: BlockType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A = {
-    instrs += TRY_TABLE(blockType, WasmImmediate.CatchClauseVector(clauses))
+  def tryTable[A](blockType: BlockType)(clauses: List[CatchClause])(body: => A): A = {
+    instrs += TRY_TABLE(blockType, clauses)
     val result = body
     instrs += END
     result
   }
 
-  def tryTable[A](resultType: WasmType)(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A](resultType: WasmType)(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType(resultType))(clauses)(body)
 
-  def tryTable[A]()(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A]()(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType())(clauses)(body)
 
-  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[WasmImmediate.CatchClause])(
-      body: => A
-  ): A =
+  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[CatchClause])(body: => A): A =
     tryTable(sigToBlockType(sig))(clauses)(body)
 
-  def tryTable[A](
-      resultTypes: List[WasmType]
-  )(clauses: List[WasmImmediate.CatchClause])(body: => A): A =
+  def tryTable[A](resultTypes: List[WasmType])(clauses: List[CatchClause])(body: => A): A =
     tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
 
   /** Builds a `switch` over a scrutinee using a `br_table` instruction.
@@ -264,7 +268,7 @@ class WasmFunctionContext private (
     val numCases = clauses.map(_._1.max).max + 1
     if (numCases >= 128)
       throw new IllegalArgumentException(s"Too many cases for switch: $numCases")
-    val dispatchVector = new Array[LabelIdx](numCases)
+    val dispatchVector = new Array[WasmLabelName](numCases)
     for {
       (clause, clauseLabel) <- clauses.zip(clauseLabels)
       caseValue <- clause._1
@@ -305,7 +309,7 @@ class WasmFunctionContext private (
 
         // Load the scrutinee and dispatch
         scrutinee()
-        instrs += BR_TABLE(WasmImmediate.LabelIdxVector(dispatchVector.toList), defaultLabel)
+        instrs += BR_TABLE(dispatchVector.toList, defaultLabel)
 
         // Close all the case labels and emit their respective bodies
         for (clause <- clauses) {
@@ -413,12 +417,12 @@ object WasmFunctionContext {
   sealed abstract class VarStorage
 
   object VarStorage {
-    final case class Local(idx: LocalIdx) extends VarStorage
+    final case class Local(idx: WasmLocalName) extends VarStorage
 
     final case class StructField(
-        structIdx: LocalIdx,
+        structIdx: WasmLocalName,
         structTypeName: WasmTypeName,
-        fieldIdx: WasmImmediate.StructFieldIdx
+        fieldIdx: WasmFieldIdx
     ) extends VarStorage
   }
 
@@ -446,15 +450,14 @@ object WasmFunctionContext {
           val dataStructType = ctx.getClosureDataStructType(captureLikes.map(_._2))
           val local = WasmLocal(
             WasmLocalName(captureParamName),
-            Types.WasmRefType(Types.WasmHeapType.Type(dataStructType.name)),
+            Types.WasmRefType(dataStructType.name),
             isParameter = true
           )
-          val localIdx = LocalIdx(local.name)
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
-              localIdx,
+              local.name,
               dataStructType.name,
-              WasmImmediate.StructFieldIdx(idx)
+              WasmFieldIdx(idx)
             )
             captureLike._1 -> storage
           }.toMap
@@ -478,17 +481,17 @@ object WasmFunctionContext {
 
     val newTarget =
       if (!hasNewTarget) None
-      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmAnyRef, isParameter = true))
-    val newTargetStorage = newTarget.map(local => VarStorage.Local(LocalIdx(local.name)))
+      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmRefType.anyref, isParameter = true))
+    val newTargetStorage = newTarget.map(local => VarStorage.Local(local.name))
 
     val receiver = receiverTyp.map { typ =>
       WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
     }
-    val receiverStorage = receiver.map(local => VarStorage.Local(LocalIdx(local.name)))
+    val receiverStorage = receiver.map(local => VarStorage.Local(local.name))
 
     val normalParams = paramDefsToWasmParams(paramDefs)
     val normalParamsEnv = paramDefs.zip(normalParams).map { case (paramDef, param) =>
-      paramDef.name.name -> VarStorage.Local(LocalIdx(param.name))
+      paramDef.name.name -> VarStorage.Local(param.name)
     }
 
     val allParams =

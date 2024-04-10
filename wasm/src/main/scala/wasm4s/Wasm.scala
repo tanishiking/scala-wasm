@@ -108,7 +108,7 @@ object WasmStructType {
     List(
       WasmStructField(
         WasmFieldName.typeData.nameData,
-        WasmRefNullType(WasmHeapType.Type(WasmArrayTypeName.i16Array)),
+        WasmRefType.nullable(WasmArrayTypeName.i16Array),
         isMutable = false
       ),
       WasmStructField(
@@ -123,32 +123,32 @@ object WasmStructType {
       ),
       WasmStructField(
         WasmFieldName.typeData.strictAncestors,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmArrayTypeName.typeDataArray)),
+        WasmRefType.nullable(WasmTypeName.WasmArrayTypeName.typeDataArray),
         isMutable = false
       ),
       WasmStructField(
         WasmFieldName.typeData.componentType,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.typeData)),
+        WasmRefType.nullable(WasmTypeName.WasmStructTypeName.typeData),
         isMutable = false
       ),
       WasmStructField(
         WasmFieldName.typeData.name,
-        WasmAnyRef,
+        WasmRefType.anyref,
         isMutable = true
       ),
       WasmStructField(
         WasmFieldName.typeData.classOfValue,
-        WasmRefNullType(WasmHeapType.ClassType),
+        WasmRefType.nullable(WasmHeapType.ClassType),
         isMutable = true
       ),
       WasmStructField(
         WasmFieldName.typeData.arrayOf,
-        WasmRefNullType(WasmHeapType.Type(WasmTypeName.WasmStructTypeName.ObjectVTable)),
+        WasmRefType.nullable(WasmTypeName.WasmStructTypeName.ObjectVTable),
         isMutable = true
       ),
       WasmStructField(
         WasmFieldName.typeData.cloneFunction,
-        WasmRefNullType(WasmHeapType.Type(ctx.cloneFunctionTypeName)),
+        WasmRefType.nullable(ctx.cloneFunctionTypeName),
         isMutable = false
       )
     ),
@@ -170,7 +170,7 @@ object WasmArrayType {
     WasmArrayTypeName.typeDataArray,
     WasmStructField(
       WasmFieldName.arrayItem,
-      WasmRefType(WasmHeapType.Type(WasmStructTypeName.typeData)),
+      WasmRefType(WasmStructTypeName.typeData),
       isMutable = false
     )
   )
@@ -180,7 +180,7 @@ object WasmArrayType {
     WasmArrayTypeName.itables,
     WasmStructField(
       WasmFieldName.itable,
-      WasmRefNullType(WasmHeapType.Simple.Struct),
+      WasmRefType.nullable(WasmHeapType.Struct),
       isMutable = true
     )
   )
@@ -224,7 +224,7 @@ object WasmArrayType {
   /** array anyref */
   val anyArray = WasmArrayType(
     WasmArrayTypeName.anyArray,
-    WasmStructField(WasmFieldName.arrayItem, WasmAnyRef, true)
+    WasmStructField(WasmFieldName.arrayItem, WasmRefType.anyref, true)
   )
 }
 
@@ -236,7 +236,7 @@ case class WasmStructField(
 object WasmStructField {
   val itables = WasmStructField(
     WasmFieldName.itables,
-    WasmRefNullType(WasmHeapType.Type(WasmArrayType.itables.name)),
+    WasmRefType.nullable(WasmArrayType.itables.name),
     isMutable = false
   )
 }

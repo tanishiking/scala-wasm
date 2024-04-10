@@ -28,7 +28,13 @@ object TypeTransformer {
     WasmFunctionType(typeName, sig)
   }
 
-  /** This transformation should be used only for the result types of functions.
+  /** This transformation should be used only for the result types of functions or blocks.
+    *
+    * `nothing` translates to an empty result type list, because Wasm does not have a bottom type
+    * (at least not one that can expressed at the user level). A block or function call that returns
+    * `nothing` should typically be followed by an extra `unreachable` statement to recover a
+    * stack-polymorphic context.
+    *
     * @see
     *   https://webassembly.github.io/spec/core/syntax/types.html#result-types
     */
@@ -36,18 +42,23 @@ object TypeTransformer {
       t: IRTypes.Type
   )(implicit ctx: ReadOnlyWasmContext): List[Types.WasmType] =
     t match {
-      case IRTypes.NoType => Nil
-      case _              => List(transformType(t))
+      case IRTypes.NoType      => Nil
+      case IRTypes.NothingType => Nil
+      case _                   => List(transformType(t))
     }
+
+  /** Transforms a value type to a unique Wasm type.
+    *
+    * This method cannot be used for `void` and `nothing`, since they have no corresponding Wasm
+    * value type.
+    */
   def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
     t match {
-      case IRTypes.AnyType => Types.WasmAnyRef
+      case IRTypes.AnyType => Types.WasmRefType.anyref
 
       case tpe: IRTypes.ArrayType =>
-        Types.WasmRefNullType(
-          Types.WasmHeapType.Type(
-            Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
-          )
+        Types.WasmRefType.nullable(
+          Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
         )
       case IRTypes.ClassType(className) => transformClassByName(className)
       case IRTypes.RecordType(fields)   => ???
@@ -63,12 +74,12 @@ object TypeTransformer {
       case _ =>
         val info = ctx.getClassInfo(className)
         if (info.isAncestorOfHijackedClass)
-          Types.WasmAnyRef
+          Types.WasmRefType.anyref
         else if (info.isInterface)
-          Types.WasmRefNullType(Types.WasmHeapType.ObjectType)
+          Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
         else
-          Types.WasmRefNullType(
-            Types.WasmHeapType.Type(Names.WasmTypeName.WasmStructTypeName.forClass(className))
+          Types.WasmRefType.nullable(
+            Names.WasmTypeName.WasmStructTypeName.forClass(className)
           )
     }
   }
@@ -85,9 +96,9 @@ object TypeTransformer {
       case IRTypes.LongType    => Types.WasmInt64
       case IRTypes.FloatType   => Types.WasmFloat32
       case IRTypes.DoubleType  => Types.WasmFloat64
-      // ???
-      case IRTypes.NothingType => Types.WasmRefNullrefType
-      case IRTypes.NullType    => Types.WasmRefNullrefType
-      case IRTypes.NoType      => Types.WasmNoType
+      case IRTypes.NullType    => Types.WasmRefType.nullref
+
+      case IRTypes.NoType | IRTypes.NothingType =>
+        throw new IllegalArgumentException(s"${t.show()} does not have a corresponding Wasm type")
     }
 }
