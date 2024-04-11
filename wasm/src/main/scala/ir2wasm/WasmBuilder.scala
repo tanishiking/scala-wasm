@@ -40,7 +40,8 @@ class WasmBuilder {
     )
 
     for ((primRef, kind) <- primRefsWithTypeData) {
-      val typeDataFieldValues = genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, Nil)
+      val typeDataFieldValues =
+        genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, None, Nil)
       val typeDataGlobal =
         genTypeDataGlobal(primRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
@@ -179,18 +180,79 @@ class WasmBuilder {
         }
     }
 
+    val isJSClassInstanceFuncOpt = genIsJSClassInstanceFunction(clazz)
+
     genTypeDataFieldValues(
       kind,
       classInfo.specialInstanceTypes,
       IRTypes.ClassRef(clazz.className),
+      isJSClassInstanceFuncOpt,
       vtableElems
     )
+  }
+
+  private def genIsJSClassInstanceFunction(clazz: LinkedClass)(implicit
+      ctx: WasmContext
+  ): Option[WasmFunctionName] = {
+    import org.scalajs.ir.OriginalName.NoOriginalName
+
+    implicit val noPos: Position = Position.NoPosition
+
+    def build(loadJSClass: (WasmFunctionContext) => Unit): WasmFunctionName = {
+      implicit val fctx = WasmFunctionContext(
+        WasmFunctionName.isJSClassInstance(clazz.className),
+        List("x" -> WasmRefType.anyref),
+        List(WasmInt32)
+      )
+
+      val List(xParam) = fctx.paramIndices
+
+      import fctx.instrs
+
+      if (clazz.kind == ClassKind.JSClass && !clazz.hasInstances) {
+        /* We need to constant-fold the instance test, to avoid trying to
+         * call $loadJSClass.className, since it will not exist at all.
+         */
+        fctx.instrs += I32_CONST(0) // false
+      } else {
+        instrs += LOCAL_GET(xParam)
+        loadJSClass(fctx)
+        instrs += CALL(WasmFunctionName.jsBinaryOps(IRTrees.JSBinaryOp.instanceof))
+        instrs += CALL(WasmFunctionName.unbox(IRTypes.BooleanRef))
+      }
+
+      val func = fctx.buildAndAddToContext()
+      func.name
+    }
+
+    clazz.kind match {
+      case ClassKind.NativeJSClass =>
+        clazz.jsNativeLoadSpec.map { jsNativeLoadSpec =>
+          build { fctx =>
+            WasmExpressionBuilder.genLoadJSNativeLoadSpec(fctx, jsNativeLoadSpec)
+          }
+        }
+
+      case ClassKind.JSClass =>
+        if (clazz.jsClassCaptures.isEmpty) {
+          val funcName = build { fctx =>
+            fctx.instrs += CALL(WasmFunctionName.loadJSClass(clazz.className))
+          }
+          Some(funcName)
+        } else {
+          None
+        }
+
+      case _ =>
+        None
+    }
   }
 
   private def genTypeDataFieldValues(
       kind: Int,
       specialInstanceTypes: Int,
       typeRef: IRTypes.NonArrayTypeRef,
+      isJSClassInstanceFuncOpt: Option[WasmFunctionName],
       vtableElems: List[WasmFunctionInfo]
   )(implicit
       ctx: WasmContext
@@ -236,8 +298,7 @@ class WasmBuilder {
     }
 
     val cloneFunction = {
-      val nullref =
-        REF_NULL(WasmHeapType(ctx.cloneFunctionTypeName))
+      val nullref = REF_NULL(WasmHeapType.NoFunc)
       typeRef match {
         case IRTypes.ClassRef(className) =>
           val classInfo = ctx.getClassInfo(className)
@@ -248,6 +309,11 @@ class WasmBuilder {
           else nullref
         case _ => nullref
       }
+    }
+
+    val isJSClassInstance = isJSClassInstanceFuncOpt match {
+      case None           => REF_NULL(WasmHeapType.NoFunc)
+      case Some(funcName) => REF_FUNC(funcName)
     }
 
     val reflectiveProxies: List[WasmInstr] = {
@@ -282,7 +348,9 @@ class WasmBuilder {
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
         REF_NULL(WasmHeapType(WasmTypeName.WasmStructTypeName.ObjectVTable)),
         // clonefFunction - will be invoked from `clone()` method invokaion on the class
-        cloneFunction
+        cloneFunction,
+        // isJSClassInstance - invoked from the `isInstance()` helper for JS types
+        isJSClassInstance
       ) :::
       // reflective proxies - used to reflective call on the class at runtime.
       // Generated instructions create an array of reflective proxy structs, where each struct

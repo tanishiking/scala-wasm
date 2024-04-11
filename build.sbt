@@ -230,21 +230,20 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.compiler.WasPublicBeforeTyperTestScala2",
     // Various run-time errors and JS exceptions
     "org.scalajs.testsuite.compiler.InteroperabilityTest",
+    "org.scalajs.testsuite.compiler.ReflectionTest",
     "org.scalajs.testsuite.compiler.RegressionJSTest",
     "org.scalajs.testsuite.jsinterop.FunctionTest",
     "org.scalajs.testsuite.jsinterop.MiscInteropTest",
     "org.scalajs.testsuite.jsinterop.NonNativeJSTypeTest",
     "org.scalajs.testsuite.jsinterop.SpecialTest",
     "org.scalajs.testsuite.jsinterop.SymbolTest",
-    // RuntimeError: unreachable (in the `isInstance` helper)
-    "org.scalajs.testsuite.compiler.ReflectionTest",
-    "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
-    "org.scalajs.testsuite.jsinterop.ModulesTest",
     // TypeError: WebAssembly objects are opaque
     "org.scalajs.testsuite.javalib.lang.SystemJSTest",
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>
     // throwablesAreJSErrors failed: java.lang.AssertionError: null
     "org.scalajs.testsuite.javalib.lang.ThrowableJSTest",
+    // jsError/jsObject failed: AssertionError because Wasm objects are not instanceof Error/Object
+    "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     // keepBreakToLabelWithinFinallyBlock_Issue2689 failed: java.lang.AssertionError: expected:<2> but was:<1>
     "org.scalajs.testsuite.compiler.OptimizerTest",
     // No support for stack traces
