@@ -128,17 +128,29 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
   protected val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
   protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
+  protected val reflectiveProxies = LinkedHashMap.empty[String, Int]
 
   protected var stringPool = new mutable.ArrayBuffer[Byte]()
   protected var nextConstantStringIndex: Int = 0
   private var nextConstatnStringOffset: Int = 0
   private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
+  private var nextReflectiveProxyIdx: Int = 0
 
   def addFunction(fun: WasmFunction): Unit
   protected def addGlobal(g: WasmGlobal): Unit
   def getImportedModuleGlobal(moduleName: String): WasmGlobalName
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
+
+  /** Retrieves a unique identifier for a reflective proxy with the given name */
+  def getReflectiveProxyId(name: String): Int =
+    reflectiveProxies.getOrElseUpdate(
+      name, {
+        val idx = nextReflectiveProxyIdx
+        nextReflectiveProxyIdx += 1
+        idx
+      }
+    )
 
   val cloneFunctionTypeName =
     addFunctionType(
@@ -347,6 +359,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   addGCType(WasmStructType.typeData(this))
+  addGCType(WasmStructType.reflectiveProxy)
 
   addHelperImport(WasmFunctionName.is, List(anyref, anyref), List(WasmInt32))
 
@@ -708,6 +721,7 @@ object WasmContext {
       val kind: ClassKind,
       val jsClassCaptures: Option[List[IRTrees.ParamDef]],
       private var _methods: List[WasmFunctionInfo],
+      val reflectiveProxies: List[WasmFunctionInfo],
       val allFieldDefs: List[IRTrees.FieldDef],
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
@@ -738,7 +752,13 @@ object WasmContext {
         val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, name, methodName)
         val argTypes = methodName.paramTypeRefs.map(ctx.inferTypeFromTypeRef(_))
         val resultType = ctx.inferTypeFromTypeRef(methodName.resultTypeRef)
-        _methods = _methods :+ WasmFunctionInfo(wasmName, argTypes, resultType, isAbstract = true)
+        _methods = _methods :+ WasmFunctionInfo(
+          wasmName,
+          argTypes,
+          resultType,
+          isAbstract = true,
+          isReflectiveProxy = methodName.isReflectiveProxy
+        )
       }
     }
 
@@ -790,7 +810,8 @@ object WasmContext {
       argTypes: List[IRTypes.Type],
       resultType: IRTypes.Type,
       // flags: IRTrees.MemberFlags,
-      isAbstract: Boolean
+      isAbstract: Boolean,
+      isReflectiveProxy: Boolean
   ) {
     def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmFunctionType =
       TypeTransformer.transformFunctionType(this)

@@ -150,6 +150,11 @@ object WasmStructType {
         WasmFieldName.typeData.cloneFunction,
         WasmRefType.nullable(ctx.cloneFunctionTypeName),
         isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.reflectiveProxies,
+        WasmRefType(WasmHeapType(WasmArrayTypeName.reflectiveProxies)),
+        isMutable = false
       )
     ),
     None
@@ -157,6 +162,23 @@ object WasmStructType {
 
   // The number of fields of typeData, after which we find the vtable entries
   def typeDataFieldCount(implicit ctx: ReadOnlyWasmContext) = typeData.fields.size
+
+  val reflectiveProxy: WasmStructType = WasmStructType(
+    WasmStructTypeName.reflectiveProxy,
+    List(
+      WasmStructField(
+        WasmFieldName.reflectiveProxy.func_name,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.reflectiveProxy.func_ref,
+        WasmRefType(WasmHeapType.Func),
+        isMutable = false
+      )
+    ),
+    None
+  )
 }
 
 case class WasmArrayType(
@@ -182,6 +204,15 @@ object WasmArrayType {
       WasmFieldName.itable,
       WasmRefType.nullable(WasmHeapType.Struct),
       isMutable = true
+    )
+  )
+
+  val reflectiveProxies = WasmArrayType(
+    WasmArrayTypeName.reflectiveProxies,
+    WasmStructField(
+      WasmFieldName.reflectiveProxyField,
+      WasmRefType(WasmStructTypeName.reflectiveProxy),
+      isMutable = false
     )
   )
 
@@ -295,6 +326,7 @@ class WasmModule(
   locally {
     addArrayType(WasmArrayType.typeDataArray)
     addArrayType(WasmArrayType.itables)
+    addArrayType(WasmArrayType.reflectiveProxies)
 
     addArrayType(WasmArrayType.i8Array)
     addArrayType(WasmArrayType.i16Array)

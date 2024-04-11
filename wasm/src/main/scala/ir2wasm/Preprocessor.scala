@@ -54,6 +54,15 @@ object Preprocessor {
         Nil
       }
     }
+    val reflectiveProxies = {
+      if (kind.isClass || kind == ClassKind.HijackedClass) {
+        clazz.methods
+          .filter(_.name.name.isReflectiveProxy)
+          .map(method => makeWasmFunctionInfo(clazz, method))
+      } else {
+        Nil
+      }
+    }
 
     /* Should we emit a vtable/typeData global for this class?
      *
@@ -79,6 +88,7 @@ object Preprocessor {
         kind,
         clazz.jsClassCaptures,
         classMethodInfos,
+        reflectiveProxies,
         allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
@@ -106,7 +116,8 @@ object Preprocessor {
       Names.WasmFunctionName(method.flags.namespace, clazz.name.name, method.name.name),
       method.args.map(_.ptpe),
       method.resultType,
-      isAbstract = method.body.isEmpty
+      isAbstract = method.body.isEmpty,
+      isReflectiveProxy = method.name.name.isReflectiveProxy
     )
   }
 

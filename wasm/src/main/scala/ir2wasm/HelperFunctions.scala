@@ -34,6 +34,7 @@ object HelperFunctions {
     genAnyGetClass()
     genNewArrayObject()
     genIdentityHashCode()
+    genSearchReflectiveProxy()
   }
 
   private def genStringLiteral()(implicit ctx: WasmContext): Unit = {
@@ -533,6 +534,7 @@ object HelperFunctions {
             WasmFunctionName.clone(IRTypes.ClassRef(IRNames.ObjectClass))
           )
         }
+        instrs += ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, 0) // TODO
 
         instrs ++= ctx
           .calculateGlobalVTable(IRNames.ObjectClass)
@@ -1511,6 +1513,89 @@ object HelperFunctions {
     }
 
     instrs += LOCAL_GET(resultLocal)
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** Search for a reflective proxy function with the given `methodId` in the `reflectiveProxies`
+    * field in `typeData` and returns the corresponding function reference.
+    *
+    * `searchReflectiveProxy`: [typeData, i32] -> [(ref func)]
+    */
+  def genSearchReflectiveProxy()(implicit ctx: WasmContext): Unit = {
+    import WasmTypeName._
+    import WasmFieldIdx.typeData._
+
+    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+
+    val fctx = WasmFunctionContext(
+      WasmFunctionName.searchReflectiveProxy,
+      List(
+        "typeData" -> typeDataType,
+        "methodId" -> WasmInt32
+      ),
+      List(WasmRefType(WasmHeapType.Func))
+    )
+
+    val List(typeDataParam, methodIdParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val reflectiveProxies =
+      fctx.addLocal("reflectiveProxies", Types.WasmRefType(WasmArrayTypeName.reflectiveProxies))
+    val size = fctx.addLocal("size", Types.WasmInt32)
+    val i = fctx.addLocal("i", Types.WasmInt32)
+
+    instrs += LOCAL_GET(typeDataParam)
+    instrs += STRUCT_GET(
+      WasmTypeName.WasmStructTypeName.typeData,
+      WasmFieldIdx.typeData.reflectiveProxiesIdx
+    )
+    instrs += LOCAL_TEE(reflectiveProxies)
+    instrs += ARRAY_LEN
+    instrs += LOCAL_SET(size)
+
+    instrs += I32_CONST(0)
+    instrs += LOCAL_SET(i)
+
+    fctx.whileLoop() {
+      instrs += LOCAL_GET(i)
+      instrs += LOCAL_GET(size)
+      instrs += I32_NE
+    } {
+      instrs += LOCAL_GET(reflectiveProxies)
+      instrs += LOCAL_GET(i)
+      instrs += ARRAY_GET(WasmArrayTypeName.reflectiveProxies)
+
+      instrs += STRUCT_GET(
+        WasmStructTypeName.reflectiveProxy,
+        WasmFieldIdx.reflectiveProxy.nameIdx
+      )
+      instrs += LOCAL_GET(methodIdParam)
+      instrs += I32_EQ
+
+      fctx.ifThen() {
+        instrs += LOCAL_GET(reflectiveProxies)
+        instrs += LOCAL_GET(i)
+        instrs += ARRAY_GET(WasmArrayTypeName.reflectiveProxies)
+
+        // get function reference
+        instrs += STRUCT_GET(
+          WasmStructTypeName.reflectiveProxy,
+          WasmFieldIdx.reflectiveProxy.funcIdx
+        )
+        instrs += RETURN
+      }
+
+      // i += 1
+      instrs += LOCAL_GET(i)
+      instrs += I32_CONST(1)
+      instrs += I32_ADD
+      instrs += LOCAL_SET(i)
+    }
+    // method not found, trap
+    // TODO? maybe we should throw an exception
+    instrs += UNREACHABLE
 
     fctx.buildAndAddToContext()
   }
