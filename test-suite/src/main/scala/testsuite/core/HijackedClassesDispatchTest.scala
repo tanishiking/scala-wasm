@@ -21,7 +21,8 @@ object HijackedClassesDispatchTest {
         testHashCode(54321, 54321) &&
         testHashCode("foo", 101574) &&
         testHashCode(obj, 123) &&
-        testHashCode(obj2, 42) &&
+        testHashCode(obj2, 1) && // first object for which we ask idHashCode
+        testHashCode(obj2, 1) && // it is also 1 the second time we ask
         testHashCode('A', 65) &&
         testIntValue(Int.box(5), 5) &&
         testIntValue(Long.box(6L), 6) &&

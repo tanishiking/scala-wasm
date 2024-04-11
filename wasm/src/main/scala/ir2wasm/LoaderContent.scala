@@ -11,15 +11,15 @@ object LoaderContent {
 
   private def stringContent: String = {
     raw"""
-// Specified by java.lang.String.hashCode()
-function stringHashCode(s) {
+// This implementation follows no particular specification, but is the same as the JS backend.
+// It happens to coincide with java.lang.Long.hashCode() for common values.
+function bigintHashCode(x) {
   var res = 0;
-  var mul = 1;
-  var i = (s.length - 1) | 0;
-  while ((i >= 0)) {
-    res = ((res + Math.imul(s.charCodeAt(i), mul)) | 0);
-    mul = Math.imul(31, mul);
-    i = (i - 1) | 0;
+  if (x < 0n)
+    x = ~x;
+  while (x !== 0n) {
+    res ^= Number(BigInt.asIntN(32, x));
+    x >>= 32n;
   }
   return res;
 }
@@ -136,22 +136,21 @@ const scalaJSHelpers = {
       return x | 0; // JSValueTypeFalse or JSValueTypeTrue
     if (typeof x === 'undefined')
       return $JSValueTypeUndefined;
+    if (typeof x === 'bigint')
+      return $JSValueTypeBigInt;
+    if (typeof x === 'symbol')
+      return $JSValueTypeSymbol;
     return $JSValueTypeOther;
   },
 
-  // Hash code, because it is overridden in all hijacked classes
-  // Specified by the hashCode() method of the corresponding hijacked classes
-  jsValueHashCode: (x) => {
-    if (typeof x === 'number')
-      return x | 0; // TODO make this compliant for floats
-    if (typeof x === 'string')
-      return stringHashCode(x);
-    if (typeof x === 'boolean')
-      return x ? 1231 : 1237;
-    if (typeof x === 'undefined')
-      return 0;
-    return 42; // for any JS object
+  // Identity hash code
+  bigintHashCode: bigintHashCode,
+  symbolDescription: (x) => {
+    var desc = x.description;
+    return (desc === void 0) ? null : desc;
   },
+  idHashCodeGet: (map, obj) => map.get(obj) | 0, // undefined becomes 0
+  idHashCodeSet: (map, obj, value) => map.set(obj, value),
 
   // JS interop
   jsGlobalRefGet: (globalRefName) => (new Function("return " + globalRefName))(),
@@ -280,8 +279,9 @@ const scalaJSHelpers = {
 }
 
 export async function load(wasmFileURL, importedModules) {
+  const myScalaJSHelpers = { ...scalaJSHelpers, idHashCodeMap: new WeakMap() };
   const importsObj = {
-    "__scalaJSHelpers": scalaJSHelpers,
+    "__scalaJSHelpers": myScalaJSHelpers,
     "__scalaJSImports": importedModules,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);

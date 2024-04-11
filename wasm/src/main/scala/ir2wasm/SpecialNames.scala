@@ -21,4 +21,6 @@ object SpecialNames {
   val JSExceptionClass = ClassName("scala.scalajs.js.JavaScriptException")
   val JSExceptionCtor = MethodName.constructor(List(ClassRef(ObjectClass)))
   val JSExceptionField = FieldName(JSExceptionClass, SimpleFieldName("exception"))
+
+  val hashCodeMethodName = MethodName("hashCode", Nil, IntRef)
 }

@@ -332,6 +332,20 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     module.addImport(WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typ)))
   }
 
+  private def addGlobalHelperImport(
+      name: WasmGlobalName,
+      typ: WasmType,
+      isMutable: Boolean
+  ): Unit = {
+    module.addImport(
+      WasmImport(
+        "__scalaJSHelpers",
+        name.name,
+        WasmImportDesc.Global(name, typ, isMutable)
+      )
+    )
+  }
+
   addGCType(WasmStructType.typeData(this))
 
   addHelperImport(WasmFunctionName.is, List(anyref, anyref), List(WasmInt32))
@@ -394,7 +408,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   addHelperImport(WasmFunctionName.isString, List(anyref), List(WasmInt32))
 
   addHelperImport(WasmFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(WasmFunctionName.jsValueHashCode, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(WasmFunctionName.bigintHashCode, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(
+    WasmFunctionName.symbolDescription,
+    List(WasmRefType.any),
+    List(WasmRefType.anyref)
+  )
+  addHelperImport(
+    WasmFunctionName.idHashCodeGet,
+    List(WasmRefType.extern, WasmRefType.any),
+    List(WasmInt32)
+  )
+  addHelperImport(
+    WasmFunctionName.idHashCodeSet,
+    List(WasmRefType.extern, WasmRefType.any, WasmInt32),
+    Nil
+  )
 
   addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
   addHelperImport(WasmFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
@@ -489,6 +518,8 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     List(anyref, anyref, anyref, anyref),
     List(anyref)
   )
+
+  addGlobalHelperImport(WasmGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
 
   def complete(
       moduleInitializers: List[ModuleInitializer.Initializer],

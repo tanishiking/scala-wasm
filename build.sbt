@@ -247,15 +247,6 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.ObjectTest",
     // eqEqJLFloat/eqEqJLDouble failed: java.lang.AssertionError: null
     "org.scalajs.testsuite.compiler.RegressionTest",
-    // hashCode of floats and doubles
-    "org.scalajs.testsuite.javalib.lang.DoubleTest",
-    "org.scalajs.testsuite.javalib.lang.FloatTest",
-    "org.scalajs.testsuite.javalib.util.ArraysTest",
-    "org.scalajs.testsuite.typedarray.ArraysTest",
-    // hashCode of bigints and symbols
-    "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
-    // Various issues with identityHashCode
-    "org.scalajs.testsuite.javalib.lang.SystemTest",
     // TypeError: WebAssembly objects are opaque
     "org.scalajs.testsuite.javalib.lang.SystemJSTest",
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>
