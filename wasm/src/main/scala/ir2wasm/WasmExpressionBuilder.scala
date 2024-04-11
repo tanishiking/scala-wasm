@@ -1300,6 +1300,20 @@ private class WasmExpressionBuilder private (
         instrs += I32_CONST(1)
         instrs += I32_XOR
 
+      case IRTypes.ClassType(JLNumberClass) =>
+        /* Special case: the only non-Object *class* that is an ancestor of a
+         * hijacked class. We need to accept `number` primitives here.
+         */
+        val tempLocal = fctx.addSyntheticLocal(Types.WasmRefType.anyref)
+        instrs += LOCAL_TEE(tempLocal)
+        instrs += REF_TEST(Types.WasmRefType(WasmStructTypeName.forClass(JLNumberClass)))
+        fctx.ifThenElse(Types.WasmInt32) {
+          instrs += I32_CONST(1)
+        } {
+          instrs += LOCAL_GET(tempLocal)
+          instrs += CALL(WasmFunctionName.typeTest(IRTypes.DoubleRef))
+        }
+
       case IRTypes.ClassType(testClassName) =>
         IRTypes.BoxedClassToPrimType.get(testClassName) match {
           case Some(primType) =>
