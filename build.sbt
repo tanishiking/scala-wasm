@@ -242,9 +242,6 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.compiler.ReflectionTest",
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
     "org.scalajs.testsuite.jsinterop.ModulesTest",
-    // getClass for Box classes
-    "org.scalajs.testsuite.javalib.lang.ClassTest",
-    "org.scalajs.testsuite.javalib.lang.ObjectTest",
     // eqEqJLFloat/eqEqJLDouble failed: java.lang.AssertionError: null
     "org.scalajs.testsuite.compiler.RegressionTest",
     // TypeError: WebAssembly objects are opaque
