@@ -234,22 +234,39 @@ const scalaJSHelpers = {
       writable: true,
     });
   },
-  installJSMethod: (data, jsClass, isStatic, name, func, fixedArgCount) => {
-    var target = isStatic ? jsClass : jsClass.prototype;
+  installJSMethod: (data, jsClass, name, func, fixedArgCount) => {
     var closure = fixedArgCount < 0
       ? (function(...args) { return func(data, this, ...args); })
       : (function(...args) { return func(data, this, ...args.slice(0, fixedArgCount), args.slice(fixedArgCount))});
-    target[name] = closure;
+    jsClass.prototype[name] = closure;
   },
-  installJSProperty: (data, jsClass, isStatic, name, getter, setter) => {
-    var target = isStatic ? jsClass : jsClass.prototype;
+  installJSStaticMethod: (data, jsClass, name, func, fixedArgCount) => {
+    var closure = fixedArgCount < 0
+      ? (function(...args) { return func(data, ...args); })
+      : (function(...args) { return func(data, ...args.slice(0, fixedArgCount), args.slice(fixedArgCount))});
+    jsClass[name] = closure;
+  },
+  installJSProperty: (data, jsClass, name, getter, setter) => {
     var getterClosure = getter
       ? (function() { return getter(data, this) })
       : (void 0);
     var setterClosure = setter
       ? (function(arg) { setter(data, this, arg) })
       : (void 0);
-    Object.defineProperty(target, name, {
+    Object.defineProperty(jsClass.prototype, name, {
+      get: getterClosure,
+      set: setterClosure,
+      configurable: true,
+    });
+  },
+  installJSStaticProperty: (data, jsClass, name, getter, setter) => {
+    var getterClosure = getter
+      ? (function() { return getter(data) })
+      : (void 0);
+    var setterClosure = setter
+      ? (function(arg) { setter(data, arg) })
+      : (void 0);
+    Object.defineProperty(jsClass, name, {
       get: getterClosure,
       set: setterClosure,
       configurable: true,

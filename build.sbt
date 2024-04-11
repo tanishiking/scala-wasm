@@ -258,8 +258,6 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.ObjectJSTest",
     // Various issues with identityHashCode
     "org.scalajs.testsuite.javalib.lang.SystemTest",
-    // Missing initialization of @JSExportStatic things
-    "org.scalajs.testsuite.jsinterop.JSExportStaticTest",
     // TypeError: WebAssembly objects are opaque
     "org.scalajs.testsuite.javalib.lang.SystemJSTest",
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>

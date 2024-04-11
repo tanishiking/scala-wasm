@@ -456,12 +456,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   )
   addHelperImport(
     WasmFunctionName.installJSMethod,
-    List(anyref, anyref, WasmInt32, anyref, WasmRefType.func, WasmInt32),
+    List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.installJSStaticMethod,
+    List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
     Nil
   )
   addHelperImport(
     WasmFunctionName.installJSProperty,
-    List(anyref, anyref, WasmInt32, anyref, WasmRefType.funcref, WasmRefType.funcref),
+    List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
+    Nil
+  )
+  addHelperImport(
+    WasmFunctionName.installJSStaticProperty,
+    List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
     Nil
   )
   addHelperImport(
