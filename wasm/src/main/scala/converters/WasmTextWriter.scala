@@ -396,6 +396,10 @@ class WasmTextWriter {
         b.appendElement(typeIdx.show)
         b.appendElement(Integer.toUnsignedString(length))
 
+      case ARRAY_COPY(destType, srcType) =>
+        b.appendElement(destType.show)
+        b.appendElement(srcType.show)
+
       case BR_ON_CAST(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)
         writeType(from)

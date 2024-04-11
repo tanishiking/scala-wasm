@@ -530,6 +530,9 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       moduleInitializers: List[ModuleInitializer.Initializer],
       classesWithStaticInit: List[IRNames.ClassName]
   ): Unit = {
+    import WasmInstr._
+    import WasmTypeName._
+
     val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
 
     import fctx.instrs
@@ -551,6 +554,25 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         }
         instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
         instrs += WasmInstr.ARRAY_SET(WasmTypeName.WasmArrayTypeName.itables)
+      }
+    }
+
+    locally {
+      // For array classes, resolve methods in the vtable of jl.Object
+      val globalName = WasmGlobalName.arrayClassITable
+      val objectVTable = calculateVtableType(IRNames.ObjectClass)
+
+      for {
+        interfaceName <- List(IRNames.SerializableClass, IRNames.CloneableClass)
+        // Use getClassInfoOption in case the reachability analysis got rid of those interfaces
+        interfaceInfo <- getClassInfoOption(interfaceName)
+      } {
+        instrs += GLOBAL_GET(globalName)
+        instrs += I32_CONST(getItableIdx(interfaceName))
+        for (method <- interfaceInfo.methods)
+          instrs += refFuncWithDeclaration(objectVTable.resolve(method.name).name)
+        instrs += STRUCT_NEW(WasmStructTypeName.forITable(interfaceName))
+        instrs += ARRAY_SET(WasmArrayTypeName.itables)
       }
     }
 

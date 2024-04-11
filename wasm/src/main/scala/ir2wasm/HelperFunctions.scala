@@ -497,7 +497,42 @@ object HelperFunctions {
         instrs += REF_NULL(WasmHeapType.None) // name
         instrs += REF_NULL(WasmHeapType.None) // classOf
         instrs += REF_NULL(WasmHeapType.None) // arrayOf
-        instrs += REF_NULL(WasmHeapType(ctx.cloneFunctionTypeName)) // clone
+
+        // clone
+        fctx.switch(WasmRefType(ctx.cloneFunctionTypeName)) { () =>
+          instrs += LOCAL_GET(typeDataParam)
+          instrs += STRUCT_GET(WasmStructTypeName.typeData, WasmFieldIdx.typeData.kindIdx)
+        }(
+          List(KindBoolean) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.BooleanRef))
+          },
+          List(KindChar) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.CharRef))
+          },
+          List(KindByte) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.ByteRef))
+          },
+          List(KindShort) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.ShortRef))
+          },
+          List(KindInt) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.IntRef))
+          },
+          List(KindLong) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.LongRef))
+          },
+          List(KindFloat) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.FloatRef))
+          },
+          List(KindDouble) -> { () =>
+            instrs += ctx.refFuncWithDeclaration(WasmFunctionName.clone(IRTypes.DoubleRef))
+          }
+        ) { () =>
+          instrs += ctx.refFuncWithDeclaration(
+            WasmFunctionName.clone(IRTypes.ClassRef(IRNames.ObjectClass))
+          )
+        }
+
         instrs ++= ctx
           .calculateGlobalVTable(IRNames.ObjectClass)
           .map(method => WasmInstr.REF_FUNC(method.name))
@@ -1242,8 +1277,7 @@ object HelperFunctions {
 
     // Load the vtable and itable or the resulting array on the stack
     instrs += LOCAL_GET(arrayTypeDataParam) // vtable
-    // TODO: this should not be null because of Serializable and Cloneable
-    instrs += REF_NULL(Types.WasmHeapType(WasmArrayType.itables.name)) // itable
+    instrs += GLOBAL_GET(WasmGlobalName.arrayClassITable) // itable
 
     // Load the first length
     instrs += LOCAL_GET(lengthsParam)
@@ -1454,6 +1488,64 @@ object HelperFunctions {
       val fun = fctx.buildAndAddToContext()
       // fun.typ
     }
+  }
+
+  /** Generates the clone function for the given array class. */
+  def genArrayCloneFunction(arrayTypeRef: IRTypes.ArrayTypeRef)(implicit ctx: WasmContext): Unit = {
+    import WasmTypeName._
+
+    assert(
+      arrayTypeRef.dimensions == 1,
+      s"Should not create a specific clone function for the multi-dims array type $arrayTypeRef"
+    )
+
+    val fctx = WasmFunctionContext(
+      Names.WasmFunctionName.clone(arrayTypeRef.base),
+      List("from" -> WasmRefType(WasmHeapType.ObjectType)),
+      List(WasmRefType(WasmHeapType.ObjectType))
+    )
+    val List(fromParam) = fctx.paramIndices
+    import fctx.instrs
+
+    val arrayStructTypeName = WasmStructTypeName.forArrayClass(arrayTypeRef)
+    val arrayClassType = WasmRefType(arrayStructTypeName)
+
+    val underlyingArrayTypeName = WasmArrayTypeName.underlyingOf(arrayTypeRef)
+    val underlyingArrayType = WasmRefType(underlyingArrayTypeName)
+
+    val fromLocal = fctx.addSyntheticLocal(arrayClassType)
+    val fromUnderlyingLocal = fctx.addSyntheticLocal(underlyingArrayType)
+    val lengthLocal = fctx.addSyntheticLocal(WasmInt32)
+    val resultUnderlyingLocal = fctx.addSyntheticLocal(underlyingArrayType)
+
+    // Cast down the from argument
+    instrs += LOCAL_GET(fromParam)
+    instrs += REF_CAST(arrayClassType)
+    instrs += LOCAL_TEE(fromLocal)
+
+    // Load the underlying array
+    instrs += STRUCT_GET(arrayStructTypeName, WasmFieldIdx.uniqueRegularField)
+    instrs += LOCAL_TEE(fromUnderlyingLocal)
+
+    // Make a copy of the underlying array
+    instrs += ARRAY_LEN
+    instrs += LOCAL_TEE(lengthLocal)
+    instrs += ARRAY_NEW_DEFAULT(underlyingArrayTypeName)
+    instrs += LOCAL_TEE(resultUnderlyingLocal) // also dest for array.copy
+    instrs += I32_CONST(0) // destOffset
+    instrs += LOCAL_GET(fromUnderlyingLocal) // src
+    instrs += I32_CONST(0) // srcOffset
+    instrs += LOCAL_GET(lengthLocal) // length
+    instrs += ARRAY_COPY(underlyingArrayTypeName, underlyingArrayTypeName)
+
+    // Build the result arrayStruct
+    instrs += LOCAL_GET(fromLocal)
+    instrs += STRUCT_GET(arrayStructTypeName, WasmFieldIdx.vtable) // vtable
+    instrs += GLOBAL_GET(WasmGlobalName.arrayClassITable) // itable
+    instrs += LOCAL_GET(resultUnderlyingLocal)
+    instrs += STRUCT_NEW(arrayStructTypeName)
+
+    fctx.buildAndAddToContext()
   }
 
   def genNewDefault(clazz: LinkedClass)(implicit ctx: TypeDefinableWasmContext): Unit = {
