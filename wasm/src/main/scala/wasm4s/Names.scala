@@ -84,10 +84,6 @@ object Names {
       new WasmGlobalName("idHashCodeMap")
   }
 
-  // final case class WasmGlobalName private (val name: String) extends WasmName(name) {
-  //     def apply(n: IRNames.LocalName): WasmLocalName = new WasmLocalName(n.nameString)
-  // }
-
   case class WasmFunctionName private (
       val namespace: String,
       val simpleName: String
@@ -278,6 +274,7 @@ object Names {
     val anyGetClass = helper("anyGetClass")
     val newArrayObject = helper("newArrayObject")
     val identityHashCode = helper("identityHashCode")
+    val searchReflectiveProxy = helper("searchReflectiveProxy")
   }
 
   final case class WasmFieldName private (override private[wasm4s] val name: String)
@@ -300,6 +297,11 @@ object Names {
     val itables = new WasmFieldName("itables")
     val arrayItem = new WasmFieldName("array_item")
     val arrayField = new WasmFieldName("array_field")
+    val reflectiveProxyField = new WasmFieldName("reflective_proxy_field")
+    object reflectiveProxy {
+      val func_name = new WasmFieldName("reflective_proxy_func_name")
+      val func_ref = new WasmFieldName("reflective_proxy_func_ref")
+    }
 
     // Fields of the typeData structs
     object typeData {
@@ -378,6 +380,15 @@ object Names {
         * is instantiated only with the classes that implement java.lang.Cloneable.
         */
       val cloneFunction = new WasmFieldName("clone")
+
+      /** The reflective proxies in this type, used for reflective call on the class at runtime.
+        * This field contains an array of reflective proxy structs, where each struct contains the
+        * ID of the reflective proxy and a reference to the actual method implementation. Reflective
+        * call site should walk through the array to look up a method to call.
+        *
+        * See `genSearchReflectivePRoxy` in `HelperFunctions`
+        */
+      val reflectiveProxies = new WasmFieldName("reflectiveProxies")
     }
   }
 
@@ -398,6 +409,12 @@ object Names {
       val classOfIdx = WasmFieldIdx(6)
       val arrayOfIdx = WasmFieldIdx(7)
       val cloneFunctionIdx = WasmFieldIdx(8)
+      val reflectiveProxiesIdx = WasmFieldIdx(9)
+    }
+
+    object reflectiveProxy {
+      val nameIdx = WasmFieldIdx(0)
+      val funcIdx = WasmFieldIdx(1)
     }
   }
 
@@ -416,6 +433,7 @@ object Names {
         new WasmStructTypeName(s"captureData.$index")
 
       val typeData = new WasmStructTypeName("typeData")
+      val reflectiveProxy = new WasmStructTypeName("reflective_proxy")
 
       // Array types -- they extend j.l.Object
       val BooleanArray = new WasmStructTypeName("c.AZ")
@@ -461,6 +479,7 @@ object Names {
     object WasmArrayTypeName {
       val typeDataArray = new WasmArrayTypeName("a.typeDataArray")
       val itables = new WasmArrayTypeName("a.itable")
+      val reflectiveProxies = new WasmArrayTypeName("a.reflectiveProxies")
 
       // primitive array types, underlying the Array[T] classes
       val i8Array = new WasmArrayTypeName("a.i8Array")

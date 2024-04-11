@@ -183,9 +183,7 @@ lazy val `scalajs-test-suite` = project
 
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
-        .filterNot(endsWith(_, "/compiler/DefaultMethodsTest.scala")) // reflective calls
         .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala")) // reflective calls
-        .filterNot(endsWith(_, "/compiler/WasPublicBeforeTyperTestScala2.scala")) // reflective calls
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala")) // js.dynamicImport (multi-modules)
     },
 
@@ -228,6 +226,8 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
+    // reflective call: should be throw an exception when reflective proxy not found
+    "org.scalajs.testsuite.compiler.WasPublicBeforeTyperTestScala2",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsTest",
     // Various run-time errors and JS exceptions

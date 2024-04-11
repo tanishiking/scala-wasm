@@ -304,9 +304,60 @@ private class WasmExpressionBuilder private (
           IRTrees.ApplyStatically(t.flags, t.receiver, className, t.method, t.args)(t.tpe)(t.pos)
         )
 
+      case _ if t.method.name.isReflectiveProxy =>
+        genReflectiveCall(t)
+
       case _ =>
         genApplyNonPrim(t)
     }
+  }
+
+  private def genReflectiveCall(t: IRTrees.Apply): IRTypes.Type = {
+    assert(t.method.name.isReflectiveProxy)
+    val receiverLocalForDispatch =
+      fctx.addSyntheticLocal(Types.WasmRefType.any)
+
+    val proxyId = ctx.getReflectiveProxyId(t.method.name.nameString)
+    val receiverType = TypeTransformer.makeReceiverType
+    val paramTys = t.method.name.paramTypeRefs.map(TypeTransformer.transformTypeRef(_)(ctx))
+    val sig = WasmFunctionSignature(
+      receiverType +: paramTys,
+      TypeTransformer.transformResultType(IRTypes.AnyType)(ctx)
+    )
+    val funcTy = WasmFunctionType(ctx.addFunctionType(sig), sig)
+
+    fctx.block(sig.results) { done =>
+      fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
+        // arguments
+        genTree(t.receiver, IRTypes.AnyType)
+        instrs += REF_AS_NOT_NULL
+        instrs += LOCAL_TEE(receiverLocalForDispatch)
+        genArgs(t.args, t.method.name)
+
+        // Looks up the method to be (reflectively) called
+        instrs += LOCAL_GET(receiverLocalForDispatch)
+        instrs += BR_ON_CAST_FAIL(
+          labelNotOurObject,
+          Types.WasmRefType.any,
+          Types.WasmRefType(Types.WasmHeapType.ObjectType)
+        )
+        instrs += STRUCT_GET(
+          WasmStructTypeName.forClass(IRNames.ObjectClass),
+          WasmFieldIdx.vtable
+        )
+        instrs += I32_CONST(proxyId)
+        // `searchReflectiveProxy`: [typeData, i32] -> [(ref func)]
+        instrs += CALL(WasmFunctionName.searchReflectiveProxy)
+
+        instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType(funcTy.name)))
+        instrs += CALL_REF(funcTy.name)
+        instrs += BR(done)
+      } // labelNotFound
+      instrs += UNREACHABLE
+      // TODO? reflective call on primitive types
+      t.tpe
+    }
+    // done
   }
 
   /** Generates the code an `Apply` call where the receiver's type is not statically known to be a
@@ -650,6 +701,13 @@ private class WasmExpressionBuilder private (
 
           case Some(primReceiverType) =>
             if (t.receiver.tpe == primReceiverType) {
+              genTreeAuto(t.receiver)
+            } else if (t.receiver.isInstanceOf[IRTrees.This]) {
+              // TODO: investigate what's going on
+              // Don't know why, but it seems that `this` isn't boxed even if
+              // t.receiver.tpe = ClassType(ClassName<java.lang.Boolean>), and
+              // primReceiverType = BooleanType
+              // This wired patch is required for `(func $f#java.lang.Boolean#compareTo_Ljava.lang.Boolean_R`
               genTreeAuto(t.receiver)
             } else {
               genTree(t.receiver, IRTypes.AnyType)

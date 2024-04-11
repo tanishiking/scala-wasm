@@ -40,7 +40,7 @@ class WasmBuilder {
     )
 
     for ((primRef, kind) <- primRefsWithTypeData) {
-      val typeDataFieldValues = genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef)
+      val typeDataFieldValues = genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, Nil)
       val typeDataGlobal =
         genTypeDataGlobal(primRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
@@ -53,7 +53,7 @@ class WasmBuilder {
     if (!clazz.kind.isClass && classInfo.hasRuntimeTypeInfo) {
       // Gen typeData -- for classes, we do it as part of the vtable generation
       val typeRef = IRTypes.ClassRef(clazz.className)
-      val typeDataFieldValues = genTypeDataFieldValues(clazz)
+      val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
       val typeDataGlobal =
         genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
@@ -150,8 +150,8 @@ class WasmBuilder {
     }
   }
 
-  private def genTypeDataFieldValues(clazz: LinkedClass)(implicit
-      ctx: WasmContext
+  private def genTypeDataFieldValues(clazz: LinkedClass, vtableElems: List[WasmFunctionInfo])(
+      implicit ctx: WasmContext
   ): List[WasmInstr] = {
     import WasmFieldName.typeData._
 
@@ -207,13 +207,19 @@ class WasmBuilder {
         }
     }
 
-    genTypeDataFieldValues(kind, specialInstanceTypes, IRTypes.ClassRef(clazz.className))
+    genTypeDataFieldValues(
+      kind,
+      specialInstanceTypes,
+      IRTypes.ClassRef(clazz.className),
+      vtableElems
+    )
   }
 
   private def genTypeDataFieldValues(
       kind: Int,
       specialInstanceTypes: Int,
-      typeRef: IRTypes.NonArrayTypeRef
+      typeRef: IRTypes.NonArrayTypeRef,
+      vtableElems: List[WasmFunctionInfo]
   )(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
@@ -272,6 +278,18 @@ class WasmBuilder {
       }
     }
 
+    val reflectiveProxies: List[WasmInstr] = {
+      val proxies = vtableElems.filter(_.isReflectiveProxy)
+      proxies.flatMap { method =>
+        val proxyId = ctx.getReflectiveProxyId(method.name.simpleName)
+        List(
+          I32_CONST(proxyId),
+          REF_FUNC(method.name),
+          STRUCT_NEW(Names.WasmTypeName.WasmStructTypeName.reflectiveProxy)
+        )
+      } :+ ARRAY_NEW_FIXED(Names.WasmTypeName.WasmArrayTypeName.reflectiveProxies, proxies.size)
+    }
+
     nameDataValue :::
       List(
         // kind
@@ -293,7 +311,11 @@ class WasmBuilder {
         REF_NULL(WasmHeapType(WasmTypeName.WasmStructTypeName.ObjectVTable)),
         // clonefFunction - will be invoked from `clone()` method invokaion on the class
         cloneFunction
-      )
+      ) :::
+      // reflective proxies - used to reflective call on the class at runtime.
+      // Generated instructions create an array of reflective proxy structs, where each struct
+      // contains the ID of the reflective proxy and a reference to the actual method implementation.
+      reflectiveProxies
   }
 
   private def genTypeDataGlobal(
@@ -336,17 +358,17 @@ class WasmBuilder {
     //
     // When we don't generate a vtable, we still generate the typeData
 
-    val typeDataFieldValues = genTypeDataFieldValues(clazz)
-
     if (!isAbstractClass) {
       // Generate an actual vtable
       val functions = ctx.calculateGlobalVTable(className)
+      val typeDataFieldValues = genTypeDataFieldValues(clazz, functions)
       val vtableElems = functions.map(method => WasmInstr.REF_FUNC(method.name))
       val globalVTable = genTypeDataGlobal(typeRef, vtableType, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
       genGlobalClassItable(clazz)
     } else if (classInfo.hasRuntimeTypeInfo) {
       // Only generate typeData
+      val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
       val globalTypeData =
         genTypeDataGlobal(typeRef, WasmStructType.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(globalTypeData)
