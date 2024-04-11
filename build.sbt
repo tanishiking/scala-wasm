@@ -230,10 +230,6 @@ lazy val IgnoredTestNames: Set[String] = {
   Set(
     // RuntimeError: dereferencing a null pointer
     "org.scalajs.testsuite.javalib.util.Base64Test",
-    // RuntimeError: illegal cast
-    "org.scalajs.testsuite.compiler.RegressionTest",
-    "org.scalajs.testsuite.niocharset.UTF8Test",
-    "org.scalajs.testsuite.scalalib.ArrayBuilderTest",
     // javaLangNumber failed: java.lang.AssertionError: 1, class java.lang.Number expected:<true> but was:<false>
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsTest",
     // Various run-time errors and JS exceptions
@@ -251,6 +247,8 @@ lazy val IgnoredTestNames: Set[String] = {
     // getClass for Box classes
     "org.scalajs.testsuite.javalib.lang.ClassTest",
     "org.scalajs.testsuite.javalib.lang.ObjectTest",
+    // eqEqJLFloat/eqEqJLDouble failed: java.lang.AssertionError: null
+    "org.scalajs.testsuite.compiler.RegressionTest",
     // hashCode of floats and doubles
     "org.scalajs.testsuite.javalib.lang.DoubleTest",
     "org.scalajs.testsuite.javalib.lang.FloatTest",

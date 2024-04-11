@@ -1312,16 +1312,12 @@ private class WasmExpressionBuilder private (
         case targetTpe: IRTypes.PrimType =>
           genAsPrimType(targetTpe)
 
-        case IRTypes.AnyType | IRTypes.ClassType(IRNames.ObjectClass) =>
+        case IRTypes.AnyType =>
           ()
 
         case IRTypes.ClassType(targetClassName) =>
           val info = ctx.getClassInfo(targetClassName)
-          if (info.kind.isClass) {
-            instrs += REF_CAST(
-              Types.WasmRefType.nullable(WasmStructTypeName.forClass(targetClassName))
-            )
-          } else if (info.kind == ClassKind.HijackedClass) {
+          if (info.kind == ClassKind.HijackedClass) {
             IRTypes.BoxedClassToPrimType(targetClassName) match {
               case IRTypes.UndefType | IRTypes.StringType =>
                 ()
@@ -1339,9 +1335,15 @@ private class WasmExpressionBuilder private (
                     instrs += CALL(WasmFunctionName.unboxOrNull(primType.primRef))
                 }
             }
+          } else if (info.isAncestorOfHijackedClass) {
+            // Nothing to do; the translation is `anyref`
+            ()
+          } else if (info.kind.isClass) {
+            instrs += REF_CAST(
+              Types.WasmRefType.nullable(WasmStructTypeName.forClass(targetClassName))
+            )
           } else if (info.isInterface) {
-            if (!info.isAncestorOfHijackedClass)
-              instrs += REF_CAST(Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType))
+            instrs += REF_CAST(Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType))
           }
 
         case IRTypes.ArrayType(arrayTypeRef) =>
@@ -1372,17 +1374,26 @@ private class WasmExpressionBuilder private (
 
       case targetTpe: IRTypes.PrimTypeWithRef =>
         targetTpe match {
-          case IRTypes.CharType =>
+          case IRTypes.CharType | IRTypes.LongType =>
             // Extract the `value` field (the only field) out of the box class.
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
-            instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
-          case IRTypes.LongType =>
-            // TODO Handle null
-            val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
-            instrs += REF_CAST(Types.WasmRefType(structTypeName))
-            instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
+            import wasm.wasm4s.{WasmFunctionSignature => Sig}
+
+            val boxClass =
+              if (targetTpe == IRTypes.CharType) SpecialNames.CharBoxClass
+              else SpecialNames.LongBoxClass
+            val resultType = TypeTransformer.transformType(targetTpe)(ctx)
+
+            fctx.block(Sig(List(Types.WasmRefType.anyref), List(resultType))) { doneLabel =>
+              fctx.block(Sig(List(Types.WasmRefType.anyref), Nil)) { isNullLabel =>
+                instrs += BR_ON_NULL(isNullLabel)
+                val structTypeName = WasmStructTypeName.forClass(boxClass)
+                instrs += REF_CAST(Types.WasmRefType(structTypeName))
+                instrs += STRUCT_GET(structTypeName, WasmFieldIdx.uniqueRegularField)
+                instrs += BR(doneLabel)
+              }
+              genTree(IRTypes.zeroOf(targetTpe), targetTpe)
+            }
+
           case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
             throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
           case _ =>
