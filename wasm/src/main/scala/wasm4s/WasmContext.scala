@@ -702,20 +702,6 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 object WasmContext {
   private val classFieldOffset = 2 // vtable, itables
 
-  private val AncestorsOfHijackedClasses: Set[IRNames.ClassName] = {
-    // We hard-code this for now, but ideally we should derive it
-    IRNames.HijackedClasses ++
-      Set(
-        IRNames.ObjectClass,
-        IRNames.SerializableClass,
-        IRNames.ClassName("java.lang.CharSequence"),
-        IRNames.ClassName("java.lang.Comparable"),
-        IRNames.ClassName("java.lang.Number"),
-        IRNames.ClassName("java.lang.constant.Constable"),
-        IRNames.ClassName("java.lang.constant.ConstantDesc")
-      )
-  }
-
   final class WasmClassInfo(
       val name: IRNames.ClassName,
       val kind: ClassKind,
@@ -741,7 +727,47 @@ object WasmContext {
 
     def hasInstances: Boolean = _hasInstances
 
-    def isAncestorOfHijackedClass: Boolean = AncestorsOfHijackedClasses.contains(name)
+    private var _specialInstanceTypes: Int = 0
+
+    def addSpecialInstanceType(jsValueType: Int): Unit =
+      _specialInstanceTypes |= (1 << jsValueType)
+
+    /** A bitset of the `jsValueType`s corresponding to hijacked classes that extend this class.
+      *
+      * This value is used for instance tests against this class. A JS value `x` is an instance of
+      * this type iff `jsValueType(x)` is a member of this bitset. Because of how a bitset works,
+      * this means testing the following formula:
+      *
+      * {{{
+      * ((1 << jsValueType(x)) & specialInstanceTypes) != 0
+      * }}}
+      *
+      * For example, if this class is `Comparable`, we want the bitset to contain the values for
+      * `boolean`, `string` and `number` (but not `undefined`), because `jl.Boolean`, `jl.String`
+      * and `jl.Double` implement `Comparable`.
+      *
+      * This field is initialized with 0, and augmented during preprocessing by calls to
+      * `addSpecialInstanceType`.
+      *
+      * This technique is used both for static `isInstanceOf` tests as well as reflective tests
+      * through `Class.isInstance`. For the latter, this value is stored in
+      * `typeData.specialInstanceTypes`. For the former, it is embedded as a constant in the
+      * generated code.
+      *
+      * See the `isInstance` and `genInstanceTest` helpers.
+      *
+      * Special cases: this value remains 0 for all the numeric hijacked classes except `jl.Double`,
+      * since `jsValueType(x) == JSValueTypeNumber` is not enough to deduce that
+      * `x.isInstanceOf[Int]`, for example.
+      */
+    def specialInstanceTypes: Int = _specialInstanceTypes
+
+    /** Is this class an ancestor of any hijacked class?
+      *
+      * This includes but is not limited to the hijacked classes themselves, as well as `jl.Object`.
+      */
+    def isAncestorOfHijackedClass: Boolean =
+      specialInstanceTypes != 0 || kind == ClassKind.HijackedClass
 
     def isInterface = kind == ClassKind.Interface
 

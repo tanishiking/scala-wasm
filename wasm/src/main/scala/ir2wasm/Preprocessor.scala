@@ -10,6 +10,7 @@ import org.scalajs.ir.Traversers
 
 import org.scalajs.linker.standard.LinkedClass
 
+import EmbeddedConstants._
 import WasmContext._
 
 object Preprocessor {
@@ -100,6 +101,26 @@ object Preprocessor {
         clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
       )
     )
+
+    // Update specialInstanceTypes for ancestors of hijacked classes
+    if (clazz.kind == ClassKind.HijackedClass) {
+      def addSpecialInstanceTypeOnAllAncestors(jsValueType: Int): Unit =
+        clazz.ancestors.foreach(ctx.getClassInfo(_).addSpecialInstanceType(jsValueType))
+
+      clazz.className match {
+        case IRNames.BoxedBooleanClass =>
+          addSpecialInstanceTypeOnAllAncestors(JSValueTypeFalse)
+          addSpecialInstanceTypeOnAllAncestors(JSValueTypeTrue)
+        case IRNames.BoxedStringClass =>
+          addSpecialInstanceTypeOnAllAncestors(JSValueTypeString)
+        case IRNames.BoxedDoubleClass =>
+          addSpecialInstanceTypeOnAllAncestors(JSValueTypeNumber)
+        case IRNames.BoxedUnitClass =>
+          addSpecialInstanceTypeOnAllAncestors(JSValueTypeUndefined)
+        case _ =>
+          ()
+      }
+    }
 
     /* Work around https://github.com/scala-js/scala-js/issues/4972
      * Manually mark all ancestors of instantiated classes as having instances.

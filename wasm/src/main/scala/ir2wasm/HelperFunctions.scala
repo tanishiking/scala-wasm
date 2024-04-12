@@ -690,6 +690,9 @@ object HelperFunctions {
        *
        * Since computing `jsValueType` is somewhat expensive, we first test
        * whether `specialInstanceTypes != 0` before calling `jsValueType`.
+       *
+       * There is a more elaborated concrete example of this algorithm in
+       * `genInstanceTest`.
        */
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(WasmStructTypeName.typeData, specialInstanceTypesIdx)
@@ -1636,6 +1639,8 @@ object HelperFunctions {
   def genInstanceTest(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
 
+    val classInfo = ctx.getClassInfo(clazz.className)
+
     val fctx = WasmFunctionContext(
       Names.WasmFunctionName.instanceTest(clazz.name.name),
       List("expr" -> WasmRefType.anyref),
@@ -1645,9 +1650,9 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    val itables = fctx.addSyntheticLocal(
-      Types.WasmRefType.nullable(WasmArrayType.itables.name)
-    )
+    val itables = fctx.addLocal("itables", WasmRefType.nullable(WasmArrayType.itables.name))
+    val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
+
     val itableIdx = ctx.getItableIdx(clazz.name.name)
     fctx.block(WasmRefType.anyref) { testFail =>
       // if expr is not an instance of Object, return false
@@ -1677,8 +1682,48 @@ object HelperFunctions {
       instrs += I32_CONST(1)
       instrs += RETURN
     } // test fail
-    instrs += DROP
-    instrs += I32_CONST(0) // false
+
+    if (classInfo.isAncestorOfHijackedClass) {
+      /* It could be a hijacked class instance that implements this interface.
+       * Test whether `jsValueType(expr)` is in the `specialInstanceTypes` bitset.
+       * In other words, return `((1 << jsValueType(expr)) & specialInstanceTypes) != 0`.
+       *
+       * For example, if this class is `Comparable`,
+       * `specialInstanceTypes == 0b00001111`, since `jl.Boolean`, `jl.String`
+       * and `jl.Double` implement `Comparable`, but `jl.Void` does not.
+       * If `expr` is a `number`, `jsValueType(expr) == 3`. We then test whether
+       * `(1 << 3) & 0b00001111 != 0`, which is true because `(1 << 3) == 0b00001000`.
+       * If `expr` is `undefined`, it would be `(1 << 4) == 0b00010000`, which
+       * would give `false`.
+       */
+      val anyRefToVoidSig =
+        WasmFunctionSignature(List(WasmRefType.anyref), Nil)
+
+      fctx.block(anyRefToVoidSig) { isNullLabel =>
+        // exprNonNull := expr; branch to isNullLabel if it is null
+        instrs += BR_ON_NULL(isNullLabel)
+        instrs += LOCAL_SET(exprNonNullLocal)
+
+        // Load 1 << jsValueType(expr)
+        instrs += I32_CONST(1)
+        instrs += LOCAL_GET(exprNonNullLocal)
+        instrs += CALL(WasmFunctionName.jsValueType)
+        instrs += I32_SHL
+
+        // return (... & specialInstanceTypes) != 0
+        instrs += I32_CONST(classInfo.specialInstanceTypes)
+        instrs += I32_AND
+        instrs += I32_CONST(0)
+        instrs += I32_NE
+        instrs += RETURN
+      }
+
+      instrs += I32_CONST(0) // false
+    } else {
+      instrs += DROP
+      instrs += I32_CONST(0) // false
+    }
+
     fctx.buildAndAddToContext()
   }
 

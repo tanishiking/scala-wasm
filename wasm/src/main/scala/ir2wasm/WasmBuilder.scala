@@ -158,35 +158,7 @@ class WasmBuilder {
     val className = clazz.className
     val classInfo = ctx.getClassInfo(className)
 
-    /* See the `isInstance` helper. `specialInstanceTypes` is a bitset of the
-     * `jsValueType`s corresponding to hijacked classes that extend this class.
-     * For example, if this class is `Comparable`, we want the bitset to contain
-     * the values for `boolean`, `string` and `number` (but not `undefined`),
-     * because `jl.Boolean`, `jl.String` and `jl.Double` implement `Comparable`.
-     *
-     * When testing whether a `value` is a `Comparable`, `isInstance` will
-     * compute the `jsValueType(value)` and test whether it is part of the bit
-     * set, using `((1 << jsValueType(value)) & specialInstanceTypes) != 0`.
-     */
-    val specialInstanceTypes = {
-      if (!classInfo.isAncestorOfHijackedClass) {
-        // fast path
-        0
-      } else {
-        var bits = 0
-        if (ctx.getClassInfo(IRNames.BoxedBooleanClass).ancestors.contains(className))
-          bits |= ((1 << JSValueTypeFalse) | (1 << JSValueTypeTrue))
-        if (ctx.getClassInfo(IRNames.BoxedStringClass).ancestors.contains(className))
-          bits |= (1 << JSValueTypeString)
-        if (ctx.getClassInfo(IRNames.BoxedDoubleClass).ancestors.contains(className))
-          bits |= (1 << JSValueTypeNumber)
-        if (ctx.getClassInfo(IRNames.BoxedUnitClass).ancestors.contains(className))
-          bits |= (1 << JSValueTypeUndefined)
-        bits
-      }
-    }
-
-    val kind = clazz.className match {
+    val kind = className match {
       case IRNames.ObjectClass         => KindObject
       case IRNames.BoxedUnitClass      => KindBoxedUnit
       case IRNames.BoxedBooleanClass   => KindBoxedBoolean
@@ -209,7 +181,7 @@ class WasmBuilder {
 
     genTypeDataFieldValues(
       kind,
-      specialInstanceTypes,
+      classInfo.specialInstanceTypes,
       IRTypes.ClassRef(clazz.className),
       vtableElems
     )
