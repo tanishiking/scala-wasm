@@ -68,6 +68,9 @@ object Names {
     def forStaticField(fieldName: IRNames.FieldName): WasmGlobalName =
       new WasmGlobalName(s"static.${fieldName.nameString}")
 
+    def forTopLevelExport(exportName: String): WasmGlobalName =
+      new WasmGlobalName(s"export.$exportName")
+
     def forJSPrivateField(fieldName: IRNames.FieldName): WasmGlobalName =
       new WasmGlobalName(s"jspfield.${fieldName.nameString}")
 
@@ -169,6 +172,7 @@ object Names {
     val closureThis = helper("closureThis")
     val closureRest = helper("closureRest")
     val closureThisRest = helper("closureThisRest")
+    val closureRestNoData = helper("closureRestNoData")
 
     val emptyString = helper("emptyString")
     val stringLength = helper("stringLength")

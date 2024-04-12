@@ -75,9 +75,10 @@ class CoreTests extends munit.FunSuite {
     for {
       irFiles <- irFilesFuture
       linkerResult <- linker.link(irFiles, moduleInitializers, output, logger)
-      runResult <- js.`import`[js.Any](s"$outputDirRelToMyJSFile/main.mjs").toFuture
+      moduleExports <- js.`import`[js.Dynamic](s"$outputDirRelToMyJSFile/main.mjs").toFuture
     } yield {
-      ()
+      for (postLoadTests <- suite.postLoadTests)
+        postLoadTests(moduleExports)
     }
   }
 }

@@ -112,6 +112,7 @@ const scalaJSHelpers = {
   closureThis: (f, data) => function(...args) { return f(data, this, ...args); },
   closureRest: (f, data, n) => ((...args) => f(data, ...args.slice(0, n), args.slice(n))),
   closureThisRest: (f, data, n) => function(...args) { return f(data, this, ...args.slice(0, n), args.slice(n)); },
+  closureRestNoData: (f, n) => ((...args) => f(...args.slice(0, n), args.slice(n))),
 
   // Strings
   emptyString: () => "",
