@@ -1077,6 +1077,7 @@ object HelperFunctions {
     val typeDataLocal = fctx.addLocal("typeData", typeDataType)
     val doubleValueLocal = fctx.addLocal("doubleValue", WasmFloat64)
     val intValueLocal = fctx.addLocal("intValue", WasmInt32)
+    val ourObjectLocal = fctx.addLocal("ourObject", WasmRefType(WasmHeapType.ObjectType))
 
     def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
       GLOBAL_GET(WasmGlobalName.forVTable(className))
@@ -1192,7 +1193,28 @@ object HelperFunctions {
           instrs += BR(gotTypeDataLabel)
         }
 
-        instrs += STRUCT_GET(WasmStructTypeName.forClass(IRNames.ObjectClass), WasmFieldIdx.vtable)
+        /* Now we have one of our objects. Normally we only have to get the
+         * vtable, but there are two exceptions. If the value is an instance of
+         * `jl.CharacterBox` or `jl.LongBox`, we must use the typeData of
+         * `jl.Character` or `jl.Long`, respectively.
+         */
+        instrs += LOCAL_TEE(ourObjectLocal)
+        instrs += REF_TEST(WasmRefType(WasmStructTypeName.forClass(SpecialNames.CharBoxClass)))
+        fctx.ifThenElse(typeDataType) {
+          instrs += getHijackedClassTypeDataInstr(IRNames.BoxedCharacterClass)
+        } {
+          instrs += LOCAL_GET(ourObjectLocal)
+          instrs += REF_TEST(WasmRefType(WasmStructTypeName.forClass(SpecialNames.LongBoxClass)))
+          fctx.ifThenElse(typeDataType) {
+            instrs += getHijackedClassTypeDataInstr(IRNames.BoxedLongClass)
+          } {
+            instrs += LOCAL_GET(ourObjectLocal)
+            instrs += STRUCT_GET(
+              WasmStructTypeName.forClass(IRNames.ObjectClass),
+              WasmFieldIdx.vtable
+            )
+          }
+        }
       }
 
       instrs += CALL(WasmFunctionName.getClassOf)
