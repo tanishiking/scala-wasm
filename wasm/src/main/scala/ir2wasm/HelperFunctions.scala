@@ -534,6 +534,11 @@ object HelperFunctions {
             WasmFunctionName.clone(IRTypes.ClassRef(IRNames.ObjectClass))
           )
         }
+
+        // isJSClassInstance
+        instrs += REF_NULL(WasmHeapType.NoFunc)
+
+        // reflectiveProxies
         instrs += ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, 0) // TODO
 
         instrs ++= ctx
@@ -601,15 +606,6 @@ object HelperFunctions {
     val valueNonNullLocal = fctx.addLocal("valueNonNull", WasmRefType.any)
     val specialInstanceTypesLocal = fctx.addLocal("specialInstanceTypes", WasmInt32)
 
-    // valueNonNull := as_non_null value; return false if null
-    fctx.block(WasmRefType.any) { nonNullLabel =>
-      instrs += LOCAL_GET(valueParam)
-      instrs += BR_ON_NON_NULL(nonNullLabel)
-      instrs += I32_CONST(0)
-      instrs += RETURN
-    }
-    instrs += LOCAL_SET(valueNonNullLocal)
-
     // switch (typeData.kind)
     fctx.switch(WasmInt32) { () =>
       instrs += LOCAL_GET(typeDataParam)
@@ -619,59 +615,94 @@ object HelperFunctions {
       (KindVoid to KindLastPrimitive).toList -> { () =>
         instrs += I32_CONST(0)
       },
-      // case KindObject => true
+      // case KindObject => value ne null
       List(KindObject) -> { () =>
-        instrs += I32_CONST(1)
+        instrs += LOCAL_GET(valueParam)
+        instrs += REF_IS_NULL
+        instrs += I32_EQZ
       },
       // for each boxed class, the corresponding primitive type test
       List(KindBoxedUnit) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.isUndef)
       },
       List(KindBoxedBoolean) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.BooleanRef))
       },
       List(KindBoxedCharacter) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         val structTypeName = WasmStructTypeName.forClass(SpecialNames.CharBoxClass)
         instrs += REF_TEST(WasmRefType(structTypeName))
       },
       List(KindBoxedByte) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.ByteRef))
       },
       List(KindBoxedShort) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.ShortRef))
       },
       List(KindBoxedInteger) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.IntRef))
       },
       List(KindBoxedLong) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         val structTypeName = WasmStructTypeName.forClass(SpecialNames.LongBoxClass)
         instrs += REF_TEST(WasmRefType(structTypeName))
       },
       List(KindBoxedFloat) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.FloatRef))
       },
       List(KindBoxedDouble) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.typeTest(IRTypes.DoubleRef))
       },
       List(KindBoxedString) -> { () =>
-        instrs += LOCAL_GET(valueNonNullLocal)
+        instrs += LOCAL_GET(valueParam)
         instrs += CALL(WasmFunctionName.isString)
       },
-      // case KindJSType => trap (TODO: don't trap for JS *class*es)
+      // case KindJSType => call typeData.isJSClassInstance(value) or throw if it is null
       List(KindJSType) -> { () =>
-        instrs += UNREACHABLE
+        fctx.block(WasmRefType.anyref) { isJSClassInstanceIsNull =>
+          // Load value as the argument to the function
+          instrs += LOCAL_GET(valueParam)
+
+          // Load the function reference; break if null
+          instrs += LOCAL_GET(typeDataParam)
+          instrs += STRUCT_GET(WasmStructTypeName.typeData, isJSClassInstanceIdx)
+          instrs += BR_ON_NULL(isJSClassInstanceIsNull)
+
+          // Call the function
+          instrs += CALL_REF(ctx.isJSClassInstanceFuncTypeName)
+          instrs += RETURN
+        }
+        instrs += DROP // drop `value` which was left on the stack
+
+        // throw new TypeError("...")
+        instrs ++= ctx.getConstantStringInstr("TypeError")
+        instrs += CALL(WasmFunctionName.jsGlobalRefGet)
+        instrs += CALL(WasmFunctionName.jsNewArray)
+        instrs ++= ctx.getConstantStringInstr(
+          "Cannot call isInstance() on a Class representing a JS trait/object"
+        )
+        instrs += CALL(WasmFunctionName.jsArrayPush)
+        instrs += CALL(WasmFunctionName.jsNew)
+        instrs += THROW(ctx.exceptionTagName)
       }
     ) { () =>
       // case _ =>
+
+      // valueNonNull := as_non_null value; return false if null
+      fctx.block(WasmRefType.any) { nonNullLabel =>
+        instrs += LOCAL_GET(valueParam)
+        instrs += BR_ON_NON_NULL(nonNullLabel)
+        instrs += I32_CONST(0)
+        instrs += RETURN
+      }
+      instrs += LOCAL_SET(valueNonNullLocal)
 
       /* If `typeData` represents an ancestor of a hijacked classes, we have to
        * answer `true` if `valueNonNull` is a primitive instance of any of the

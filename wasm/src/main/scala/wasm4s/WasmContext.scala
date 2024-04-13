@@ -35,6 +35,7 @@ trait ReadOnlyWasmContext {
   protected var nextItableIdx: Int
 
   val cloneFunctionTypeName: WasmFunctionTypeName
+  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName
 
   def itablesLength = nextItableIdx
 
@@ -154,13 +155,16 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       }
     )
 
-  val cloneFunctionTypeName =
+  val cloneFunctionTypeName: WasmFunctionTypeName =
     addFunctionType(
       WasmFunctionSignature(
         List(WasmRefType(WasmHeapType.ObjectType)),
         List(WasmRefType(WasmHeapType.ObjectType))
       )
     )
+
+  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName =
+    addFunctionType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
 
   val exceptionTagName: WasmTagName
 

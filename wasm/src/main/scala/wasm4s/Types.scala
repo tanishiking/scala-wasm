@@ -81,6 +81,7 @@ object Types {
     case object Struct extends AbsHeapType("struct", "structref", 0x6B)
     case object None extends AbsHeapType("none", "nullref", 0x71)
     case object NoExtern extends AbsHeapType("noextern", "nullexternref", 0x72)
+    case object NoFunc extends AbsHeapType("nofunc", "nullfuncref", 0x73)
     case object NoExn extends AbsHeapType("noexn", "nullexnref", 0x74)
 
     def apply(typ: WasmTypeName): WasmHeapType.Type =

@@ -152,6 +152,11 @@ object WasmStructType {
         isMutable = false
       ),
       WasmStructField(
+        WasmFieldName.typeData.isJSClassInstance,
+        WasmRefType.nullable(ctx.isJSClassInstanceFuncTypeName),
+        isMutable = false
+      ),
+      WasmStructField(
         WasmFieldName.typeData.reflectiveProxies,
         WasmRefType(WasmHeapType(WasmArrayTypeName.reflectiveProxies)),
         isMutable = false

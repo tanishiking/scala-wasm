@@ -138,6 +138,8 @@ object Names {
       new WasmFunctionName("cloneArray", simpleName)
     }
 
+    def isJSClassInstance(clazz: IRNames.ClassName): WasmFunctionName =
+      new WasmFunctionName("isJSClassInstance", clazz.nameString)
     def loadJSClass(clazz: IRNames.ClassName): WasmFunctionName =
       new WasmFunctionName("loadJSClass", clazz.nameString)
     def createJSClassOf(clazz: IRNames.ClassName): WasmFunctionName =
@@ -385,6 +387,9 @@ object Names {
         */
       val cloneFunction = new WasmFieldName("clone")
 
+      /** `isInstance` func ref for top-level JS classes. */
+      val isJSClassInstance = new WasmFieldName("isJSClassInstance")
+
       /** The reflective proxies in this type, used for reflective call on the class at runtime.
         * This field contains an array of reflective proxy structs, where each struct contains the
         * ID of the reflective proxy and a reference to the actual method implementation. Reflective
@@ -413,7 +418,8 @@ object Names {
       val classOfIdx = WasmFieldIdx(6)
       val arrayOfIdx = WasmFieldIdx(7)
       val cloneFunctionIdx = WasmFieldIdx(8)
-      val reflectiveProxiesIdx = WasmFieldIdx(9)
+      val isJSClassInstanceIdx = WasmFieldIdx(9)
+      val reflectiveProxiesIdx = WasmFieldIdx(10)
     }
 
     object reflectiveProxy {
