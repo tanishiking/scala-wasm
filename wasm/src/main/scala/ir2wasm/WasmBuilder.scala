@@ -143,8 +143,8 @@ class WasmBuilder {
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {
     topLevelExport.tree match {
-      case d: IRTrees.TopLevelJSClassExportDef => ???
-      case d: IRTrees.TopLevelModuleExportDef  => ???
+      case d: IRTrees.TopLevelJSClassExportDef => genDelayedTopLevelExport(d.exportName)
+      case d: IRTrees.TopLevelModuleExportDef  => genDelayedTopLevelExport(d.exportName)
       case d: IRTrees.TopLevelMethodExportDef  => transformTopLevelMethodExportDef(d)
       case d: IRTrees.TopLevelFieldExportDef   => transformTopLevelFieldExportDef(d)
     }
@@ -928,17 +928,11 @@ class WasmBuilder {
     val method = exportDef.methodDef
     val exportedName = exportDef.topLevelExportName
 
-    if (method.restParam.isDefined) {
-      throw new UnsupportedOperationException(
-        s"Top-level export with ...rest param is unsupported at ${method.pos}: $method"
-      )
-    }
-
     implicit val fctx = WasmFunctionContext(
       enclosingClassName = None,
       Names.WasmFunctionName.forExport(exportedName),
       receiverTyp = None,
-      method.args,
+      method.args ::: method.restParam.toList,
       IRTypes.AnyType
     )
 
@@ -946,7 +940,14 @@ class WasmBuilder {
 
     val func = fctx.buildAndAddToContext()
 
-    ctx.addExport(WasmExport.Function(exportedName, func.name))
+    if (method.restParam.isEmpty) {
+      ctx.addExport(WasmExport.Function(exportedName, func.name))
+    } else {
+      /* We cannot directly export the function. We will create a closure
+       * wrapper in the start function and export that instead.
+       */
+      genDelayedTopLevelExport(exportedName)
+    }
   }
 
   private def transformTopLevelFieldExportDef(
@@ -957,6 +958,32 @@ class WasmBuilder {
       WasmGlobalName.forStaticField(exportDef.field.name)
     )
     ctx.addExport(exprt)
+  }
+
+  /** Generates a delayed top-level export global, to be initialized in the `start` function.
+    *
+    * Some top-level exports need to be initialized by run-time code because they need to call
+    * initializing functions:
+    *
+    *   - methods with a `...rest` need to be initialized with the `closureRestNoArg` helper.
+    *   - JS classes need to be initialized with their `loadJSClass` helper.
+    *   - JS modules need to be initialized with their `loadModule` helper.
+    *
+    * For all of those, we use `genDelayedTopLevelExport` to generate a Wasm global initialized with
+    * `null` and to export it. We actually initialize the global in the `start` function (see
+    * `genStartFunction()` in `WasmContext`).
+    */
+  private def genDelayedTopLevelExport(exportedName: String)(implicit ctx: WasmContext): Unit = {
+    val globalName = WasmGlobalName.forTopLevelExport(exportedName)
+    ctx.addGlobal(
+      WasmGlobal(
+        globalName,
+        WasmRefType.anyref,
+        WasmExpr(List(REF_NULL(WasmHeapType.None))),
+        isMutable = true
+      )
+    )
+    ctx.addExport(WasmExport.Global(exportedName, globalName))
   }
 
   private def genFunction(

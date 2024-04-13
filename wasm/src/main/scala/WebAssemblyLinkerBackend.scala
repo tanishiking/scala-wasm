@@ -101,7 +101,11 @@ final class WebAssemblyLinkerBackend(
     val classesWithStaticInit =
       sortedClasses.filter(_.hasStaticInitializer).map(_.className)
 
-    context.complete(onlyModule.initializers.toList, classesWithStaticInit)
+    context.complete(
+      onlyModule.initializers.toList,
+      classesWithStaticInit,
+      onlyModule.topLevelExports
+    )
 
     val outputImpl = OutputDirectoryImpl.fromOutputDirectory(output)
 

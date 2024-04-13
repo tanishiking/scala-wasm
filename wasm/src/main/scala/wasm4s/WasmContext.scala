@@ -19,6 +19,8 @@ import wasm.ir2wasm.WasmExpressionBuilder
 
 import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
+import org.scalajs.linker.standard.LinkedTopLevelExport
+
 import java.nio.charset.StandardCharsets
 
 trait ReadOnlyWasmContext {
@@ -403,6 +405,11 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     List(WasmRefType.func, anyref, WasmInt32),
     List(WasmRefType.any)
   )
+  addHelperImport(
+    WasmFunctionName.closureRestNoData,
+    List(WasmRefType.func, WasmInt32),
+    List(WasmRefType.any)
+  )
 
   addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
   addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
@@ -536,7 +543,8 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   def complete(
       moduleInitializers: List[ModuleInitializer.Initializer],
-      classesWithStaticInit: List[IRNames.ClassName]
+      classesWithStaticInit: List[IRNames.ClassName],
+      topLevelExportDefs: List[LinkedTopLevelExport]
   ): Unit = {
     /* Before generating the string globals in `genStartFunction()`, make sure
      * to allocate the ones that will be required by the module initializers.
@@ -566,13 +574,14 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       )
     )
 
-    genStartFunction(moduleInitializers, classesWithStaticInit)
+    genStartFunction(moduleInitializers, classesWithStaticInit, topLevelExportDefs)
     genDeclarativeElements()
   }
 
   private def genStartFunction(
       moduleInitializers: List[ModuleInitializer.Initializer],
-      classesWithStaticInit: List[IRNames.ClassName]
+      classesWithStaticInit: List[IRNames.ClassName],
+      topLevelExportDefs: List[LinkedTopLevelExport]
   ): Unit = {
     import WasmInstr._
     import WasmTypeName._
@@ -636,6 +645,30 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         IRNames.StaticInitializerName
       )
       instrs += WasmInstr.CALL(funcName)
+    }
+
+    // Initialize the top-level exports that require it
+
+    for (tle <- topLevelExportDefs) {
+      tle.tree match {
+        case IRTrees.TopLevelJSClassExportDef(_, exportName) =>
+          instrs += CALL(WasmFunctionName.loadJSClass(tle.owningClass))
+          instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+        case IRTrees.TopLevelModuleExportDef(_, exportName) =>
+          instrs += CALL(WasmFunctionName.loadModule(tle.owningClass))
+          instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+        case IRTrees.TopLevelMethodExportDef(_, methodDef) =>
+          // We only need initialization if there is a restParam
+          if (methodDef.restParam.isDefined) {
+            instrs += refFuncWithDeclaration(WasmFunctionName.forExport(tle.exportName))
+            instrs += I32_CONST(methodDef.args.size)
+            instrs += CALL(WasmFunctionName.closureRestNoData)
+            instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+          }
+        case IRTrees.TopLevelFieldExportDef(_, _, _) =>
+          // Nothing to do
+          ()
+      }
     }
 
     // Emit the module initializers
