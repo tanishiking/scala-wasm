@@ -259,6 +259,16 @@ object WasmInstr {
       extends WasmInstr("try_table", 0x1F)
       with StructuredLabeledInstr
 
+  // Legacy exception system
+  case class TRY(i: BlockType, label: Option[WasmLabelName] = None)
+      extends WasmBlockTypeLabeledInstr("try", 0x06, i)
+  case class CATCH(i: WasmTagName) extends WasmTagInstr("catch", 0x07, i)
+  case object CATCH_ALL extends WasmSimpleInstr("catch_all", 0x19)
+  // case class DELEGATE(i: WasmLabelName) extends WasmLabelInstr("delegate", 0x18, i)
+  case class RETHROW(i: WasmLabelName)
+      extends WasmLabelInstr("rethrow", 0x09, i)
+      with StackPolymorphicInstr
+
   // Parametric instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#parametric-instructions
   case object DROP extends WasmSimpleInstr("drop", 0x1A)

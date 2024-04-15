@@ -388,7 +388,7 @@ class WasmFunctionContext private (
         while (nestingLevel >= 0 && iter.hasNext) {
           val deadCodeInstr = iter.next()
           deadCodeInstr match {
-            case END | ELSE if nestingLevel == 0 =>
+            case END | ELSE | _: CATCH | CATCH_ALL if nestingLevel == 0 =>
               /* We have reached the end of the original block of dead code.
                * Actually emit this END or ELSE and then drop `nestingLevel`
                * below 0 to end the dead code processing loop.
