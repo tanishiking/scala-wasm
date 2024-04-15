@@ -690,6 +690,7 @@ object HelperFunctions {
         )
         instrs += CALL(WasmFunctionName.jsArrayPush)
         instrs += CALL(WasmFunctionName.jsNew)
+        instrs += EXTERN_CONVERT_ANY
         instrs += THROW(ctx.exceptionTagName)
       }
     ) { () =>

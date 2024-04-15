@@ -305,6 +305,9 @@ object WasmInstr {
     */
   case class REF_FUNC(i: WasmFunctionName) extends WasmFuncInstr("ref.func", 0xD2, i)
 
+  case object ANY_CONVERT_EXTERN extends WasmSimpleInstr("any.convert_extern", 0xFB1A)
+  case object EXTERN_CONVERT_ANY extends WasmSimpleInstr("extern.convert_any", 0xFB1B)
+
   case object REF_I31 extends WasmSimpleInstr("ref.i31", 0xFB1C)
   case object I31_GET_S extends WasmSimpleInstr("i31.get_s", 0xFB1D)
   case object I31_GET_U extends WasmSimpleInstr("i31.get_u", 0xFB1E)

@@ -1712,20 +1712,21 @@ private class WasmExpressionBuilder private (
       genTree(t.block, t.tpe)
       instrs += CATCH(ctx.exceptionTagName)
       fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
+        instrs += ANY_CONVERT_EXTERN
         instrs += LOCAL_SET(exceptionLocal)
         genTree(t.handler, t.tpe)
       }
       instrs += END
     } else {
       fctx.block(resultType) { doneLabel =>
-        fctx.block(Types.WasmRefType.anyref) { catchLabel =>
-          /* We used to have `resultType` as result of the try_table, wich the
+        fctx.block(Types.WasmRefType.externref) { catchLabel =>
+          /* We used to have `resultType` as result of the try_table, with the
            * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
            * V8 cannot handle try_table with a result type that is `(ref ...)`.
-           * The current encoding with `anyref` as result type (to match the
+           * The current encoding with `externref` as result type (to match the
            * enclosing block) and the `br` *inside* the `try_table` works.
            */
-          fctx.tryTable(Types.WasmRefType.anyref)(
+          fctx.tryTable(Types.WasmRefType.externref)(
             List(CatchClause.Catch(ctx.exceptionTagName, catchLabel))
           ) {
             genTree(t.block, t.tpe)
@@ -1733,6 +1734,7 @@ private class WasmExpressionBuilder private (
           }
         } // end block $catch
         fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
+          instrs += ANY_CONVERT_EXTERN
           instrs += LOCAL_SET(exceptionLocal)
           genTree(t.handler, t.tpe)
         }
@@ -1790,6 +1792,7 @@ private class WasmExpressionBuilder private (
 
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
     genTree(tree.expr, IRTypes.AnyType)
+    instrs += EXTERN_CONVERT_ANY
     instrs += THROW(ctx.exceptionTagName)
 
     IRTypes.NothingType

@@ -54,6 +54,9 @@ object Types {
     /** `(ref extern)`. */
     val extern: WasmRefType = apply(WasmHeapType.Extern)
 
+    /** `(ref null extern)`, i.e., `externref`. */
+    val externref: WasmRefType = nullable(WasmHeapType.Extern)
+
     /** `(ref null exn)`, i.e., `exnref`. */
     val exnref: WasmRefType = nullable(WasmHeapType.Exn)
 

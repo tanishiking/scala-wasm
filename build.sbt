@@ -228,15 +228,14 @@ lazy val IgnoredTestNames: Set[String] = {
   Set(
     // reflective call: should be throw an exception when reflective proxy not found
     "org.scalajs.testsuite.compiler.WasPublicBeforeTyperTestScala2",
-    // Various run-time errors and JS exceptions
-    "org.scalajs.testsuite.compiler.InteroperabilityTest",
+    // javaLangClassGetNameRenamedThroughSemantics failed: org.junit.ComparisonFailure:
+    // expected:<[renamed.test.]Class> but was:<[org.scalajs.testsuite.compiler.ReflectionTest$RenamedTest]Class>
     "org.scalajs.testsuite.compiler.ReflectionTest",
-    "org.scalajs.testsuite.compiler.RegressionJSTest",
-    "org.scalajs.testsuite.jsinterop.FunctionTest",
-    "org.scalajs.testsuite.jsinterop.MiscInteropTest",
-    "org.scalajs.testsuite.jsinterop.NonNativeJSTypeTest",
-    "org.scalajs.testsuite.jsinterop.SpecialTest",
+    // wellKnownSymbolIterator/testToString failed: scala.scalajs.js.JavaScriptException: TypeError: Cannot convert a Symbol value to a string
     "org.scalajs.testsuite.jsinterop.SymbolTest",
+    // Cannot call wasmObject.toString() from JavaScript:
+    // boxValueClassesGivenToJSInteropMethod failed: scala.scalajs.js.JavaScriptException: TypeError: vc.toString is not a function
+    "org.scalajs.testsuite.compiler.InteroperabilityTest",
     // TypeError: WebAssembly objects are opaque
     "org.scalajs.testsuite.javalib.lang.SystemJSTest",
     // throwablesAreTrueErrors failed: org.junit.ComparisonFailure: expected:<[object [Error]]> but was:<[object [Object]]>
