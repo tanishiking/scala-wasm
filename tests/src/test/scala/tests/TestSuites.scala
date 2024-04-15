@@ -40,6 +40,7 @@ object TestSuites {
     TestSuite("testsuite.core.StaticMethodTest"),
     TestSuite("testsuite.core.ThrowAndTryTest"),
     TestSuite("testsuite.core.ThrowablesTest"),
+    TestSuite("testsuite.core.TryFinallyReturnTest"),
     TestSuite("testsuite.core.ToStringTest"),
     TestSuite("testsuite.core.UnitPatMatTest"),
     TestSuite("testsuite.core.MatchTest"),

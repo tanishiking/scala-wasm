@@ -236,8 +236,6 @@ lazy val IgnoredTestNames: Set[String] = {
     "org.scalajs.testsuite.javalib.lang.ThrowableJSTest",
     // jsError/jsObject failed: AssertionError because Wasm objects are not instanceof Error/Object
     "org.scalajs.testsuite.compiler.RuntimeTypeTestsJSTest",
-    // keepBreakToLabelWithinFinallyBlock_Issue2689 failed: java.lang.AssertionError: expected:<2> but was:<1>
-    "org.scalajs.testsuite.compiler.OptimizerTest",
     // No support for stack traces
     "org.scalajs.testsuite.library.StackTraceTest",
   )
