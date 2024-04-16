@@ -66,7 +66,7 @@ case class WasmGlobal(
     val isMutable: Boolean
 )
 
-trait WasmTypeDefinition {
+sealed trait WasmTypeDefinition {
   val name: WasmTypeName
 }
 
@@ -89,12 +89,11 @@ object WasmFunctionType {
   }
 }
 
-sealed trait WasmGCTypeDefinition extends WasmTypeDefinition
 case class WasmStructType(
     name: WasmTypeName,
     fields: List[WasmStructField],
     superType: Option[WasmTypeName]
-) extends WasmGCTypeDefinition
+) extends WasmTypeDefinition
 object WasmStructType {
 
   /** Run-time type data of a `TypeRef`. Support for `j.l.Class` methods and other reflective
@@ -189,7 +188,7 @@ object WasmStructType {
 case class WasmArrayType(
     name: WasmTypeName.WasmArrayTypeName,
     field: WasmStructField
-) extends WasmGCTypeDefinition
+) extends WasmTypeDefinition
 object WasmArrayType {
 
   /** array (ref typeData) */

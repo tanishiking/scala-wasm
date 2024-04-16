@@ -20,9 +20,9 @@ class WasmTextWriter {
       "module", {
         b.newLineList(
           "rec", {
-            module.recGroupTypes.foreach(writeGCTypeDefinition)
-            module.functionTypes.foreach(writeFunctionType)
-            module.arrayTypes.foreach(writeGCTypeDefinition)
+            module.recGroupTypes.foreach(writeTypeDefinition)
+            module.functionTypes.foreach(writeTypeDefinition)
+            module.arrayTypes.foreach(writeTypeDefinition)
           }
         )
         module.imports.foreach(writeImport)
@@ -37,8 +37,8 @@ class WasmTextWriter {
     )
   }
 
-  private def writeGCTypeDefinition(
-      t: WasmGCTypeDefinition
+  private def writeTypeDefinition(
+      t: WasmTypeDefinition
   )(implicit b: WatBuilder): Unit = {
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
@@ -59,6 +59,19 @@ class WasmTextWriter {
       "type", {
         b.appendElement(t.name.show)
         t match {
+          case WasmFunctionType(name, params, results) =>
+            // (type type-name (func (param ty) (param ty) (result ty)))
+            b.sameLineList(
+              "func", {
+                params.foreach { ty =>
+                  b.sameLineList("param", writeType(ty))
+                }
+                results.foreach { ty =>
+                  b.sameLineList("result", writeType(ty))
+                }
+              }
+            )
+
           case WasmArrayType(name, field) =>
             b.sameLineList(
               "array", {
@@ -69,9 +82,9 @@ class WasmTextWriter {
                     }
                   )
                 else writeType(field.typ)
-
               }
             )
+
           // (type $kotlin.Any___type_13 (struct (field (ref $kotlin.Any.vtable___type_12)) (field (ref null struct)) (field (mut i32)) (field (mut i32))))
           case WasmStructType(name, fields, superType) =>
             b.sameLineList(
@@ -88,27 +101,6 @@ class WasmTextWriter {
       }
     )
   }
-
-  private def writeFunctionType(
-      functionType: WasmFunctionType
-  )(implicit b: WatBuilder): Unit =
-    // (type type-name (func (param ty) (param ty) (result ty)))
-    b.newLineList(
-      "type", {
-        b.appendElement(functionType.name.show)
-        b.sameLineList(
-          "func", {
-            functionType.params.foreach { ty =>
-              b.sameLineList("param", writeType(ty))
-            }
-            if (functionType.results.nonEmpty)
-              functionType.results.foreach { ty =>
-                b.sameLineList("result", writeType(ty))
-              }
-          }
-        )
-      }
-    )
 
   private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
     b.newLineList(
