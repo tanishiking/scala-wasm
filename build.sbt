@@ -226,8 +226,6 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // wellKnownSymbolIterator/testToString failed: scala.scalajs.js.JavaScriptException: TypeError: Cannot convert a Symbol value to a string
-    "org.scalajs.testsuite.jsinterop.SymbolTest",
     // Cannot call wasmObject.toString() from JavaScript:
     // boxValueClassesGivenToJSInteropMethod failed: scala.scalajs.js.JavaScriptException: TypeError: vc.toString is not a function
     "org.scalajs.testsuite.compiler.InteroperabilityTest",
