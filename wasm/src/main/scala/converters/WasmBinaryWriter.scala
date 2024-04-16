@@ -14,7 +14,7 @@ import wasm.wasm4s.WasmInstr.{BlockType, END}
 final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
 
-  private val allTypeDefinitions: List[WasmTypeDefinition[_ <: WasmTypeName]] = {
+  private val allTypeDefinitions: List[WasmTypeDefinition] = {
     module.recGroupTypes :::
       module.functionTypes :::
       module.arrayTypes

@@ -36,7 +36,7 @@ case class WasmFunction(
     val typ: WasmFunctionType,
     val locals: List[WasmLocal],
     val body: WasmExpr
-) extends WasmNamedDefinitionField[WasmFunctionName]
+)
 
 /** The index space for locals is only accessible inside a function and includes the parameters of
   * that function, which precede the local variables.
@@ -45,13 +45,11 @@ case class WasmLocal(
     val name: WasmLocalName,
     val typ: WasmType,
     val isParameter: Boolean // for text
-) extends WasmNamedDefinitionField[WasmLocalName]
+)
 
 final case class WasmTag(val name: WasmTagName, val typ: WasmFunctionTypeName)
-    extends WasmNamedDefinitionField[WasmTagName]
 
 final case class WasmData(val name: WasmDataName, val bytes: Array[Byte], mode: WasmData.Mode)
-    extends WasmNamedDefinitionField[WasmDataName]
 
 object WasmData {
   sealed abstract class Mode
@@ -66,9 +64,11 @@ case class WasmGlobal(
     val typ: WasmType,
     val init: WasmExpr,
     val isMutable: Boolean
-) extends WasmNamedDefinitionField[WasmGlobalName]
+)
 
-trait WasmTypeDefinition[T <: WasmName] extends WasmNamedDefinitionField[T]
+trait WasmTypeDefinition {
+  val name: WasmTypeName
+}
 
 case class WasmFunctionSignature(
     params: List[WasmType],
@@ -82,14 +82,14 @@ case class WasmFunctionType(
     name: WasmFunctionTypeName,
     params: List[WasmType],
     results: List[WasmType]
-) extends WasmTypeDefinition[WasmFunctionTypeName]
+) extends WasmTypeDefinition
 object WasmFunctionType {
   def apply(name: WasmFunctionTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
     WasmFunctionType(name, sig.params, sig.results)
   }
 }
 
-sealed trait WasmGCTypeDefinition extends WasmTypeDefinition[WasmTypeName]
+sealed trait WasmGCTypeDefinition extends WasmTypeDefinition
 case class WasmStructType(
     name: WasmTypeName,
     fields: List[WasmStructField],
