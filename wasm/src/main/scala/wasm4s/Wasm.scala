@@ -292,30 +292,19 @@ object WasmElement {
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
   */
-class WasmModule(
-    private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer(),
-    private val _arrayTypes: mutable.Set[WasmArrayType] = new mutable.HashSet(),
-    private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer(),
-    // val importsInOrder: List[WasmNamedModuleField] = Nil,
-    private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer(),
-    // val importedMemories: List[WasmMemory] = Nil,
-    // val importedTables: List[WasmTable] = Nil,
-    // val importedGlobals: List[WasmGlobal] = Nil,
-    // val importedTags: List[WasmTag] = Nil,
-    private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer(),
-    // val tables: List[WasmTable] = Nil,
-    // val memories: List[WasmMemory] = Nil,
-    private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer(),
-    private val _data: mutable.ListBuffer[WasmData] = new mutable.ListBuffer(),
-    private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer(),
-    private val _exports: mutable.ListBuffer[WasmExport] = new mutable.ListBuffer(),
-    private var _startFunction: Option[WasmFunctionName] = None,
-    private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
-    // val tags: List[WasmTag] = Nil,
-    // val startFunction: WasmFunction = null,
-    // val data: List[WasmData] = Nil,
-    // val dataCount: Boolean = true
-) {
+class WasmModule {
+  private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer()
+  private val _arrayTypes: mutable.Set[WasmArrayType] = new mutable.HashSet()
+  private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer()
+  private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer()
+  private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer()
+  private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer()
+  private val _data: mutable.ListBuffer[WasmData] = new mutable.ListBuffer()
+  private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer()
+  private val _exports: mutable.ListBuffer[WasmExport] = new mutable.ListBuffer()
+  private var _startFunction: Option[WasmFunctionName] = None
+  private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
+
   def addImport(imprt: WasmImport): Unit = _imports += imprt
   def addFunction(function: WasmFunction): Unit = _definedFunctions += function
   def addArrayType(typ: WasmArrayType): Unit = _arrayTypes += typ
