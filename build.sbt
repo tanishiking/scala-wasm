@@ -226,9 +226,6 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // javaLangClassGetNameRenamedThroughSemantics failed: org.junit.ComparisonFailure:
-    // expected:<[renamed.test.]Class> but was:<[org.scalajs.testsuite.compiler.ReflectionTest$RenamedTest]Class>
-    "org.scalajs.testsuite.compiler.ReflectionTest",
     // wellKnownSymbolIterator/testToString failed: scala.scalajs.js.JavaScriptException: TypeError: Cannot convert a Symbol value to a string
     "org.scalajs.testsuite.jsinterop.SymbolTest",
     // Cannot call wasmObject.toString() from JavaScript:

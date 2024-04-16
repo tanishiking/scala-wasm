@@ -13,7 +13,8 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{ClassKind, Position}
 
-import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
+import org.scalajs.linker.interface.unstable.RuntimeClassNameMapperImpl
+import org.scalajs.linker.standard.{CoreSpec, LinkedClass, LinkedTopLevelExport}
 
 import collection.mutable
 import java.awt.Window.Type
@@ -21,7 +22,7 @@ import _root_.wasm4s.Defaults
 
 import EmbeddedConstants._
 
-class WasmBuilder {
+class WasmBuilder(coreSpec: CoreSpec) {
   // val module = new WasmModule()
 
   def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
@@ -258,8 +259,13 @@ class WasmBuilder {
       ctx: WasmContext
   ): List[WasmInstr] = {
     val nameStr = typeRef match {
-      case typeRef: IRTypes.PrimRef    => typeRef.displayName
-      case IRTypes.ClassRef(className) => className.nameString
+      case typeRef: IRTypes.PrimRef =>
+        typeRef.displayName
+      case IRTypes.ClassRef(className) =>
+        RuntimeClassNameMapperImpl.map(
+          coreSpec.semantics.runtimeClassNameMapper,
+          className.nameString
+        )
     }
 
     val nameDataValueItems = nameStr.toList.map(c => I32_CONST(c.toInt))
