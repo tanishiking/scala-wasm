@@ -170,7 +170,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       val importedFunTypeIdx =
         importTypeDefinitions.map(_.name).zipWithIndex.map(kv => (kv._1, kv._2 + indexBase)).toMap
 
-      def writeImportedTypeIdx(typeName: WasmTypeName.WasmFunctionTypeName): Unit =
+      def writeImportedTypeIdx(typeName: WasmTypeName): Unit =
         buf.u32(importedFunTypeIdx(typeName))
 
       imprt.desc match {

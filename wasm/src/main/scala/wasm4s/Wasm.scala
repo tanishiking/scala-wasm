@@ -47,7 +47,7 @@ case class WasmLocal(
     val isParameter: Boolean // for text
 )
 
-final case class WasmTag(val name: WasmTagName, val typ: WasmFunctionTypeName)
+final case class WasmTag(val name: WasmTagName, val typ: WasmTypeName)
 
 final case class WasmData(val name: WasmDataName, val bytes: Array[Byte], mode: WasmData.Mode)
 
@@ -79,12 +79,12 @@ object WasmFunctionSignature {
 }
 
 case class WasmFunctionType(
-    name: WasmFunctionTypeName,
+    name: WasmTypeName,
     params: List[WasmType],
     results: List[WasmType]
 ) extends WasmTypeDefinition
 object WasmFunctionType {
-  def apply(name: WasmFunctionTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
+  def apply(name: WasmTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
     WasmFunctionType(name, sig.params, sig.results)
   }
 }
@@ -185,10 +185,7 @@ object WasmStructType {
   )
 }
 
-case class WasmArrayType(
-    name: WasmTypeName.WasmArrayTypeName,
-    field: WasmStructField
-) extends WasmTypeDefinition
+case class WasmArrayType(name: WasmTypeName, field: WasmStructField) extends WasmTypeDefinition
 object WasmArrayType {
 
   /** array (ref typeData) */

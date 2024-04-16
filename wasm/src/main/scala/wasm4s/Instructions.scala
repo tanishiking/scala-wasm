@@ -389,7 +389,7 @@ object WasmInstr {
     */
   sealed abstract class BlockType
   object BlockType {
-    case class FunctionType(ty: WasmFunctionTypeName) extends BlockType
+    case class FunctionType(ty: WasmTypeName) extends BlockType
     case class ValueType(ty: Option[WasmType]) extends BlockType
     object ValueType {
       def apply(ty: WasmType): ValueType = ValueType(Some(ty))

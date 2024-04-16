@@ -31,8 +31,8 @@ trait ReadOnlyWasmContext {
   private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
   protected var nextItableIdx: Int
 
-  val cloneFunctionTypeName: WasmFunctionTypeName
-  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName
+  val cloneFunctionTypeName: WasmTypeName
+  val isJSClassInstanceFuncTypeName: WasmTypeName
 
   def itablesLength = nextItableIdx
 
@@ -152,7 +152,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       }
     )
 
-  val cloneFunctionTypeName: WasmFunctionTypeName =
+  val cloneFunctionTypeName: WasmTypeName =
     addFunctionType(
       WasmFunctionSignature(
         List(WasmRefType(WasmHeapType.ObjectType)),
@@ -160,12 +160,12 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       )
     )
 
-  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName =
+  val isJSClassInstanceFuncTypeName: WasmTypeName =
     addFunctionType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
 
   val exceptionTagName: WasmTagName
 
-  def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
+  def addFunctionType(sig: WasmFunctionSignature): WasmTypeName = {
     functionSignatures.get(sig) match {
       case None =>
         val idx = functionSignatures.size

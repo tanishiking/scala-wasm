@@ -108,7 +108,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     val objectRef = IRTypes.ClassRef(IRNames.ObjectClass)
 
-    val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmStructTypeName, WasmArrayType)] =
+    val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmTypeName, WasmArrayType)] =
       List(
         (IRTypes.BooleanRef, WasmStructTypeName.BooleanArray, WasmArrayType.i8Array),
         (IRTypes.CharRef, WasmStructTypeName.CharArray, WasmArrayType.i16Array),
