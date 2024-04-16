@@ -29,9 +29,9 @@ class WasmFunctionContext private (
   private var innerFuncIdx = 0
   private var currentEnv: Env = _paramsEnv
 
-  private val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
+  private val locals = mutable.ListBuffer.empty[WasmLocal]
 
-  _params.foreach(locals.define(_))
+  locals ++= _params
 
   def newTargetStorage: VarStorage.Local =
     _newTargetStorage.getOrElse(throw new Error("Cannot access new.target in this context."))
@@ -68,8 +68,7 @@ class WasmFunctionContext private (
   }
 
   private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {
-    val local = WasmLocal(name, typ, isParameter = false)
-    locals.define(local)
+    locals += WasmLocal(name, typ, isParameter = false)
     name
   }
 
@@ -351,7 +350,7 @@ class WasmFunctionContext private (
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
     val expr = WasmExpr(dcedInstrs)
-    val func = WasmFunction(functionName, functionType, locals.all, expr)
+    val func = WasmFunction(functionName, functionType, locals.toList, expr)
     ctx.addFunction(func)
     func
   }

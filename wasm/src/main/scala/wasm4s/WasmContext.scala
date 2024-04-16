@@ -25,9 +25,6 @@ import java.nio.charset.StandardCharsets
 
 trait ReadOnlyWasmContext {
   import WasmContext._
-  protected val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
-  protected val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
-  protected val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
 
   protected val itableIdx = mutable.Map[IRNames.ClassName, Int]()
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
@@ -282,24 +279,21 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
-  def addExport(exprt: WasmExport): Unit = module.addExport(exprt)
-  def addFunction(fun: WasmFunction): Unit = {
+  def addExport(exprt: WasmExport): Unit =
+    module.addExport(exprt)
+
+  def addFunction(fun: WasmFunction): Unit =
     module.addFunction(fun)
-    functions.define(fun)
-  }
-  def addGCType(ty: WasmStructType): Unit = {
+
+  def addGCType(ty: WasmStructType): Unit =
     module.addRecGroupType(ty)
-    gcTypes.define(ty)
-  }
+
+  def addGlobal(g: WasmGlobal): Unit =
+    module.addGlobal(g)
 
   def addGlobalITable(name: IRNames.ClassName, g: WasmGlobal): Unit = {
     classItableGlobals.put(name, g.name)
-    module.addGlobal(g)
-    globals.define(g)
-  }
-  def addGlobal(g: WasmGlobal): Unit = {
-    module.addGlobal(g)
-    globals.define(g)
+    addGlobal(g)
   }
 
   def getImportedModuleGlobal(moduleName: String): WasmGlobalName = {
