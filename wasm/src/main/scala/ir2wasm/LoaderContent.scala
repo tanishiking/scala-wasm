@@ -65,6 +65,9 @@ const linkingInfo = Object.freeze({
 });
 
 const scalaJSHelpers = {
+  // JSTag
+  JSTag: WebAssembly.JSTag,
+
   // BinaryOp.===
   is: Object.is,
 

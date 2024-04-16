@@ -335,9 +335,11 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   val exceptionTagName: WasmTagName = WasmTagName("exception")
 
   locally {
-    val exceptionSig = WasmFunctionSignature(List(anyref), Nil)
-    val exceptionFunType = addFunctionType(exceptionSig)
-    module.addTag(WasmTag(exceptionTagName, exceptionFunType))
+    val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
+    val typ = WasmFunctionType(addFunctionType(exceptionSig), exceptionSig)
+    module.addImport(
+      WasmImport("__scalaJSHelpers", "JSTag", WasmImportDesc.Tag(exceptionTagName, typ))
+    )
   }
 
   private def addHelperImport(

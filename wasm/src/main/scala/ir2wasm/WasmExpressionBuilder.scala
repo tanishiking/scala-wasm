@@ -21,6 +21,23 @@ import _root_.wasm4s.Defaults
 import EmbeddedConstants._
 
 object WasmExpressionBuilder {
+
+  /** Whether to use the legacy `try` instruction to implement `TryCatch`.
+    *
+    * Support for catching JS exceptions was only added to `try_table` in V8 12.5 from April 2024.
+    * While waiting for Node.js to catch up with V8, we use `try` to implement our `TryCatch`.
+    *
+    * We use this "fixed configuration option" to keep the code that implements `TryCatch` using
+    * `try_table` in the codebase, as code that is actually compiled, so that refactorings apply to
+    * it as well. It also makes it easier to manually experiment with the new `try_table` encoding,
+    * which will become available in Chrome v125.
+    *
+    * Note that we use `try_table` regardless to implement `TryFinally`. Its `catch_all_ref` handler
+    * is perfectly happy to catch and rethrow JavaScript exception in Node.js 22. Duplicating that
+    * implementation for `try` would be a nightmare, given how complex it is already.
+    */
+  private final val UseLegacyExceptionsForTryCatch = true
+
   def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
       ctx: TypeDefinableWasmContext,
       fctx: WasmFunctionContext
@@ -1690,26 +1707,39 @@ private class WasmExpressionBuilder private (
   private def genTryCatch(t: IRTrees.TryCatch): IRTypes.Type = {
     val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
 
-    fctx.block(resultType) { doneLabel =>
-      fctx.block(Types.WasmRefType.anyref) { catchLabel =>
-        /* We used to have `resultType` as result of the try_table, wich the
-         * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
-         * V8 cannot handle try_table with a result type that is `(ref ...)`.
-         * The current encoding with `anyref` as result type (to match the
-         * enclosing block) and the `br` *inside* the `try_table` works.
-         */
-        fctx.tryTable(Types.WasmRefType.anyref)(
-          List(CatchClause.Catch(ctx.exceptionTagName, catchLabel))
-        ) {
-          genTree(t.block, t.tpe)
-          instrs += BR(doneLabel)
-        }
-      } // end block $catch
+    if (UseLegacyExceptionsForTryCatch) {
+      instrs += TRY(fctx.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
+      genTree(t.block, t.tpe)
+      instrs += CATCH(ctx.exceptionTagName)
       fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
+        instrs += ANY_CONVERT_EXTERN
         instrs += LOCAL_SET(exceptionLocal)
         genTree(t.handler, t.tpe)
       }
-    } // end block $done
+      instrs += END
+    } else {
+      fctx.block(resultType) { doneLabel =>
+        fctx.block(Types.WasmRefType.externref) { catchLabel =>
+          /* We used to have `resultType` as result of the try_table, with the
+           * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
+           * V8 cannot handle try_table with a result type that is `(ref ...)`.
+           * The current encoding with `externref` as result type (to match the
+           * enclosing block) and the `br` *inside* the `try_table` works.
+           */
+          fctx.tryTable(Types.WasmRefType.externref)(
+            List(CatchClause.Catch(ctx.exceptionTagName, catchLabel))
+          ) {
+            genTree(t.block, t.tpe)
+            instrs += BR(doneLabel)
+          }
+        } // end block $catch
+        fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
+          instrs += ANY_CONVERT_EXTERN
+          instrs += LOCAL_SET(exceptionLocal)
+          genTree(t.handler, t.tpe)
+        }
+      } // end block $done
+    }
 
     if (t.tpe == IRTypes.NothingType)
       instrs += UNREACHABLE
@@ -1762,6 +1792,7 @@ private class WasmExpressionBuilder private (
 
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
     genTree(tree.expr, IRTypes.AnyType)
+    instrs += EXTERN_CONVERT_ANY
     instrs += THROW(ctx.exceptionTagName)
 
     IRTypes.NothingType
