@@ -226,8 +226,6 @@ lazy val `scalajs-test-suite` = project
 
 lazy val IgnoredTestNames: Set[String] = {
   Set(
-    // reflective call: should be throw an exception when reflective proxy not found
-    "org.scalajs.testsuite.compiler.WasPublicBeforeTyperTestScala2",
     // javaLangClassGetNameRenamedThroughSemantics failed: org.junit.ComparisonFailure:
     // expected:<[renamed.test.]Class> but was:<[org.scalajs.testsuite.compiler.ReflectionTest$RenamedTest]Class>
     "org.scalajs.testsuite.compiler.ReflectionTest",
