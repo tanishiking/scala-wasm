@@ -1650,9 +1650,16 @@ object HelperFunctions {
       instrs += I32_ADD
       instrs += LOCAL_SET(i)
     }
-    // method not found, trap
-    // TODO? maybe we should throw an exception
-    instrs += UNREACHABLE
+    // throw new TypeError("...")
+    instrs ++= ctx.getConstantStringInstr("TypeError")
+    instrs += CALL(WasmFunctionName.jsGlobalRefGet)
+    instrs += CALL(WasmFunctionName.jsNewArray)
+    // Originally, exception is thrown from JS saying e.g. "obj2.z1__ is not a function"
+    instrs ++= ctx.getConstantStringInstr("Method not found")
+    instrs += CALL(WasmFunctionName.jsArrayPush)
+    instrs += CALL(WasmFunctionName.jsNew)
+    instrs += EXTERN_CONVERT_ANY
+    instrs += THROW(ctx.exceptionTagName)
 
     fctx.buildAndAddToContext()
   }
