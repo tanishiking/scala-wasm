@@ -23,7 +23,7 @@ import org.scalajs.linker.standard.LinkedTopLevelExport
 
 import java.nio.charset.StandardCharsets
 
-trait ReadOnlyWasmContext {
+abstract class ReadOnlyWasmContext {
   import WasmContext._
 
   protected val itableIdx = mutable.Map[IRNames.ClassName, Int]()
@@ -123,7 +123,7 @@ case class StringData(
     offset: Int
 )
 
-trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
+abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
