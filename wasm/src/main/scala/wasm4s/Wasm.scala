@@ -22,10 +22,10 @@ final case class WasmImport(module: String, name: String, desc: WasmImportDesc)
 sealed abstract class WasmImportDesc
 
 object WasmImportDesc {
-  final case class Func(id: WasmFunctionName, typ: WasmFunctionType) extends WasmImportDesc
+  final case class Func(id: WasmFunctionName, typeName: WasmTypeName) extends WasmImportDesc
   final case class Global(id: WasmGlobalName, typ: WasmType, isMutable: Boolean)
       extends WasmImportDesc
-  final case class Tag(id: WasmTagName, typ: WasmFunctionType) extends WasmImportDesc
+  final case class Tag(id: WasmTagName, typeName: WasmTypeName) extends WasmImportDesc
 }
 
 /** @see
@@ -33,8 +33,9 @@ object WasmImportDesc {
   */
 case class WasmFunction(
     val name: WasmFunctionName,
-    val typ: WasmFunctionType,
+    val typeName: WasmTypeName,
     val locals: List[WasmLocal],
+    val results: List[WasmType],
     val body: WasmExpr
 )
 
@@ -66,9 +67,43 @@ case class WasmGlobal(
     val isMutable: Boolean
 )
 
-sealed trait WasmTypeDefinition {
-  val name: WasmTypeName
+final class WasmRecType {
+  private val _subTypes = mutable.ListBuffer.empty[WasmSubType]
+
+  def addSubType(subType: WasmSubType): Unit =
+    _subTypes += subType
+
+  def addSubType(name: WasmTypeName, compositeType: WasmCompositeType): Unit =
+    addSubType(WasmSubType(name, compositeType))
+
+  def subTypes: List[WasmSubType] = _subTypes.toList
 }
+
+object WasmRecType {
+
+  /** Builds a `rectype` with a single `subtype`. */
+  def apply(singleSubType: WasmSubType): WasmRecType = {
+    val recType = new WasmRecType
+    recType.addSubType(singleSubType)
+    recType
+  }
+}
+
+final case class WasmSubType(
+    name: WasmTypeName,
+    isFinal: Boolean,
+    superType: Option[WasmTypeName],
+    compositeType: WasmCompositeType
+)
+
+object WasmSubType {
+
+  /** Builds a `subtype` that is `final` and without any super type. */
+  def apply(name: WasmTypeName, compositeType: WasmCompositeType): WasmSubType =
+    WasmSubType(name, isFinal = true, superType = None, compositeType)
+}
+
+sealed abstract class WasmCompositeType
 
 case class WasmFunctionSignature(
     params: List[WasmType],
@@ -79,21 +114,16 @@ object WasmFunctionSignature {
 }
 
 case class WasmFunctionType(
-    name: WasmTypeName,
     params: List[WasmType],
     results: List[WasmType]
-) extends WasmTypeDefinition
+) extends WasmCompositeType
 object WasmFunctionType {
-  def apply(name: WasmTypeName, sig: WasmFunctionSignature): WasmFunctionType = {
-    WasmFunctionType(name, sig.params, sig.results)
+  def apply(sig: WasmFunctionSignature): WasmFunctionType = {
+    WasmFunctionType(sig.params, sig.results)
   }
 }
 
-case class WasmStructType(
-    name: WasmTypeName,
-    fields: List[WasmStructField],
-    superType: Option[WasmTypeName]
-) extends WasmTypeDefinition
+case class WasmStructType(fields: List[WasmStructField]) extends WasmCompositeType
 object WasmStructType {
 
   /** Run-time type data of a `TypeRef`. Support for `j.l.Class` methods and other reflective
@@ -103,7 +133,6 @@ object WasmStructType {
     *   [[Names.WasmFieldName.typeData]], which contains documentation of what is in each field.
     */
   def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
-    WasmTypeName.WasmStructTypeName.typeData,
     List(
       WasmStructField(
         WasmFieldName.typeData.nameData,
@@ -160,15 +189,13 @@ object WasmStructType {
         WasmRefType(WasmHeapType(WasmArrayTypeName.reflectiveProxies)),
         isMutable = false
       )
-    ),
-    None
+    )
   )
 
   // The number of fields of typeData, after which we find the vtable entries
   def typeDataFieldCount(implicit ctx: ReadOnlyWasmContext) = typeData.fields.size
 
   val reflectiveProxy: WasmStructType = WasmStructType(
-    WasmStructTypeName.reflectiveProxy,
     List(
       WasmStructField(
         WasmFieldName.reflectiveProxy.func_name,
@@ -180,17 +207,15 @@ object WasmStructType {
         WasmRefType(WasmHeapType.Func),
         isMutable = false
       )
-    ),
-    None
+    )
   )
 }
 
-case class WasmArrayType(name: WasmTypeName, field: WasmStructField) extends WasmTypeDefinition
+case class WasmArrayType(field: WasmStructField) extends WasmCompositeType
 object WasmArrayType {
 
   /** array (ref typeData) */
   val typeDataArray = WasmArrayType(
-    WasmArrayTypeName.typeDataArray,
     WasmStructField(
       WasmFieldName.arrayItem,
       WasmRefType(WasmStructTypeName.typeData),
@@ -200,7 +225,6 @@ object WasmArrayType {
 
   /** array (ref struct) */
   val itables = WasmArrayType(
-    WasmArrayTypeName.itables,
     WasmStructField(
       WasmFieldName.itable,
       WasmRefType.nullable(WasmHeapType.Struct),
@@ -209,7 +233,6 @@ object WasmArrayType {
   )
 
   val reflectiveProxies = WasmArrayType(
-    WasmArrayTypeName.reflectiveProxies,
     WasmStructField(
       WasmFieldName.reflectiveProxyField,
       WasmRefType(WasmStructTypeName.reflectiveProxy),
@@ -219,43 +242,36 @@ object WasmArrayType {
 
   /** array i8 */
   val i8Array = WasmArrayType(
-    WasmArrayTypeName.i8Array,
     WasmStructField(WasmFieldName.arrayItem, WasmInt8, true)
   )
 
   /** array i16 */
   val i16Array = WasmArrayType(
-    WasmArrayTypeName.i16Array,
     WasmStructField(WasmFieldName.arrayItem, WasmInt16, true)
   )
 
   /** array i32 */
   val i32Array = WasmArrayType(
-    WasmArrayTypeName.i32Array,
     WasmStructField(WasmFieldName.arrayItem, WasmInt32, true)
   )
 
   /** array i64 */
   val i64Array = WasmArrayType(
-    WasmArrayTypeName.i64Array,
     WasmStructField(WasmFieldName.arrayItem, WasmInt64, true)
   )
 
   /** array f32 */
   val f32Array = WasmArrayType(
-    WasmArrayTypeName.f32Array,
     WasmStructField(WasmFieldName.arrayItem, WasmFloat32, true)
   )
 
   /** array f64 */
   val f64Array = WasmArrayType(
-    WasmArrayTypeName.f64Array,
     WasmStructField(WasmFieldName.arrayItem, WasmFloat64, true)
   )
 
   /** array anyref */
   val anyArray = WasmArrayType(
-    WasmArrayTypeName.anyArray,
     WasmStructField(WasmFieldName.arrayItem, WasmRefType.anyref, true)
   )
 }
@@ -289,9 +305,7 @@ object WasmElement {
   *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
   */
 class WasmModule {
-  private val _functionTypes: mutable.ListBuffer[WasmFunctionType] = new mutable.ListBuffer()
-  private val _arrayTypes: mutable.Set[WasmArrayType] = new mutable.HashSet()
-  private val _recGroupTypes: mutable.ListBuffer[WasmStructType] = new mutable.ListBuffer()
+  private val _recTypes: mutable.ListBuffer[WasmRecType] = new mutable.ListBuffer()
   private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer()
   private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer()
   private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer()
@@ -301,11 +315,14 @@ class WasmModule {
   private var _startFunction: Option[WasmFunctionName] = None
   private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
 
+  def addRecType(typ: WasmRecType): Unit = _recTypes += typ
+  def addRecType(typ: WasmSubType): Unit = addRecType(WasmRecType(typ))
+
+  def addRecType(name: WasmTypeName, compositeType: WasmCompositeType): Unit =
+    addRecType(WasmSubType(name, compositeType))
+
   def addImport(imprt: WasmImport): Unit = _imports += imprt
   def addFunction(function: WasmFunction): Unit = _definedFunctions += function
-  def addArrayType(typ: WasmArrayType): Unit = _arrayTypes += typ
-  def addFunctionType(typ: WasmFunctionType): Unit = _functionTypes += typ
-  def addRecGroupType(typ: WasmStructType): Unit = _recGroupTypes += typ
   def addTag(tag: WasmTag): Unit = _tags += tag
   def addData(data: WasmData): Unit = _data += data
   def addGlobal(typ: WasmGlobal): Unit = _globals += typ
@@ -313,23 +330,7 @@ class WasmModule {
   def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
   def addElement(element: WasmElement): Unit = _elements += element
 
-  locally {
-    addArrayType(WasmArrayType.typeDataArray)
-    addArrayType(WasmArrayType.itables)
-    addArrayType(WasmArrayType.reflectiveProxies)
-
-    addArrayType(WasmArrayType.i8Array)
-    addArrayType(WasmArrayType.i16Array)
-    addArrayType(WasmArrayType.i32Array)
-    addArrayType(WasmArrayType.i64Array)
-    addArrayType(WasmArrayType.f32Array)
-    addArrayType(WasmArrayType.f64Array)
-    addArrayType(WasmArrayType.anyArray)
-  }
-
-  def functionTypes = _functionTypes.toList
-  def recGroupTypes = WasmModule.tsort(_recGroupTypes.toList)
-  def arrayTypes = _arrayTypes.toList
+  def recTypes = _recTypes.toList
   def imports = _imports.toList
   def definedFunctions = _definedFunctions.toList
   def tags: List[WasmTag] = _tags.toList
@@ -338,32 +339,4 @@ class WasmModule {
   def exports = _exports.toList
   def startFunction: Option[WasmFunctionName] = _startFunction
   def elements: List[WasmElement] = _elements.toList
-}
-
-object WasmModule {
-
-  private def tsort(types: List[WasmStructType]): List[WasmStructType] = {
-    def tsort(
-        toPreds: Map[WasmTypeName, Option[WasmTypeName]],
-        done: List[WasmTypeName]
-    ): List[WasmTypeName] = {
-      val (noPreds, hasPreds) = toPreds.partition { _._2.isEmpty }
-      if (noPreds.isEmpty) {
-        if (hasPreds.isEmpty) done else sys.error(hasPreds.toString)
-      } else {
-        val found = noPreds.map { _._1 }.toSet
-        val updated = hasPreds.map { case (k, v) =>
-          (k, v.filter(!found.contains(_)))
-        }
-        tsort(updated, done ++ found)
-      }
-    }
-    val predecessors: Map[WasmTypeName, Option[WasmTypeName]] =
-      types.map(t => t.name -> t.superType).toMap
-    val typeMap = types.map(t => t.name -> t).toMap
-
-    val sortedNames = tsort(predecessors, Nil)
-    sortedNames.map(name => typeMap(name))
-  }
-
 }

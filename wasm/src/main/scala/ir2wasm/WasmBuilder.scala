@@ -129,12 +129,12 @@ class WasmBuilder(coreSpec: CoreSpec) {
         isMutable = false
       )
 
+      val superType = Names.WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass)
       val structType = WasmStructType(
-        structTypeName,
-        List(vtableField, WasmStructField.itables, underlyingArrayField),
-        Some(Names.WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass))
+        List(vtableField, WasmStructField.itables, underlyingArrayField)
       )
-      ctx.addGCType(structType)
+      val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
+      ctx.mainRecType.addSubType(subType)
 
       HelperFunctions.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
     }
@@ -223,7 +223,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         instrs += CALL(WasmFunctionName.unbox(IRTypes.BooleanRef))
       }
 
-      val func = fctx.buildAndAddToContext()
+      val func = fctx.buildAndAddToContext(ctx.isJSClassInstanceFuncTypeName)
       func.name
     }
 
@@ -428,12 +428,13 @@ class WasmBuilder(coreSpec: CoreSpec) {
       isMutable = false
     )
     val fields = classInfo.allFieldDefs.map(transformField)
+    val structTypeName = WasmStructTypeName.forClass(clazz.name.name)
+    val superType = clazz.superClass.map(s => WasmStructTypeName.forClass(s.name))
     val structType = WasmStructType(
-      Names.WasmTypeName.WasmStructTypeName.forClass(clazz.name.name),
-      vtableField +: WasmStructField.itables +: fields,
-      clazz.superClass.map(s => Names.WasmTypeName.WasmStructTypeName.forClass(s.name))
+      vtableField +: WasmStructField.itables +: fields
     )
-    ctx.addGCType(structType)
+    val subType = WasmSubType(structTypeName, isFinal = false, superType, structType)
+    ctx.mainRecType.addSubType(subType)
 
     // Define the `new` function, unless the class is abstract
     if (!isAbstractClass) HelperFunctions.genNewDefault(clazz)
@@ -457,11 +458,10 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case Some(s) => WasmTypeName.WasmStructTypeName.forVTable(s.name)
     }
     val structType = WasmStructType(
-      typeName,
-      WasmStructType.typeData.fields ::: vtableFields,
-      Some(superType)
+      WasmStructType.typeData.fields ::: vtableFields
     )
-    ctx.addGCType(structType)
+    val subType = WasmSubType(typeName, isFinal = false, Some(superType), structType)
+    ctx.mainRecType.addSubType(subType)
     typeName
   }
 
@@ -551,18 +551,17 @@ class WasmBuilder(coreSpec: CoreSpec) {
     // gen itable type
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(clazz.className)
+    val itableTypeName = Names.WasmTypeName.WasmStructTypeName.forITable(className)
     val itableType = WasmStructType(
-      Names.WasmTypeName.WasmStructTypeName.forITable(className),
       classInfo.methods.map { m =>
         WasmStructField(
           Names.WasmFieldName(m.name.simpleName),
           WasmRefType.nullable(m.toWasmFunctionType()),
           isMutable = false
         )
-      },
-      None
+      }
     )
-    ctx.addGCType(itableType)
+    ctx.mainRecType.addSubType(itableTypeName, itableType)
     // typeName
     // genITable
     // generateVTable()
@@ -1097,7 +1096,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
     WasmExpressionBuilder.generateIRBody(body, method.resultType)
 
-    fctx.buildAndAddToContext()
+    fctx.buildAndAddToContext(useFunctionTypeInMainRecType = true)
   }
 
   private def transformField(

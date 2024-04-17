@@ -26,7 +26,7 @@ object TypeTransformer {
       receiverType +: method.argTypes.map(transformType),
       transformResultType(method.resultType)
     )
-    ctx.addFunctionType(sig)
+    ctx.addFunctionTypeInMainRecType(sig)
   }
 
   /** This transformation should be used only for the result types of functions or blocks.

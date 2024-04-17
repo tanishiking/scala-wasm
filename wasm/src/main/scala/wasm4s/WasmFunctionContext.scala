@@ -344,13 +344,22 @@ class WasmFunctionContext private (
 
   def buildAndAddToContext(): WasmFunction = {
     val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
-    val typeName = ctx.addFunctionType(sig)
-    val functionType = WasmFunctionType(typeName, sig)
+    buildAndAddToContext(ctx.addFunctionType(sig))
+  }
 
+  def buildAndAddToContext(useFunctionTypeInMainRecType: Boolean): WasmFunction = {
+    val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
+    val functionTypeName =
+      if (useFunctionTypeInMainRecType) ctx.addFunctionTypeInMainRecType(sig)
+      else ctx.addFunctionType(sig)
+    buildAndAddToContext(functionTypeName)
+  }
+
+  def buildAndAddToContext(functionTypeName: WasmTypeName): WasmFunction = {
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
     val expr = WasmExpr(dcedInstrs)
-    val func = WasmFunction(functionName, functionType, locals.toList, expr)
+    val func = WasmFunction(functionName, functionTypeName, locals.toList, _resultTypes, expr)
     ctx.addFunction(func)
     func
   }

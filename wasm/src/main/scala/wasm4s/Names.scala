@@ -516,6 +516,8 @@ object Names {
 
     object WasmFunctionTypeName {
       def apply(idx: Int): WasmTypeName = new WasmTypeName(s"f.$idx")
+
+      def rec(idx: Int): WasmTypeName = new WasmTypeName(s"recf.$idx")
     }
 
   }

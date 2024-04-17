@@ -370,7 +370,7 @@ private class WasmExpressionBuilder private (
       receiverType +: paramTys,
       TypeTransformer.transformResultType(IRTypes.AnyType)(ctx)
     )
-    val funcTypeName = ctx.addFunctionType(sig)
+    val funcTypeName = ctx.addFunctionTypeInMainRecType(sig)
 
     fctx.block(sig.results) { done =>
       fctx.block(Types.WasmRefType.any) { labelNotOurObject =>

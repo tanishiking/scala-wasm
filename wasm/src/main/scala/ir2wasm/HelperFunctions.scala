@@ -1809,7 +1809,7 @@ object HelperFunctions {
       }
       instrs += LOCAL_GET(result)
       instrs += REF_AS_NOT_NULL
-      val fun = fctx.buildAndAddToContext()
+      val fun = fctx.buildAndAddToContext(ctx.cloneFunctionTypeName)
       // fun.typ
     }
   }
@@ -1869,7 +1869,7 @@ object HelperFunctions {
     instrs += LOCAL_GET(resultUnderlyingLocal)
     instrs += STRUCT_NEW(arrayStructTypeName)
 
-    fctx.buildAndAddToContext()
+    fctx.buildAndAddToContext(ctx.cloneFunctionTypeName)
   }
 
   def genNewDefault(clazz: LinkedClass)(implicit ctx: TypeDefinableWasmContext): Unit = {
