@@ -127,7 +127,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
   protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
   protected val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
-  protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
+  protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmTypeName]
   protected val reflectiveProxies = LinkedHashMap.empty[String, Int]
 
   protected var stringPool = new mutable.ArrayBuffer[Byte]()
@@ -209,7 +209,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
     )
   }
 
-  def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
+  def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmTypeName = {
     closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
         val fields: List[WasmStructField] =
@@ -223,7 +223,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
         nextClosureDataTypeIndex += 1
         val structType = WasmStructType(structTypeName, fields, superType = None)
         addGCType(structType)
-        structType
+        structTypeName
       }
     )
   }
@@ -873,7 +873,7 @@ object WasmContext {
       isAbstract: Boolean,
       isReflectiveProxy: Boolean
   ) {
-    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmFunctionType =
+    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmTypeName =
       TypeTransformer.transformFunctionType(this)
 
   }

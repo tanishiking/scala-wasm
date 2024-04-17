@@ -446,16 +446,16 @@ object WasmFunctionContext {
           (Nil, Map.empty)
 
         case Some(captureLikes) =>
-          val dataStructType = ctx.getClosureDataStructType(captureLikes.map(_._2))
+          val dataStructTypeName = ctx.getClosureDataStructType(captureLikes.map(_._2))
           val local = WasmLocal(
             WasmLocalName(captureParamName),
-            Types.WasmRefType(dataStructType.name),
+            Types.WasmRefType(dataStructTypeName),
             isParameter = true
           )
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
               local.name,
-              dataStructType.name,
+              dataStructTypeName,
               WasmFieldIdx(idx)
             )
             captureLike._1 -> storage

@@ -5,7 +5,9 @@ import org.scalajs.ir.ClassKind
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Names => IRNames}
-import wasm4s._
+
+import wasm.wasm4s._
+import wasm.wasm4s.Names._
 
 object TypeTransformer {
 
@@ -15,7 +17,7 @@ object TypeTransformer {
   def transformFunctionType(
       // clazz: WasmContext.WasmClassInfo,
       method: WasmContext.WasmFunctionInfo
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionType = {
+  )(implicit ctx: TypeDefinableWasmContext): WasmTypeName = {
     // val className = clazz.name
     val name = method.name
     val receiverType = makeReceiverType
@@ -24,8 +26,7 @@ object TypeTransformer {
       receiverType +: method.argTypes.map(transformType),
       transformResultType(method.resultType)
     )
-    val typeName = ctx.addFunctionType(sig)
-    WasmFunctionType(typeName, sig)
+    ctx.addFunctionType(sig)
   }
 
   /** This transformation should be used only for the result types of functions or blocks.

@@ -9,6 +9,7 @@ import org.scalajs.ir.ClassKind
 import wasm.wasm4s._
 import wasm.wasm4s.WasmContext._
 import wasm.wasm4s.Names._
+import wasm.wasm4s.Names.WasmTypeName._
 import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr._
 
@@ -155,7 +156,7 @@ object HelperFunctions {
   private def genTypeDataName()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
     val nameDataType = WasmRefType(WasmArrayTypeName.i16Array)
 
     val fctx = WasmFunctionContext(
@@ -293,7 +294,7 @@ object HelperFunctions {
   private def genCreateClassOf()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmStructTypeName
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.createClassOf,
@@ -413,7 +414,7 @@ object HelperFunctions {
   private def genGetClassOf()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmStructTypeName
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.getClassOf,
@@ -446,7 +447,7 @@ object HelperFunctions {
   private def genArrayTypeData()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
     val objectVTableType = WasmRefType(WasmTypeName.WasmStructTypeName.ObjectVTable)
 
     /* Array classes extend Cloneable, Serializable and Object.
@@ -590,7 +591,7 @@ object HelperFunctions {
     import WasmTypeName.WasmStructTypeName
     import WasmFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
     val objectRefType = WasmRefType(WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass))
 
     val fctx = WasmFunctionContext(
@@ -786,7 +787,7 @@ object HelperFunctions {
     * This is the underlying func for the `isAssignableFrom()` closure inside class data objects.
     */
   private def genIsAssignableFromExternal()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.isAssignableFromExternal,
@@ -821,7 +822,7 @@ object HelperFunctions {
     import WasmTypeName._
     import WasmFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.isAssignableFrom,
@@ -951,7 +952,7 @@ object HelperFunctions {
     * Casts the given value to the given type; subject to undefined behaviors.
     */
   private def genCheckCast()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.checkCast,
@@ -979,7 +980,7 @@ object HelperFunctions {
   private def genGetComponentType()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmStructTypeName
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.getComponentType,
@@ -1017,7 +1018,7 @@ object HelperFunctions {
   private def genNewArrayOfThisClass()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmStructTypeName
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
     val i32ArrayType = WasmRefType(WasmTypeName.WasmArrayTypeName.i32Array)
 
     val fctx = WasmFunctionContext(
@@ -1097,7 +1098,7 @@ object HelperFunctions {
   private def genAnyGetClass()(implicit ctx: WasmContext): Unit = {
     import WasmTypeName.WasmStructTypeName
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.anyGetClass,
@@ -1271,11 +1272,11 @@ object HelperFunctions {
     import WasmTypeName._
     import WasmFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
     val i32ArrayType = WasmRefType(WasmTypeName.WasmArrayTypeName.i32Array)
     val objectVTableType = WasmRefType(WasmStructTypeName.ObjectVTable)
     val arrayTypeDataType = objectVTableType
-    val itablesType = WasmRefType.nullable(WasmArrayType.itables.name)
+    val itablesType = WasmRefType.nullable(WasmArrayTypeName.itables)
     val nonNullObjectType = WasmRefType(WasmHeapType.ObjectType)
     val anyArrayType = WasmRefType(WasmArrayTypeName.anyArray)
 
@@ -1583,7 +1584,7 @@ object HelperFunctions {
     import WasmTypeName._
     import WasmFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(WasmStructType.typeData.name)
+    val typeDataType = WasmRefType(WasmStructTypeName.typeData)
 
     val fctx = WasmFunctionContext(
       WasmFunctionName.searchReflectiveProxy,
@@ -1689,7 +1690,7 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    val itables = fctx.addLocal("itables", WasmRefType.nullable(WasmArrayType.itables.name))
+    val itables = fctx.addLocal("itables", WasmRefType.nullable(WasmArrayTypeName.itables))
     val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
 
     val itableIdx = ctx.getItableIdx(clazz.name.name)
@@ -1891,7 +1892,7 @@ object HelperFunctions {
     if (!interfaces.isEmpty)
       instrs += GLOBAL_GET(WasmGlobalName.forITable(className))
     else
-      instrs += REF_NULL(WasmHeapType(WasmArrayType.itables.name))
+      instrs += REF_NULL(WasmHeapType(WasmArrayTypeName.itables))
 
     classInfo.allFieldDefs.foreach { f =>
       val ty = transformType(f.ftpe)
