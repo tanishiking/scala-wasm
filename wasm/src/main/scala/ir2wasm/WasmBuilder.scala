@@ -475,35 +475,31 @@ class WasmBuilder(coreSpec: CoreSpec) {
       ctor.name.name
     )
 
-    val body = List(
-      // global.get $module_name
-      // ref.if_null
-      //   ref.null $module_type
-      //   call $module_init ;; should set to global
-      // end
-      // global.get $module_name
-      GLOBAL_GET(globalInstanceName), // [rt]
-      REF_IS_NULL, // [rt] -> [i32] (bool)
-      IF(BlockType.ValueType()),
-      CALL(WasmFunctionName.newDefault(clazz.name.name)),
-      GLOBAL_SET(globalInstanceName),
-      GLOBAL_GET(globalInstanceName),
-      CALL(ctorName),
-      // ELSE,
-      END,
-      GLOBAL_GET(globalInstanceName) // [rt]
+    implicit val fctx = WasmFunctionContext(
+      WasmFunctionName.loadModule(clazz.className),
+      Nil,
+      List(WasmRefType.nullable(typeName))
     )
 
-    val sig =
-      WasmFunctionSignature(Nil, List(WasmRefType.nullable(typeName)))
-    val loadModuleTypeName = ctx.addFunctionType(sig)
-    val func = WasmFunction(
-      WasmFunctionName.loadModule(clazz.name.name),
-      WasmFunctionType(loadModuleTypeName, sig),
-      Nil,
-      WasmExpr(body)
-    )
-    ctx.addFunction(func)
+    import fctx.instrs
+
+    // global.get $module_name
+    // ref.if_null
+    //   ref.null $module_type
+    //   call $module_init ;; should set to global
+    // end
+    // global.get $module_name
+    instrs += GLOBAL_GET(globalInstanceName) // [rt]
+    instrs += REF_IS_NULL // [rt] -> [i32] (bool)
+    instrs += IF(BlockType.ValueType())
+    instrs += CALL(WasmFunctionName.newDefault(clazz.name.name))
+    instrs += GLOBAL_SET(globalInstanceName)
+    instrs += GLOBAL_GET(globalInstanceName)
+    instrs += CALL(ctorName)
+    instrs += END
+    instrs += GLOBAL_GET(globalInstanceName) // [rt]
+
+    fctx.buildAndAddToContext()
   }
 
   /** Generate global instance of the class itable. Their init value will be an array of null refs
