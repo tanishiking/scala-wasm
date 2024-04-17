@@ -61,7 +61,7 @@ final class WebAssemblyLinkerBackend(
   ): Future[Report] = {
 
     val wasmModule = new WasmModule
-    val builder = new WasmBuilder()
+    val builder = new WasmBuilder(coreSpec)
     implicit val context: WasmContext = new WasmContext(wasmModule)
 
     val onlyModule = moduleSet.modules match {

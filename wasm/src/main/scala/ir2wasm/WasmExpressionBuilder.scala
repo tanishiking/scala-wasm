@@ -1239,7 +1239,7 @@ private class WasmExpressionBuilder private (
             } // end block labelNotOurObject
 
             // Now we have a value that is not one of our objects; the anyref is still on the stack
-            instrs += CALL(WasmFunctionName.jsValueToString)
+            instrs += CALL(WasmFunctionName.jsValueToStringForConcat)
           } // end block labelDone
         }
       }
@@ -1264,7 +1264,7 @@ private class WasmExpressionBuilder private (
             case IRTypes.DoubleType =>
               instrs += CALL(WasmFunctionName.doubleToString)
             case IRTypes.NullType | IRTypes.UndefType =>
-              instrs += CALL(WasmFunctionName.jsValueToString)
+              instrs += CALL(WasmFunctionName.jsValueToStringForConcat)
             case IRTypes.NothingType =>
               () // unreachable
             case IRTypes.NoType =>
@@ -1276,7 +1276,7 @@ private class WasmExpressionBuilder private (
         case IRTypes.ClassType(IRNames.BoxedStringClass) =>
           // Common case for which we want to avoid the hijacked class dispatch
           genTreeAuto(tree)
-          instrs += CALL(WasmFunctionName.jsValueToString) // for `null`
+          instrs += CALL(WasmFunctionName.jsValueToStringForConcat) // for `null`
 
         case IRTypes.ClassType(className) =>
           genWithDispatch(ctx.getClassInfo(className).isAncestorOfHijackedClass)

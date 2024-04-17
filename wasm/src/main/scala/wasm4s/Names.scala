@@ -179,7 +179,8 @@ object Names {
     val emptyString = helper("emptyString")
     val stringLength = helper("stringLength")
     val stringCharAt = helper("stringCharAt")
-    val jsValueToString = helper("jsValueToString")
+    val jsValueToString = helper("jsValueToString") // for actual toString() call
+    val jsValueToStringForConcat = helper("jsValueToStringForConcat")
     val booleanToString = helper("booleanToString")
     val charToString = helper("charToString")
     val intToString = helper("intToString")
