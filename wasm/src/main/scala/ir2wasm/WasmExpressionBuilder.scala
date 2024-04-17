@@ -748,13 +748,6 @@ private class WasmExpressionBuilder private (
           case Some(primReceiverType) =>
             if (t.receiver.tpe == primReceiverType) {
               genTreeAuto(t.receiver)
-            } else if (t.receiver.isInstanceOf[IRTrees.This]) {
-              // TODO: investigate what's going on
-              // Don't know why, but it seems that `this` isn't boxed even if
-              // t.receiver.tpe = ClassType(ClassName<java.lang.Boolean>), and
-              // primReceiverType = BooleanType
-              // This wired patch is required for `(func $f#java.lang.Boolean#compareTo_Ljava.lang.Boolean_R`
-              genTreeAuto(t.receiver)
             } else {
               genTree(t.receiver, IRTypes.AnyType)
               instrs += REF_AS_NOT_NULL
@@ -1597,10 +1590,20 @@ private class WasmExpressionBuilder private (
   private def genThis(t: IRTrees.This): IRTypes.Type = {
     genReadStorage(fctx.receiverStorage)
 
+    // Workaround wrong t.tpe for This nodes inside reflective proxies.
+    // In a hijacked class, This nodes are supposed to be typed as the corresponding primitive type.
+    // However, the Scala.js linker frontend synthesizes reflective proxies that contain This nodes typed as the hijacked class' ClassType instead.
+    // This is bad for us because it means genAdapt fails to box the primitives when required.
+    // We work around this issue here by re-computing the correct type of This nodes.
+    val fixedTpe = t.tpe match {
+      case IRTypes.ClassType(cls) => IRTypes.BoxedClassToPrimType.getOrElse(cls, t.tpe)
+      case _                      => t.tpe
+    }
+
     /* If the receiver is a Class/ModuleClass, its wasm type will be declared
      * as `(ref any)`, and therefore we must cast it down.
      */
-    t.tpe match {
+    fixedTpe match {
       case IRTypes.ClassType(className) if className != IRNames.ObjectClass =>
         val info = ctx.getClassInfo(className)
         if (info.kind.isClass) {
@@ -1612,7 +1615,7 @@ private class WasmExpressionBuilder private (
         ()
     }
 
-    t.tpe
+    fixedTpe
   }
 
   private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
