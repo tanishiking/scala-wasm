@@ -18,13 +18,7 @@ class WasmTextWriter {
   private def writeModule(module: WasmModule)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "module", {
-        b.newLineList(
-          "rec", {
-            module.recGroupTypes.foreach(writeGCTypeDefinition)
-            module.functionTypes.foreach(writeFunctionType)
-            module.arrayTypes.foreach(writeGCTypeDefinition)
-          }
-        )
+        module.recTypes.foreach(writeRecType)
         module.imports.foreach(writeImport)
         module.definedFunctions.foreach(writeFunction)
         module.tags.foreach(writeTag)
@@ -37,9 +31,42 @@ class WasmTextWriter {
     )
   }
 
-  private def writeGCTypeDefinition(
-      t: WasmGCTypeDefinition
-  )(implicit b: WatBuilder): Unit = {
+  private def writeRecType(recType: WasmRecType)(implicit b: WatBuilder): Unit = {
+    recType.subTypes match {
+      case singleSubType :: Nil =>
+        writeTypeDefinition(singleSubType)
+      case subTypes =>
+        b.newLineList(
+          "rec", {
+            subTypes.foreach(writeTypeDefinition)
+          }
+        )
+    }
+  }
+
+  private def writeTypeDefinition(subType: WasmSubType)(implicit b: WatBuilder): Unit = {
+    b.newLineList(
+      "type", {
+        b.appendElement(subType.name.show)
+        subType match {
+          case WasmSubType(_, true, None, compositeType) =>
+            writeCompositeType(compositeType)
+          case _ =>
+            b.sameLineList(
+              "sub", {
+                if (subType.isFinal)
+                  b.appendElement("final")
+                for (superType <- subType.superType)
+                  b.appendElement(superType.show)
+                writeCompositeType(subType.compositeType)
+              }
+            )
+        }
+      }
+    )
+  }
+
+  private def writeCompositeType(t: WasmCompositeType)(implicit b: WatBuilder): Unit = {
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
         "field", {
@@ -55,60 +82,40 @@ class WasmTextWriter {
       )
     }
 
-    b.newLineList(
-      "type", {
-        b.appendElement(t.name.show)
-        t match {
-          case WasmArrayType(name, field) =>
-            b.sameLineList(
-              "array", {
-                if (field.isMutable)
-                  b.sameLineList(
-                    "mut", {
-                      writeType(field.typ)
-                    }
-                  )
-                else writeType(field.typ)
-
-              }
-            )
-          // (type $kotlin.Any___type_13 (struct (field (ref $kotlin.Any.vtable___type_12)) (field (ref null struct)) (field (mut i32)) (field (mut i32))))
-          case WasmStructType(name, fields, superType) =>
-            b.sameLineList(
-              "sub", {
-                superType.foreach(s => b.appendElement(s.show))
-                b.sameLineList(
-                  "struct", {
-                    fields.foreach(writeField)
-                  }
-                )
-              }
-            )
-        }
-      }
-    )
-  }
-
-  private def writeFunctionType(
-      functionType: WasmFunctionType
-  )(implicit b: WatBuilder): Unit =
-    // (type type-name (func (param ty) (param ty) (result ty)))
-    b.newLineList(
-      "type", {
-        b.appendElement(functionType.name.show)
+    t match {
+      case WasmFunctionType(params, results) =>
         b.sameLineList(
           "func", {
-            functionType.params.foreach { ty =>
+            params.foreach { ty =>
               b.sameLineList("param", writeType(ty))
             }
-            if (functionType.results.nonEmpty)
-              functionType.results.foreach { ty =>
-                b.sameLineList("result", writeType(ty))
-              }
+            results.foreach { ty =>
+              b.sameLineList("result", writeType(ty))
+            }
           }
         )
-      }
-    )
+
+      case WasmArrayType(field) =>
+        b.sameLineList(
+          "array", {
+            if (field.isMutable)
+              b.sameLineList(
+                "mut", {
+                  writeType(field.typ)
+                }
+              )
+            else writeType(field.typ)
+          }
+        )
+
+      case WasmStructType(fields) =>
+        b.sameLineList(
+          "struct", {
+            fields.foreach(writeField)
+          }
+        )
+    }
+  }
 
   private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
     b.newLineList(
@@ -117,11 +124,11 @@ class WasmTextWriter {
         b.appendElement("\"" + i.name + "\"")
 
         i.desc match {
-          case WasmImportDesc.Func(id, typ) =>
+          case WasmImportDesc.Func(id, typeName) =>
             b.sameLineList(
               "func", {
                 b.appendElement(id.show)
-                writeSig(typ.params, typ.results)
+                writeTypeUse(typeName)
               }
             )
           case WasmImportDesc.Global(id, typ, isMutable) =>
@@ -134,11 +141,11 @@ class WasmTextWriter {
                   writeType(typ)
               }
             )
-          case WasmImportDesc.Tag(id, typ) =>
+          case WasmImportDesc.Tag(id, typeName) =>
             b.sameLineList(
               "tag", {
                 b.appendElement(id.show)
-                writeSig(typ.params, typ.results)
+                writeTypeUse(typeName)
               }
             )
         }
@@ -176,11 +183,11 @@ class WasmTextWriter {
       "func", {
         val (params, nonParams) = f.locals.partition(_.isParameter)
         b.appendElement(f.name.show)
-        b.sameLineListOne("type", f.typ.name.show)
+        writeTypeUse(f.typeName)
 
         b.newLine()
         params.foreach(writeParam)
-        f.typ.results.foreach(r => { b.sameLineList("result", writeType(r)) })
+        f.results.foreach(r => { b.sameLineList("result", writeType(r)) })
 
         b.newLine()
         if (nonParams.nonEmpty) {
@@ -195,7 +202,7 @@ class WasmTextWriter {
     b.newLineList(
       "tag", {
         b.appendElement(tag.name.show)
-        b.sameLineListOne("type", tag.typ.show)
+        writeTypeUse(tag.typ)
       }
     )
   }
@@ -267,6 +274,10 @@ class WasmTextWriter {
         b.appendElement("\"" + data.bytes.map("\\%02x".format(_)).mkString + "\"")
       }
     )
+  }
+
+  private def writeTypeUse(typeName: WasmTypeName)(implicit b: WatBuilder): Unit = {
+    b.sameLineListOne("type", typeName.show)
   }
 
   private def writeType(typ: WasmStorageType)(implicit b: WatBuilder): Unit = {

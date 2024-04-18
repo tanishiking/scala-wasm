@@ -23,19 +23,16 @@ import org.scalajs.linker.standard.LinkedTopLevelExport
 
 import java.nio.charset.StandardCharsets
 
-trait ReadOnlyWasmContext {
+abstract class ReadOnlyWasmContext {
   import WasmContext._
-  protected val gcTypes = new WasmSymbolTable[WasmTypeName, WasmGCTypeDefinition]()
-  protected val functions = new WasmSymbolTable[WasmFunctionName, WasmFunction]()
-  protected val globals = new WasmSymbolTable[WasmGlobalName, WasmGlobal]()
 
   protected val itableIdx = mutable.Map[IRNames.ClassName, Int]()
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
   private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
   protected var nextItableIdx: Int
 
-  val cloneFunctionTypeName: WasmFunctionTypeName
-  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName
+  val cloneFunctionTypeName: WasmTypeName
+  val isJSClassInstanceFuncTypeName: WasmTypeName
 
   def itablesLength = nextItableIdx
 
@@ -126,12 +123,13 @@ case class StringData(
     offset: Int
 )
 
-trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
-  protected val functionSignatures = LinkedHashMap.empty[WasmFunctionSignature, Int]
-  protected val constantStringGlobals = LinkedHashMap.empty[String, StringData]
+abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
+  private val functionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
+  private val recFunctionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
+  private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
-  protected val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmStructType]
-  protected val reflectiveProxies = LinkedHashMap.empty[String, Int]
+  private val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmTypeName]
+  private val reflectiveProxies = LinkedHashMap.empty[String, Int]
 
   protected var stringPool = new mutable.ArrayBuffer[Byte]()
   protected var nextConstantStringIndex: Int = 0
@@ -155,30 +153,33 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
       }
     )
 
-  val cloneFunctionTypeName: WasmFunctionTypeName =
-    addFunctionType(
-      WasmFunctionSignature(
-        List(WasmRefType(WasmHeapType.ObjectType)),
-        List(WasmRefType(WasmHeapType.ObjectType))
-      )
-    )
-
-  val isJSClassInstanceFuncTypeName: WasmFunctionTypeName =
-    addFunctionType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
-
   val exceptionTagName: WasmTagName
 
-  def addFunctionType(sig: WasmFunctionSignature): WasmFunctionTypeName = {
-    functionSignatures.get(sig) match {
-      case None =>
-        val idx = functionSignatures.size
-        functionSignatures.update(sig, idx)
-        val typeName = WasmFunctionTypeName(idx)
-        val ty = WasmFunctionType(typeName, sig)
-        module.addFunctionType(ty)
+  /** Adds or reuses a function type for the given signature. */
+  def addFunctionType(sig: WasmFunctionSignature): WasmTypeName = {
+    functionTypes.getOrElseUpdate(
+      sig, {
+        val typeName = WasmFunctionTypeName(functionTypes.size)
+        module.addRecType(typeName, WasmFunctionType(sig))
         typeName
-      case Some(value) => WasmFunctionTypeName(value)
-    }
+      }
+    )
+  }
+
+  /** Adds or reuses a function type for the given signature that is part of the main `rectype`.
+    *
+    * This should be used for function types that are used inside other type declarations that are
+    * part of the main `rectype`. In particular, it should be used for the function types appearing
+    * in vtables and itables.
+    */
+  def addFunctionTypeInMainRecType(sig: WasmFunctionSignature): WasmTypeName = {
+    recFunctionTypes.getOrElseUpdate(
+      sig, {
+        val typeName = WasmFunctionTypeName.rec(recFunctionTypes.size)
+        mainRecType.addSubType(typeName, WasmFunctionType(sig))
+        typeName
+      }
+    )
   }
 
   def addConstantStringGlobal(str: String): StringData = {
@@ -212,7 +213,7 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
     )
   }
 
-  def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmStructType = {
+  def getClosureDataStructType(captureParamTypes: List[IRTypes.Type]): WasmTypeName = {
     closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
         val fields: List[WasmStructField] =
@@ -224,9 +225,9 @@ trait TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =
             )
         val structTypeName = WasmStructTypeName.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
-        val structType = WasmStructType(structTypeName, fields, superType = None)
-        addGCType(structType)
-        structType
+        val structType = WasmStructType(fields)
+        module.addRecType(structTypeName, structType)
+        structTypeName
       }
     )
   }
@@ -282,24 +283,21 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
     new mutable.LinkedHashSet()
 
-  def addExport(exprt: WasmExport): Unit = module.addExport(exprt)
-  def addFunction(fun: WasmFunction): Unit = {
+  /** The main `rectype` containing the object model types. */
+  val mainRecType: WasmRecType = new WasmRecType
+
+  def addExport(exprt: WasmExport): Unit =
+    module.addExport(exprt)
+
+  def addFunction(fun: WasmFunction): Unit =
     module.addFunction(fun)
-    functions.define(fun)
-  }
-  def addGCType(ty: WasmStructType): Unit = {
-    module.addRecGroupType(ty)
-    gcTypes.define(ty)
-  }
+
+  def addGlobal(g: WasmGlobal): Unit =
+    module.addGlobal(g)
 
   def addGlobalITable(name: IRNames.ClassName, g: WasmGlobal): Unit = {
     classItableGlobals.put(name, g.name)
-    module.addGlobal(g)
-    globals.define(g)
-  }
-  def addGlobal(g: WasmGlobal): Unit = {
-    module.addGlobal(g)
-    globals.define(g)
+    addGlobal(g)
   }
 
   def getImportedModuleGlobal(moduleName: String): WasmGlobalName = {
@@ -334,22 +332,16 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   val exceptionTagName: WasmTagName = WasmTagName("exception")
 
-  locally {
-    val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
-    val typ = WasmFunctionType(addFunctionType(exceptionSig), exceptionSig)
-    module.addImport(
-      WasmImport("__scalaJSHelpers", "JSTag", WasmImportDesc.Tag(exceptionTagName, typ))
-    )
-  }
-
   private def addHelperImport(
       name: WasmFunctionName,
       params: List[WasmType],
       results: List[WasmType]
   ): Unit = {
     val sig = WasmFunctionSignature(params, results)
-    val typ = WasmFunctionType(addFunctionType(sig), sig)
-    module.addImport(WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typ)))
+    val typeName = addFunctionType(sig)
+    module.addImport(
+      WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typeName))
+    )
   }
 
   private def addGlobalHelperImport(
@@ -366,8 +358,47 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     )
   }
 
-  addGCType(WasmStructType.typeData(this))
-  addGCType(WasmStructType.reflectiveProxy)
+  locally {
+    module.addRecType(WasmArrayTypeName.i8Array, WasmArrayType.i8Array)
+    module.addRecType(WasmArrayTypeName.i16Array, WasmArrayType.i16Array)
+    module.addRecType(WasmArrayTypeName.i32Array, WasmArrayType.i32Array)
+    module.addRecType(WasmArrayTypeName.i64Array, WasmArrayType.i64Array)
+    module.addRecType(WasmArrayTypeName.f32Array, WasmArrayType.f32Array)
+    module.addRecType(WasmArrayTypeName.f64Array, WasmArrayType.f64Array)
+    module.addRecType(WasmArrayTypeName.anyArray, WasmArrayType.anyArray)
+
+    module.addRecType(mainRecType)
+  }
+
+  val cloneFunctionTypeName: WasmTypeName =
+    addFunctionTypeInMainRecType(
+      WasmFunctionSignature(
+        List(WasmRefType(WasmHeapType.ObjectType)),
+        List(WasmRefType(WasmHeapType.ObjectType))
+      )
+    )
+
+  val isJSClassInstanceFuncTypeName: WasmTypeName =
+    addFunctionTypeInMainRecType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
+
+  locally {
+    mainRecType.addSubType(WasmArrayTypeName.typeDataArray, WasmArrayType.typeDataArray)
+    mainRecType.addSubType(WasmArrayTypeName.itables, WasmArrayType.itables)
+    mainRecType.addSubType(WasmArrayTypeName.reflectiveProxies, WasmArrayType.reflectiveProxies)
+
+    mainRecType.addSubType(
+      WasmSubType(WasmStructTypeName.typeData, isFinal = false, None, WasmStructType.typeData(this))
+    )
+    mainRecType.addSubType(WasmStructTypeName.reflectiveProxy, WasmStructType.reflectiveProxy)
+  }
+
+  locally {
+    val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
+    val typeName = addFunctionType(exceptionSig)
+    module.addImport(
+      WasmImport("__scalaJSHelpers", "JSTag", WasmImportDesc.Tag(exceptionTagName, typeName))
+    )
+  }
 
   addHelperImport(WasmFunctionName.is, List(anyref, anyref), List(WasmInt32))
 
@@ -879,7 +910,7 @@ object WasmContext {
       isAbstract: Boolean,
       isReflectiveProxy: Boolean
   ) {
-    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmFunctionType =
+    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmTypeName =
       TypeTransformer.transformFunctionType(this)
 
   }

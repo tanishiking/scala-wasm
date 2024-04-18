@@ -29,9 +29,9 @@ class WasmFunctionContext private (
   private var innerFuncIdx = 0
   private var currentEnv: Env = _paramsEnv
 
-  private val locals = new WasmSymbolTable[WasmLocalName, WasmLocal]()
+  private val locals = mutable.ListBuffer.empty[WasmLocal]
 
-  _params.foreach(locals.define(_))
+  locals ++= _params
 
   def newTargetStorage: VarStorage.Local =
     _newTargetStorage.getOrElse(throw new Error("Cannot access new.target in this context."))
@@ -51,8 +51,7 @@ class WasmFunctionContext private (
   }
 
   private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {
-    val local = WasmLocal(name, typ, isParameter = false)
-    locals.define(local)
+    locals += WasmLocal(name, typ, isParameter = false)
     name
   }
 
@@ -328,13 +327,22 @@ class WasmFunctionContext private (
 
   def buildAndAddToContext(): WasmFunction = {
     val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
-    val typeName = ctx.addFunctionType(sig)
-    val functionType = WasmFunctionType(typeName, sig)
+    buildAndAddToContext(ctx.addFunctionType(sig))
+  }
 
+  def buildAndAddToContext(useFunctionTypeInMainRecType: Boolean): WasmFunction = {
+    val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
+    val functionTypeName =
+      if (useFunctionTypeInMainRecType) ctx.addFunctionTypeInMainRecType(sig)
+      else ctx.addFunctionType(sig)
+    buildAndAddToContext(functionTypeName)
+  }
+
+  def buildAndAddToContext(functionTypeName: WasmTypeName): WasmFunction = {
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
     val expr = WasmExpr(dcedInstrs)
-    val func = WasmFunction(functionName, functionType, locals.all, expr)
+    val func = WasmFunction(functionName, functionTypeName, locals.toList, _resultTypes, expr)
     ctx.addFunction(func)
     func
   }
@@ -430,16 +438,16 @@ object WasmFunctionContext {
           (Nil, Map.empty)
 
         case Some(captureLikes) =>
-          val dataStructType = ctx.getClosureDataStructType(captureLikes.map(_._2))
+          val dataStructTypeName = ctx.getClosureDataStructType(captureLikes.map(_._2))
           val local = WasmLocal(
             WasmLocalName(captureParamName),
-            Types.WasmRefType(dataStructType.name),
+            Types.WasmRefType(dataStructTypeName),
             isParameter = true
           )
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
               local.name,
-              dataStructType.name,
+              dataStructTypeName,
               WasmFieldIdx(idx)
             )
             captureLike._1 -> storage

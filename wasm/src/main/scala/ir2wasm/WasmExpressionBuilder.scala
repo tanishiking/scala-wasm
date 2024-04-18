@@ -370,7 +370,7 @@ private class WasmExpressionBuilder private (
       receiverType +: paramTys,
       TypeTransformer.transformResultType(IRTypes.AnyType)(ctx)
     )
-    val funcTy = WasmFunctionType(ctx.addFunctionType(sig), sig)
+    val funcTypeName = ctx.addFunctionTypeInMainRecType(sig)
 
     fctx.block(sig.results) { done =>
       fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
@@ -395,8 +395,8 @@ private class WasmExpressionBuilder private (
         // `searchReflectiveProxy`: [typeData, i32] -> [(ref func)]
         instrs += CALL(WasmFunctionName.searchReflectiveProxy)
 
-        instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType(funcTy.name)))
-        instrs += CALL_REF(funcTy.name)
+        instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType(funcTypeName)))
+        instrs += CALL_REF(funcTypeName)
         instrs += BR(done)
       } // labelNotFound
       instrs += UNREACHABLE
@@ -675,13 +675,13 @@ private class WasmExpressionBuilder private (
         WasmFieldIdx.itables
       )
       instrs += I32_CONST(itableIdx)
-      instrs += ARRAY_GET(WasmArrayType.itables.name)
+      instrs += ARRAY_GET(WasmArrayTypeName.itables)
       instrs += REF_CAST(Types.WasmRefType(WasmStructTypeName.forITable(receiverClassInfo.name)))
       instrs += STRUCT_GET(
         WasmStructTypeName.forITable(receiverClassInfo.name),
         WasmFieldIdx(methodIdx)
       )
-      instrs += CALL_REF(methodInfo.toWasmFunctionType()(ctx).name)
+      instrs += CALL_REF(methodInfo.toWasmFunctionType()(ctx))
     }
 
     // Generates a vtable-based dispatch.
@@ -714,7 +714,7 @@ private class WasmExpressionBuilder private (
         WasmStructTypeName.forVTable(receiverClassName),
         WasmFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
-      instrs += CALL_REF(info.toWasmFunctionType()(ctx).name)
+      instrs += CALL_REF(info.toWasmFunctionType()(ctx))
     }
 
     if (receiverClassInfo.isInterface)
@@ -2268,7 +2268,7 @@ private class WasmExpressionBuilder private (
 
     val hasThis = !tree.arrow
     val hasRestParam = tree.restParam.isDefined
-    val dataStructType = ctx.getClosureDataStructType(tree.captureParams.map(_.ptpe))
+    val dataStructTypeName = ctx.getClosureDataStructType(tree.captureParams.map(_.ptpe))
 
     // Define the function where captures are reified as a `__captureData` argument.
     val closureFuncName = fctx.genInnerFuncName()
@@ -2300,7 +2300,7 @@ private class WasmExpressionBuilder private (
     // Evaluate the capture values and instantiate the capture data struct
     for ((param, value) <- tree.captureParams.zip(tree.captureValues))
       genTree(value, param.ptpe)
-    instrs += STRUCT_NEW(dataStructType.name)
+    instrs += STRUCT_NEW(dataStructTypeName)
 
     /* If there is a ...rest param, the helper requires as third argument the
      * number of regular arguments.

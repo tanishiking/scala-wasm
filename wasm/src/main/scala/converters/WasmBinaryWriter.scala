@@ -14,24 +14,8 @@ import wasm.wasm4s.WasmInstr.{BlockType, END}
 final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
 
-  private val allTypeDefinitions: List[WasmTypeDefinition[_ <: WasmTypeName]] = {
-    module.recGroupTypes :::
-      module.functionTypes :::
-      module.arrayTypes
-  }
-
-  private val importTypeDefinitions: List[WasmFunctionType] = {
-    module.imports.flatMap { imprt =>
-      imprt.desc match {
-        case WasmImportDesc.Func(id, typ)   => List(typ)
-        case WasmImportDesc.Global(_, _, _) => Nil
-        case WasmImportDesc.Tag(id, typ)    => List(typ)
-      }
-    }
-  }
-
   private val typeIdxValues: Map[WasmTypeName, Int] =
-    allTypeDefinitions.map(_.name).zipWithIndex.toMap
+    module.recTypes.flatMap(_.subTypes).map(_.name).zipWithIndex.toMap
 
   private val dataIdxValues: Map[WasmDataName, Int] =
     module.data.map(_.name).zipWithIndex.toMap
@@ -122,42 +106,45 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeTypeSection(buf: Buffer): Unit = {
-    buf.u32(1 + importTypeDefinitions.size) // a single `rectype` + the import type definitions
+    buf.vec(module.recTypes) { recType =>
+      recType.subTypes match {
+        case singleSubType :: Nil =>
+          writeSubType(buf, singleSubType)
+        case subTypes =>
+          buf.byte(0x4E) // `rectype`
+          buf.vec(subTypes)(writeSubType(buf, _))
+      }
+    }
+  }
 
-    // the big rectype
+  private def writeSubType(buf: Buffer, subType: WasmSubType): Unit = {
+    subType match {
+      case WasmSubType(_, true, None, compositeType) =>
+        writeCompositeType(buf, compositeType)
+      case _ =>
+        buf.byte(if (subType.isFinal) 0x4F else 0x50)
+        buf.opt(subType.superType)(writeTypeIdx(buf, _))
+        writeCompositeType(buf, subType.compositeType)
+    }
+  }
 
-    buf.byte(0x4E) // `rectype` tag
-    buf.u32(typeIdxValues.size) // number of `subtype`s in our single `rectype`
-
+  private def writeCompositeType(buf: Buffer, compositeType: WasmCompositeType): Unit = {
     def writeFieldType(field: WasmStructField): Unit = {
       writeType(buf, field.typ)
       buf.boolean(field.isMutable)
     }
 
-    for (typeDef <- allTypeDefinitions) {
-      typeDef match {
-        case WasmArrayType(name, field) =>
-          buf.byte(0x5E) // array
-          writeFieldType(field)
-        case WasmStructType(name, fields, superType) =>
-          buf.byte(0x50) // sub
-          buf.opt(superType)(writeTypeIdx(buf, _))
-          buf.byte(0x5F) // struct
-          buf.vec(fields)(writeFieldType(_))
-        case WasmFunctionType(name, params, results) =>
-          buf.byte(0x60) // func
-          writeResultType(buf, params)
-          writeResultType(buf, results)
-      }
-    }
-
-    // the import type definitions, outside the rectype
-
-    for (typeDef <- importTypeDefinitions) {
-      val WasmFunctionType(name, params, results) = typeDef
-      buf.byte(0x60) // func
-      writeResultType(buf, params)
-      writeResultType(buf, results)
+    compositeType match {
+      case WasmArrayType(field) =>
+        buf.byte(0x5E) // array
+        writeFieldType(field)
+      case WasmStructType(fields) =>
+        buf.byte(0x5F) // struct
+        buf.vec(fields)(writeFieldType(_))
+      case WasmFunctionType(params, results) =>
+        buf.byte(0x60) // func
+        writeResultType(buf, params)
+        writeResultType(buf, results)
     }
   }
 
@@ -166,32 +153,25 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       buf.name(imprt.module)
       buf.name(imprt.name)
 
-      val indexBase = allTypeDefinitions.size
-      val importedFunTypeIdx =
-        importTypeDefinitions.map(_.name).zipWithIndex.map(kv => (kv._1, kv._2 + indexBase)).toMap
-
-      def writeImportedTypeIdx(typeName: WasmTypeName.WasmFunctionTypeName): Unit =
-        buf.u32(importedFunTypeIdx(typeName))
-
       imprt.desc match {
-        case WasmImportDesc.Func(id, typ) =>
+        case WasmImportDesc.Func(id, typeName) =>
           buf.byte(0x00) // func
-          writeImportedTypeIdx(typ.name)
+          writeTypeIdx(buf, typeName)
         case WasmImportDesc.Global(id, typ, isMutable) =>
           buf.byte(0x03) // global
           writeType(buf, typ)
           buf.boolean(isMutable)
-        case WasmImportDesc.Tag(id, typ) =>
+        case WasmImportDesc.Tag(id, typeName) =>
           buf.byte(0x04) // tag
           buf.byte(0x00) // exception kind (that is the only valid kind for now)
-          writeImportedTypeIdx(typ.name)
+          writeTypeIdx(buf, typeName)
       }
     }
   }
 
   private def writeFunctionSection(buf: Buffer): Unit = {
     buf.vec(module.definedFunctions) { fun =>
-      writeTypeIdx(buf, fun.typ.name)
+      writeTypeIdx(buf, fun.typeName)
     }
   }
 

@@ -430,34 +430,31 @@ object Names {
   }
 
   // GC types ====
-  sealed abstract class WasmTypeName(override private[wasm4s] val name: String)
+  final case class WasmTypeName private (override private[wasm4s] val name: String)
       extends WasmName(name)
   object WasmTypeName {
-    final case class WasmStructTypeName private (override private[wasm4s] val name: String)
-        extends WasmTypeName(name)
-
     object WasmStructTypeName {
-      def forClass(name: IRNames.ClassName): WasmStructTypeName =
-        new WasmStructTypeName(s"c.L${name.nameString}")
+      def forClass(name: IRNames.ClassName): WasmTypeName =
+        new WasmTypeName(s"c.L${name.nameString}")
 
-      def captureData(index: Int): WasmStructTypeName =
-        new WasmStructTypeName(s"captureData.$index")
+      def captureData(index: Int): WasmTypeName =
+        new WasmTypeName(s"captureData.$index")
 
-      val typeData = new WasmStructTypeName("typeData")
-      val reflectiveProxy = new WasmStructTypeName("reflective_proxy")
+      val typeData = new WasmTypeName("typeData")
+      val reflectiveProxy = new WasmTypeName("reflective_proxy")
 
       // Array types -- they extend j.l.Object
-      val BooleanArray = new WasmStructTypeName("c.AZ")
-      val CharArray = new WasmStructTypeName("c.AC")
-      val ByteArray = new WasmStructTypeName("c.AB")
-      val ShortArray = new WasmStructTypeName("c.AS")
-      val IntArray = new WasmStructTypeName("c.AI")
-      val LongArray = new WasmStructTypeName("c.AJ")
-      val FloatArray = new WasmStructTypeName("c.AF")
-      val DoubleArray = new WasmStructTypeName("c.AD")
-      val ObjectArray = new WasmStructTypeName("c.AO")
+      val BooleanArray = new WasmTypeName("c.AZ")
+      val CharArray = new WasmTypeName("c.AC")
+      val ByteArray = new WasmTypeName("c.AB")
+      val ShortArray = new WasmTypeName("c.AS")
+      val IntArray = new WasmTypeName("c.AI")
+      val LongArray = new WasmTypeName("c.AJ")
+      val FloatArray = new WasmTypeName("c.AF")
+      val DoubleArray = new WasmTypeName("c.AD")
+      val ObjectArray = new WasmTypeName("c.AO")
 
-      def forArrayClass(arrayTypeRef: IRTypes.ArrayTypeRef): WasmStructTypeName = {
+      def forArrayClass(arrayTypeRef: IRTypes.ArrayTypeRef): WasmTypeName = {
         if (arrayTypeRef.dimensions > 1) {
           ObjectArray
         } else {
@@ -475,33 +472,30 @@ object Names {
         }
       }
 
-      def forVTable(className: IRNames.ClassName): WasmStructTypeName =
-        new WasmStructTypeName(s"v.${className.nameString}")
+      def forVTable(className: IRNames.ClassName): WasmTypeName =
+        new WasmTypeName(s"v.${className.nameString}")
 
-      val ObjectVTable: WasmStructTypeName = forVTable(IRNames.ObjectClass)
+      val ObjectVTable: WasmTypeName = forVTable(IRNames.ObjectClass)
 
-      def forITable(className: IRNames.ClassName): WasmStructTypeName =
-        new WasmStructTypeName(s"i.${className.nameString}")
+      def forITable(className: IRNames.ClassName): WasmTypeName =
+        new WasmTypeName(s"i.${className.nameString}")
     }
 
-    /** Array type's name */
-    final case class WasmArrayTypeName private (override private[wasm4s] val name: String)
-        extends WasmTypeName(name)
     object WasmArrayTypeName {
-      val typeDataArray = new WasmArrayTypeName("a.typeDataArray")
-      val itables = new WasmArrayTypeName("a.itable")
-      val reflectiveProxies = new WasmArrayTypeName("a.reflectiveProxies")
+      val typeDataArray = new WasmTypeName("a.typeDataArray")
+      val itables = new WasmTypeName("a.itable")
+      val reflectiveProxies = new WasmTypeName("a.reflectiveProxies")
 
       // primitive array types, underlying the Array[T] classes
-      val i8Array = new WasmArrayTypeName("a.i8Array")
-      val i16Array = new WasmArrayTypeName("a.i16Array")
-      val i32Array = new WasmArrayTypeName("a.i32Array")
-      val i64Array = new WasmArrayTypeName("a.i64Array")
-      val f32Array = new WasmArrayTypeName("a.f32Array")
-      val f64Array = new WasmArrayTypeName("a.f64Array")
-      val anyArray = new WasmArrayTypeName("a.anyArray")
+      val i8Array = new WasmTypeName("a.i8Array")
+      val i16Array = new WasmTypeName("a.i16Array")
+      val i32Array = new WasmTypeName("a.i32Array")
+      val i64Array = new WasmTypeName("a.i64Array")
+      val f32Array = new WasmTypeName("a.f32Array")
+      val f64Array = new WasmTypeName("a.f64Array")
+      val anyArray = new WasmTypeName("a.anyArray")
 
-      def underlyingOf(arrayTypeRef: IRTypes.ArrayTypeRef): WasmArrayTypeName = {
+      def underlyingOf(arrayTypeRef: IRTypes.ArrayTypeRef): WasmTypeName = {
         if (arrayTypeRef.dimensions > 1) {
           anyArray
         } else {
@@ -520,10 +514,10 @@ object Names {
       }
     }
 
-    final case class WasmFunctionTypeName private (override private[wasm4s] val name: String)
-        extends WasmTypeName(name)
     object WasmFunctionTypeName {
-      def apply(idx: Int) = new WasmFunctionTypeName(s"f.$idx")
+      def apply(idx: Int): WasmTypeName = new WasmTypeName(s"f.$idx")
+
+      def rec(idx: Int): WasmTypeName = new WasmTypeName(s"recf.$idx")
     }
 
   }
