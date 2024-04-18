@@ -139,10 +139,10 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.If                  => genIf(t, expectedType)
       case t: IRTrees.While               => genWhile(t)
       case t: IRTrees.ForIn               => genForIn(t)
-      case t: IRTrees.TryCatch            => genTryCatch(t)
-      case t: IRTrees.TryFinally          => unwinding.genTryFinally(t)
+      case t: IRTrees.TryCatch            => genTryCatch(t, expectedType)
+      case t: IRTrees.TryFinally          => unwinding.genTryFinally(t, expectedType)
       case t: IRTrees.Throw               => genThrow(t)
-      case t: IRTrees.Match               => genMatch(t)
+      case t: IRTrees.Match               => genMatch(t, expectedType)
       case t: IRTrees.Debugger            => IRTypes.NoType // ignore
       case t: IRTrees.Skip                => IRTypes.NoType
       case t: IRTrees.Clone               => genClone(t)
@@ -1715,17 +1715,17 @@ private class WasmExpressionBuilder private (
     IRTypes.NoType
   }
 
-  private def genTryCatch(t: IRTrees.TryCatch): IRTypes.Type = {
-    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+  private def genTryCatch(t: IRTrees.TryCatch, expectedType: IRTypes.Type): IRTypes.Type = {
+    val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
 
     if (UseLegacyExceptionsForTryCatch) {
       instrs += TRY(fctx.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
-      genTree(t.block, t.tpe)
+      genTree(t.block, expectedType)
       instrs += CATCH(ctx.exceptionTagName)
       fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
         instrs += ANY_CONVERT_EXTERN
         instrs += LOCAL_SET(exceptionLocal)
-        genTree(t.handler, t.tpe)
+        genTree(t.handler, expectedType)
       }
       instrs += END
     } else {
@@ -1740,22 +1740,22 @@ private class WasmExpressionBuilder private (
           fctx.tryTable(Types.WasmRefType.externref)(
             List(CatchClause.Catch(ctx.exceptionTagName, catchLabel))
           ) {
-            genTree(t.block, t.tpe)
+            genTree(t.block, expectedType)
             instrs += BR(doneLabel)
           }
         } // end block $catch
         fctx.withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
           instrs += ANY_CONVERT_EXTERN
           instrs += LOCAL_SET(exceptionLocal)
-          genTree(t.handler, t.tpe)
+          genTree(t.handler, expectedType)
         }
       } // end block $done
     }
 
-    if (t.tpe == IRTypes.NothingType)
+    if (expectedType == IRTypes.NothingType)
       instrs += UNREACHABLE
 
-    t.tpe
+    expectedType
   }
 
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
@@ -2363,13 +2363,13 @@ private class WasmExpressionBuilder private (
     t.tpe
   }
 
-  private def genMatch(tree: IRTrees.Match): IRTypes.Type = {
+  private def genMatch(tree: IRTrees.Match, expectedType: IRTypes.Type): IRTypes.Type = {
     val IRTrees.Match(selector, cases, defaultBody) = tree
     val selectorLocal = fctx.addSyntheticLocal(TypeTransformer.transformType(selector.tpe)(ctx))
     genTreeAuto(selector)
     instrs += LOCAL_SET(selectorLocal)
 
-    fctx.block(TypeTransformer.transformResultType(tree.tpe)(ctx)) { doneLabel =>
+    fctx.block(TypeTransformer.transformResultType(expectedType)(ctx)) { doneLabel =>
       fctx.block() { defaultLabel =>
         val caseLabels = cases.map(c => c._1 -> fctx.genLabel())
         for (caseLabel <- caseLabels)
@@ -2399,17 +2399,17 @@ private class WasmExpressionBuilder private (
 
         for ((caseLabel, caze) <- caseLabels.zip(cases).reverse) {
           instrs += END
-          genTree(caze._2, tree.tpe)
+          genTree(caze._2, expectedType)
           instrs += BR(doneLabel)
         }
       }
-      genTree(defaultBody, tree.tpe)
+      genTree(defaultBody, expectedType)
     }
 
-    if (tree.tpe == IRTypes.NothingType)
+    if (expectedType == IRTypes.NothingType)
       instrs += UNREACHABLE
 
-    tree.tpe
+    expectedType
   }
 
   private def genCreateJSClass(tree: IRTrees.CreateJSClass): IRTypes.Type = {
@@ -2818,10 +2818,10 @@ private class WasmExpressionBuilder private (
       expectedType
     }
 
-    def genTryFinally(t: IRTrees.TryFinally): IRTypes.Type = {
+    def genTryFinally(t: IRTrees.TryFinally, expectedType: IRTypes.Type): IRTypes.Type = {
       val entry = new TryFinallyEntry(currentUnwindingStackDepth)
 
-      val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+      val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
       val resultLocals = resultType.map(fctx.addSyntheticLocal(_))
 
       fctx.block() { doneLabel =>
@@ -2834,7 +2834,7 @@ private class WasmExpressionBuilder private (
           fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
             // try block
             enterTryFinally(entry) {
-              genTree(t.block, t.tpe)
+              genTree(t.block, expectedType)
             }
 
             // store the result in locals during the finally block
@@ -2931,10 +2931,10 @@ private class WasmExpressionBuilder private (
       for (resultLocal <- resultLocals)
         instrs += LOCAL_GET(resultLocal)
 
-      if (t.tpe == IRTypes.NothingType)
+      if (expectedType == IRTypes.NothingType)
         instrs += UNREACHABLE
 
-      t.tpe
+      expectedType
     }
 
     private def emitBRTable(
