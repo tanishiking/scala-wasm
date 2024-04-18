@@ -16,7 +16,6 @@ import wasm4s.WasmInstr._
 import org.scalajs.ir.Types.ClassType
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Position
-import _root_.wasm4s.Defaults
 
 import EmbeddedConstants._
 
