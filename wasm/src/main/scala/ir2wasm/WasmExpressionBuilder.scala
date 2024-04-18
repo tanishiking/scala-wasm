@@ -114,7 +114,7 @@ private class WasmExpressionBuilder private (
 
   def genTree(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit = {
     val generatedType: IRTypes.Type = tree match {
-      case t: IRTrees.Literal             => genLiteral(t)
+      case t: IRTrees.Literal             => genLiteral(t, expectedType)
       case t: IRTrees.UnaryOp             => genUnaryOp(t)
       case t: IRTrees.BinaryOp            => genBinaryOp(t)
       case t: IRTrees.VarRef              => genVarRef(t)
@@ -788,41 +788,50 @@ private class WasmExpressionBuilder private (
     }
   }
 
-  private def genLiteral(l: IRTrees.Literal): IRTypes.Type = {
-    l match {
-      case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) 1 else 0)
-      case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-      case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(v)
-      case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(v)
-      case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-      case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(v)
-      case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(v)
-      case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(v)
+  private def genLiteral(l: IRTrees.Literal, expectedType: IRTypes.Type): IRTypes.Type = {
+    if (expectedType == IRTypes.NoType) {
+      /* Since all primitives are pure, we can always get rid of them.
+       * This is mostly useful for the argument of `Return` nodes that target a
+       * `Labeled` in statement position, since they must have a non-`void`
+       * type in the IR but they get a `void` expected type.
+       */
+      expectedType
+    } else {
+      l match {
+        case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) 1 else 0)
+        case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
+        case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(v)
+        case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(v)
+        case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
+        case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(v)
+        case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(v)
+        case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(v)
 
-      case v: IRTrees.Undefined =>
-        instrs += CALL(WasmFunctionName.undef)
-      case v: IRTrees.Null =>
-        instrs += WasmInstr.REF_NULL(Types.WasmHeapType.None)
+        case v: IRTrees.Undefined =>
+          instrs += CALL(WasmFunctionName.undef)
+        case v: IRTrees.Null =>
+          instrs += WasmInstr.REF_NULL(Types.WasmHeapType.None)
 
-      case v: IRTrees.StringLiteral =>
-        instrs ++= ctx.getConstantStringInstr(v.value)
+        case v: IRTrees.StringLiteral =>
+          instrs ++= ctx.getConstantStringInstr(v.value)
 
-      case v: IRTrees.ClassOf =>
-        v.typeRef match {
-          case typeRef: IRTypes.NonArrayTypeRef =>
-            genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
+        case v: IRTrees.ClassOf =>
+          v.typeRef match {
+            case typeRef: IRTypes.NonArrayTypeRef =>
+              genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
 
-          case typeRef: IRTypes.ArrayTypeRef =>
-            val typeDataType = Types.WasmRefType(WasmStructTypeName.typeData)
-            val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
+            case typeRef: IRTypes.ArrayTypeRef =>
+              val typeDataType = Types.WasmRefType(WasmStructTypeName.typeData)
+              val typeDataLocal = fctx.addSyntheticLocal(typeDataType)
 
-            genLoadArrayTypeData(typeRef)
-            instrs += LOCAL_SET(typeDataLocal)
-            genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
-        }
+              genLoadArrayTypeData(typeRef)
+              instrs += LOCAL_SET(typeDataLocal)
+              genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+          }
+      }
+
+      l.tpe
     }
-
-    l.tpe
   }
 
   private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
