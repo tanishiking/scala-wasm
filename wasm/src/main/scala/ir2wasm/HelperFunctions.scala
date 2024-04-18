@@ -15,7 +15,6 @@ import wasm.wasm4s.WasmInstr._
 
 import EmbeddedConstants._
 import TypeTransformer._
-import wasm4s.Defaults
 
 object HelperFunctions {
 
@@ -1878,7 +1877,7 @@ object HelperFunctions {
     assert(clazz.hasDirectInstances)
 
     val structName = WasmTypeName.WasmStructTypeName.forClass(className)
-    val fctx = WasmFunctionContext(
+    implicit val fctx = WasmFunctionContext(
       Names.WasmFunctionName.newDefault(className),
       Nil,
       List(WasmRefType(structName))
@@ -1895,8 +1894,7 @@ object HelperFunctions {
       instrs += REF_NULL(WasmHeapType(WasmArrayTypeName.itables))
 
     classInfo.allFieldDefs.foreach { f =>
-      val ty = transformType(f.ftpe)
-      instrs += Defaults.defaultValue(ty)
+      WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(f.ftpe)(clazz.pos), f.ftpe)
     }
     instrs += STRUCT_NEW(structName)
 

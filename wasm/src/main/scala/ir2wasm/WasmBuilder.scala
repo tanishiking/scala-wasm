@@ -18,8 +18,6 @@ import org.scalajs.linker.interface.unstable.RuntimeClassNameMapperImpl
 import org.scalajs.linker.standard.{CoreSpec, LinkedClass, LinkedTopLevelExport}
 
 import collection.mutable
-import java.awt.Window.Type
-import _root_.wasm4s.Defaults
 
 import EmbeddedConstants._
 
@@ -67,11 +65,10 @@ class WasmBuilder(coreSpec: CoreSpec) {
       field @ IRTrees.FieldDef(flags, name, _, ftpe) <- clazz.fields
       if flags.namespace.isStatic
     } {
-      val typ = transformType(ftpe)
       val global = WasmGlobal(
         WasmGlobalName.forStaticField(name.name),
-        typ,
-        WasmExpr(List(Defaults.defaultValue(typ))),
+        transformType(ftpe),
+        WasmExpr(List(genStaticVarInit(ftpe))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -93,6 +90,21 @@ class WasmBuilder(coreSpec: CoreSpec) {
         transformJSClass(clazz)
       case ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.NativeJSModuleClass =>
         () // nothing to do
+    }
+  }
+
+  private def genStaticVarInit(tpe: IRTypes.Type)(implicit ctx: WasmContext): WasmInstr = {
+    import IRTypes._
+
+    tpe match {
+      case BooleanType | CharType | ByteType | ShortType | IntType => I32_CONST(0)
+      case LongType                                                => I64_CONST(0L)
+      case FloatType                                               => F32_CONST(0.0f)
+      case DoubleType                                              => F64_CONST(0.0)
+      case AnyType | ClassType(_) | ArrayType(_) | NullType        => REF_NULL(WasmHeapType.None)
+
+      case NoType | NothingType | StringType | UndefType | _: RecordType =>
+        throw new AssertionError(s"Unexpected type for static variable: ${tpe.show()}")
     }
   }
 
