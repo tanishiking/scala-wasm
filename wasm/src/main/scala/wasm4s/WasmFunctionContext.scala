@@ -41,9 +41,6 @@ class WasmFunctionContext private (
 
   def paramIndices: List[WasmLocalName] = _params.map(_.name)
 
-  private val registeredLabels =
-    mutable.AnyRefMap.empty[IRNames.LabelName, (WasmLabelName, IRTypes.Type)]
-
   /** The instructions buffer; publicly mutable on purpose. */
   val instrs: mutable.ListBuffer[WasmInstr] = mutable.ListBuffer.empty
 
@@ -51,20 +48,6 @@ class WasmFunctionContext private (
     val label = WasmLabelName.synthetic(labelIdx)
     labelIdx += 1
     label
-  }
-
-  def registerLabel(irLabelName: IRNames.LabelName, expectedType: IRTypes.Type): WasmLabelName = {
-    val label = genLabel()
-    registeredLabels(irLabelName) = (label, expectedType)
-    label
-  }
-
-  def getLabelFor(irLabelName: IRNames.LabelName): (WasmLabelName, IRTypes.Type) = {
-    registeredLabels.getOrElse(
-      irLabelName, {
-        throw new IllegalArgumentException(s"Unknown label ${irLabelName.nameString}")
-      }
-    )
   }
 
   private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {

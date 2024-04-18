@@ -130,8 +130,8 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.AsInstanceOf        => genAsInstanceOf(t)
       case t: IRTrees.GetClass            => genGetClass(t)
       case t: IRTrees.Block               => genBlock(t, expectedType)
-      case t: IRTrees.Labeled             => genLabeled(t, expectedType)
-      case t: IRTrees.Return              => genReturn(t)
+      case t: IRTrees.Labeled             => unwinding.genLabeled(t, expectedType)
+      case t: IRTrees.Return              => unwinding.genReturn(t)
       case t: IRTrees.Select              => genSelect(t)
       case t: IRTrees.SelectStatic        => genSelectStatic(t)
       case t: IRTrees.Assign              => genAssign(t)
@@ -141,7 +141,7 @@ private class WasmExpressionBuilder private (
       case t: IRTrees.While               => genWhile(t)
       case t: IRTrees.ForIn               => genForIn(t)
       case t: IRTrees.TryCatch            => genTryCatch(t)
-      case t: IRTrees.TryFinally          => genTryFinally(t)
+      case t: IRTrees.TryFinally          => unwinding.genTryFinally(t)
       case t: IRTrees.Throw               => genThrow(t)
       case t: IRTrees.Match               => genMatch(t)
       case t: IRTrees.Debugger            => IRTypes.NoType // ignore
@@ -1747,49 +1747,6 @@ private class WasmExpressionBuilder private (
     t.tpe
   }
 
-  private def genTryFinally(t: IRTrees.TryFinally): IRTypes.Type = {
-    /* This implementation is rudimentary. It does not handle `Labeled/Return`
-     * pairs that cross its boundary. In case there is a `Return` inside the
-     * `try` block targeting a `Labeled` block around this `TryFinally`, the
-     * `finally` block is by-passed.
-     */
-
-    val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
-    val resultLocals = resultType.map(fctx.addSyntheticLocal(_))
-
-    fctx.block() { doneLabel =>
-      fctx.block(Types.WasmRefType.exnref) { catchLabel =>
-        fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
-          // try block
-          genTree(t.block, t.tpe)
-
-          // store the result in locals during the finally block
-          for (resultLocal <- resultLocals.reverse)
-            instrs += LOCAL_SET(resultLocal)
-        }
-
-        // on success, push a `null_ref exn` on the stack
-        instrs += REF_NULL(Types.WasmHeapType.Exn)
-      } // end block $catch
-
-      // finally block (during which we leave the `(ref null exn)` on the stack)
-      genTree(t.finalizer, IRTypes.NoType)
-
-      // if the `exnref` is non-null, rethrow it
-      instrs += BR_ON_NULL(doneLabel)
-      instrs += THROW_REF
-    } // end block $done
-
-    // reload the result onto the stack
-    for (resultLocal <- resultLocals)
-      instrs += LOCAL_GET(resultLocal)
-
-    if (t.tpe == IRTypes.NothingType)
-      instrs += UNREACHABLE
-
-    t.tpe
-  }
-
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
     genTree(tree.expr, IRTypes.AnyType)
     instrs += EXTERN_CONVERT_ANY
@@ -1819,29 +1776,6 @@ private class WasmExpressionBuilder private (
       case Nil =>
         inner
     }
-  }
-
-  private def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
-    val label = fctx.registerLabel(t.label.name, expectedType)
-    val ty = TypeTransformer.transformResultType(expectedType)(ctx)
-
-    // Manual BLOCK here because we have a specific `label`
-    instrs += BLOCK(fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)), Some(label))
-    genTree(t.body, expectedType)
-    instrs += END
-
-    if (t.tpe == IRTypes.NothingType)
-      instrs += UNREACHABLE
-
-    expectedType
-  }
-
-  private def genReturn(t: IRTrees.Return): IRTypes.Type = {
-    val (label, expectedType) = fctx.getLabelFor(t.label.name)
-
-    genTree(t.expr, expectedType)
-    instrs += BR(label)
-    IRTypes.NothingType
   }
 
   private def genNew(n: IRTrees.New): IRTypes.Type = {
@@ -2514,5 +2448,544 @@ private class WasmExpressionBuilder private (
     genReadStorage(fctx.newTargetStorage)
 
     IRTypes.AnyType
+  }
+
+  /*--------------------------------------------------------------------*
+   * HERE BE DRAGONS --- Handling of TryFinally, Labeled and Return --- *
+   *--------------------------------------------------------------------*/
+
+  /* From this point onwards, and until the end of the file, you will find
+   * the infrastructure required to handle TryFinally and Labeled/Return pairs.
+   *
+   * Independently, TryFinally and Labeled/Return are not very difficult to
+   * handle. The dragons come when they interact, and in particular when a
+   * TryFinally stands in the middle of a Labeled/Return pair.
+   *
+   * For example:
+   *
+   * val foo: int = alpha[int]: {
+   *   val bar: string = try {
+   *     if (somethingHappens)
+   *       return@alpha 5
+   *     "bar"
+   *   } finally {
+   *     doTheFinally()
+   *   }
+   *   someOtherThings(bar)
+   * }
+   *
+   * In that situation, if we naively translate the `return@alpha` into
+   * `br $alpha`, we bypass the `finally` block, which goes against the spec.
+   *
+   * Instead, we must stash the result 5 in a local and jump to the finally
+   * block. The issue is that, at the end of `doTheFinally()`, we need to keep
+   * propagating further up (instead of executing `someOtherThings()`).
+   *
+   * That means that there are 3 possible outcomes after the `finally` block:
+   *
+   * - Rethrow the exception if we caught one.
+   * - Reload the stashed result and branch further to `alpha`.
+   * - Otherwise keep going to do `someOtherThings()`.
+   *
+   * Now what if there are *several* labels for which we cross that
+   * `try..finally`? Well we need to deal with all the possible labels. This
+   * means that, in general, we in fact have `2 + n` possible outcomes, where
+   * `n` is the number of labels for which we found a `Return` that crosses the
+   * boundary.
+   *
+   * In order to know whether we need to rethrow, we look at a nullable
+   * `exnref`. For the remaining cases, we use a separate `destinationTag`
+   * local. Every label gets assigned a distinct tag > 0. Fall-through is
+   * always represented by 0. Before branching to a `finally` block, we set the
+   * appropriate value to the `destinationTag` value.
+   *
+   * Since the various labels can have different result types, and since they
+   * can be different from the result of the regular flow of the `try` block,
+   * we have to normalize to `void` for the `try_table` itself. Each label has
+   * a dedicated local for its result if it comes from such a crossing
+   * `return`.
+   *
+   * Two more complications:
+   *
+   * - If the `finally` block itself contains another `try..finally`, they may
+   *   need a `destinationTag` concurrently. Therefore, every `try..finally`
+   *   gets its own `destinationTag` local.
+   * - If the `try` block contains another `try..finally`, so that there are
+   *   two (or more) `try..finally` in the way between a `Return` and a
+   *   `Labeled`, we must forward to the next `finally` in line (and its own
+   *   `destinationTag` local) so that the whole chain gets executed before
+   *   reaching the `Labeled`.
+   *
+   * ---
+   *
+   * As an evil example of everything that can happen, consider:
+   *
+   * alpha[double]: { // allocated destinationTag = 1
+   *   val foo: int = try { // uses the local destinationTagOuter
+   *     beta[int]: { // allocated destinationTag = 2
+   *       val bar: int = try { // uses the local destinationTagInner
+   *         if (A) return@alpha 5
+   *         if (B) return@beta 10
+   *         56
+   *       } finally {
+   *         doTheFinally()
+   *         // not shown: there is another try..finally here
+   *         // its destinationTagLocal must be different than destinationTag
+   *         // since both are live at the same time.
+   *       }
+   *       someOtherThings(bar)
+   *     }
+   *   } finally {
+   *     doTheOuterFinally()
+   *   }
+   *   moreOtherThings(foo)
+   * }
+   *
+   * The whole compiled code is too overwhelming to be useful, so we show the
+   * important aspects piecemiel, from the bottom up.
+   *
+   * First, the compiled code for `return@alpha 5`:
+   *
+   * i32.const 5                    ; eval the argument of the return
+   * local.set $alphaResult         ; store it in $alphaResult because we are cross a try..finally
+   * i32.const 1                    ; the destination tag of alpha
+   * local.set $destinationTagInner ; store it in the destinationTag local of the inner try..finally
+   * br $innerCross                 ; branch to the cross label of the inner try..finally
+   *
+   * Second, we look at the shape generated for the inner try..finally:
+   *
+   * block $innerDone (result i32)
+   *   block $innerCatch (result exnref)
+   *     block $innerCross
+   *       try_table (catch_all_ref $innerCatch)
+   *         ; [...] body of the try
+   *
+   *         local.set $innerTryResult
+   *       end ; try_table
+   *
+   *       ; set destinationTagInner := 0 to mean fall-through
+   *       i32.const 0
+   *       local.set $destinationTagInner
+   *     end ; block $innerCross
+   *
+   *     ; no exception thrown
+   *     ref.null exn
+   *   end ; block $innerCatch
+   *
+   *   ; now we have the common code with the finally
+   *
+   *   ; [...] body of the finally
+   *
+   *   ; maybe re-throw
+   *   block $innerExnIsNull (param exnref)
+   *     br_on_null $innerExnIsNull
+   *     throw_ref
+   *   end
+   *
+   *   ; re-dispatch after the outer finally based on $destinationTagInner
+   *
+   *   ; first transfer our destination tag to the outer try's destination tag
+   *   local.get $destinationTagInner
+   *   local.set $destinationTagOuter
+   *
+   *   ; now use a br_table to jump to the appropriate destination
+   *   ; if 0, fall-through
+   *   ; if 1, go the outer try's cross label because it is still on the way to alpha
+   *   ; if 2, go to beta's cross label
+   *   ; default to fall-through (never used but br_table needs a default)
+   *   br_table $innerDone $outerCross $betaCross $innerDone
+   * end ; block $innerDone
+   *
+   * We omit the shape of beta and of the outer try. There are similar to the
+   * shape of alpha and inner try, respectively.
+   *
+   * We conclude with the shape of the alpha block:
+   *
+   * block $alpha (result f64)
+   *   block $alphaCross
+   *     ; begin body of alpha
+   *
+   *     ; [...]              ; the try..finally
+   *     local.set $foo       ; val foo =
+   *     moreOtherThings(foo)
+   *
+   *     ; end body of alpha
+   *
+   *     br $alpha ; if alpha finished normally, jump over `local.get $alphaResult`
+   *   end ; block $alphaCross
+   *
+   *   ; if we returned from alpha across a try..finally, fetch the result from the local
+   *   local.get $alphaResult
+   * end ; block $alpha
+   */
+
+  /** This object namespaces everything related to unwinding, so that we don't pollute too much the
+    * overall internal scope of `WasmExpressionBuilder`.
+    */
+  private object unwinding {
+
+    /** The number of enclosing `Labeled` and `TryFinally` blocks.
+      *
+      * For `TryFinally`, it is only enclosing if we are in the `try` branch, not the `finally`
+      * branch.
+      *
+      * Invariant:
+      * {{{
+      * currentUnwindingStackDepth == enclosingTryFinallyStack.size + enclosingLabeledBlocks.size
+      * }}}
+      */
+    private var currentUnwindingStackDepth: Int = 0
+
+    private var enclosingTryFinallyStack: List[TryFinallyEntry] = Nil
+
+    private var enclosingLabeledBlocks: Map[IRNames.LabelName, LabeledEntry] = Map.empty
+
+    private def innermostTryFinally: Option[TryFinallyEntry] =
+      enclosingTryFinallyStack.headOption
+
+    private def enterTryFinally(entry: TryFinallyEntry)(body: => Unit): Unit = {
+      assert(entry.depth == currentUnwindingStackDepth)
+      enclosingTryFinallyStack ::= entry
+      currentUnwindingStackDepth += 1
+      try {
+        body
+      } finally {
+        currentUnwindingStackDepth -= 1
+        enclosingTryFinallyStack = enclosingTryFinallyStack.tail
+      }
+    }
+
+    private def enterLabeled(entry: LabeledEntry)(body: => Unit): Unit = {
+      assert(entry.depth == currentUnwindingStackDepth)
+      val savedLabeledBlocks = enclosingLabeledBlocks
+      enclosingLabeledBlocks = enclosingLabeledBlocks.updated(entry.irLabelName, entry)
+      currentUnwindingStackDepth += 1
+      try {
+        body
+      } finally {
+        currentUnwindingStackDepth -= 1
+        enclosingLabeledBlocks = savedLabeledBlocks
+      }
+    }
+
+    /** The last destination tag that was allocated to a LabeledEntry. */
+    private var lastDestinationTag: Int = 0
+
+    private def allocateDestinationTag(): Int = {
+      lastDestinationTag += 1
+      lastDestinationTag
+    }
+
+    /** Information about an enclosing `TryFinally` block. */
+    private final class TryFinallyEntry(val depth: Int) {
+      private var _crossInfo: Option[(WasmLocalName, WasmLabelName)] = None
+
+      def isInside(labeledEntry: LabeledEntry): Boolean =
+        this.depth > labeledEntry.depth
+
+      def wasCrossed: Boolean = _crossInfo.isDefined
+
+      def requireCrossInfo(): (WasmLocalName, WasmLabelName) = {
+        _crossInfo.getOrElse {
+          val info = (fctx.addSyntheticLocal(Types.WasmInt32), fctx.genLabel())
+          _crossInfo = Some(info)
+          info
+        }
+      }
+    }
+
+    /** Information about an enclosing `Labeled` block. */
+    private final class LabeledEntry(
+        val depth: Int,
+        val irLabelName: IRNames.LabelName,
+        val expectedType: IRTypes.Type
+    ) {
+
+      /** The regular label for this `Labeled` block, used for `Return`s that do not cross a
+        * `TryFinally`.
+        */
+      val regularWasmLabel: WasmLabelName = fctx.genLabel()
+
+      /** The destination tag allocated to this label, used by the `finally` blocks to keep
+        * propagating to the right destination.
+        *
+        * Destination tags are always `> 0`. The value `0` is reserved for fall-through.
+        */
+      private var destinationTag: Int = 0
+
+      /** The locals in which to store the result of the label if we have to cross a `try..finally`.
+        */
+      private var resultLocals: List[WasmLocalName] = null
+
+      /** An additional Wasm label that has a `[]` result, and which will get its result from the
+        * `resultLocal` instead of expecting it on the stack.
+        */
+      private var crossLabel: WasmLabelName = null
+
+      def wasCrossUsed: Boolean = destinationTag != 0
+
+      def requireCrossInfo(): (Int, List[WasmLocalName], WasmLabelName) = {
+        if (destinationTag == 0) {
+          destinationTag = allocateDestinationTag()
+          val resultTypes = TypeTransformer.transformResultType(expectedType)(ctx)
+          resultLocals = resultTypes.map(fctx.addSyntheticLocal(_))
+          crossLabel = fctx.genLabel()
+        }
+
+        (destinationTag, resultLocals, crossLabel)
+      }
+    }
+
+    def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
+      val entry = new LabeledEntry(currentUnwindingStackDepth, t.label.name, expectedType)
+
+      val ty = TypeTransformer.transformResultType(expectedType)(ctx)
+
+      // Manual BLOCK here because we have a specific `label`
+      instrs += BLOCK(
+        fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)),
+        Some(entry.regularWasmLabel)
+      )
+
+      /* Remember the position in the instruction stream, in case we need to
+       * come back and insert the BLOCK for the cross handling.
+       */
+      val instrsBlockBeginIndex = instrs.size
+
+      // Emit the body
+      enterLabeled(entry) {
+        genTree(t.body, expectedType)
+      }
+
+      // Deal with crossing behavior
+      if (entry.wasCrossUsed) {
+        assert(
+          expectedType != IRTypes.NothingType,
+          "The tryFinallyCrossLabel should not have been used for label " +
+            s"${t.label.name.nameString} of type nothing"
+        )
+
+        /* In this case we need to handle situations where we receive the value
+         * from the label's `result` local, branching out of the label's
+         * `crossLabel`.
+         *
+         * Instead of the standard shape
+         *
+         * block $labeled (result t)
+         *   body
+         * end
+         *
+         * We need to amend the shape to become
+         *
+         * block $labeled (result t)
+         *   block $crossLabel
+         *     body            ; inside the body, jumps to this label after a
+         *                     ; `finally` are compiled as `br $crossLabel`
+         *     br $labeled
+         *   end
+         *   local.get $label.resultLocals ; (0 to many)
+         * end
+         */
+
+        val (_, resultLocals, crossLabel) = entry.requireCrossInfo()
+
+        // Go back and insert the `block $crossLabel` right after `block $labeled`
+        instrs.insert(instrsBlockBeginIndex, BLOCK(BlockType.ValueType(), Some(crossLabel)))
+
+        // Add the `br`, `end` and `local.get` at the current position, as usual
+        instrs += BR(entry.regularWasmLabel)
+        instrs += END
+        for (local <- resultLocals)
+          instrs += LOCAL_GET(local)
+      }
+
+      instrs += END
+
+      if (expectedType == IRTypes.NothingType)
+        instrs += UNREACHABLE
+
+      expectedType
+    }
+
+    def genTryFinally(t: IRTrees.TryFinally): IRTypes.Type = {
+      val entry = new TryFinallyEntry(currentUnwindingStackDepth)
+
+      val resultType = TypeTransformer.transformResultType(t.tpe)(ctx)
+      val resultLocals = resultType.map(fctx.addSyntheticLocal(_))
+
+      fctx.block() { doneLabel =>
+        fctx.block(Types.WasmRefType.exnref) { catchLabel =>
+          /* Remember the position in the instruction stream, in case we need
+           * to come back and insert the BLOCK for the cross handling.
+           */
+          val instrsBlockBeginIndex = instrs.size
+
+          fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
+            // try block
+            enterTryFinally(entry) {
+              genTree(t.block, t.tpe)
+            }
+
+            // store the result in locals during the finally block
+            for (resultLocal <- resultLocals.reverse)
+              instrs += LOCAL_SET(resultLocal)
+          }
+
+          /* If this try..finally was crossed by a `Return`, we need to amend
+           * the shape of our try part to
+           *
+           * block $catch (result exnref)
+           *   block $cross
+           *     try_table (catch_all_ref $catch)
+           *       body
+           *       set_local $results ; 0 to many
+           *     end
+           *     i32.const 0 ; 0 always means fall-through
+           *     local.set $destinationTag
+           *   end
+           *   ref.null exn
+           * end
+           */
+          if (entry.wasCrossed) {
+            val (destinationTagLocal, crossLabel) = entry.requireCrossInfo()
+
+            // Go back and insert the `block $cross` right after `block $catch`
+            instrs.insert(
+              instrsBlockBeginIndex,
+              BLOCK(BlockType.ValueType(), Some(crossLabel))
+            )
+
+            // And the other amendments normally
+            instrs += I32_CONST(0)
+            instrs += LOCAL_SET(destinationTagLocal)
+            instrs += END // of the inserted BLOCK
+          }
+
+          // on success, push a `null_ref exn` on the stack
+          instrs += REF_NULL(Types.WasmHeapType.Exn)
+        } // end block $catch
+
+        // finally block (during which we leave the `(ref null exn)` on the stack)
+        genTree(t.finalizer, IRTypes.NoType)
+
+        if (!entry.wasCrossed) {
+          // If the `exnref` is non-null, rethrow it
+          instrs += BR_ON_NULL(doneLabel)
+          instrs += THROW_REF
+        } else {
+          /* If the `exnref` is non-null, rethrow it.
+           * Otherwise, stay within the `$done` block.
+           */
+          fctx.block(WasmFunctionSignature(List(Types.WasmRefType.exnref), Nil)) {
+            exnrefIsNullLabel =>
+              instrs += BR_ON_NULL(exnrefIsNullLabel)
+              instrs += THROW_REF
+          }
+
+          /* Otherwise, use a br_table to dispatch to the right destination
+           * based on the value of the try..finally's destinationTagLocal,
+           * which is set by `Return` or to 0 for fall-through.
+           */
+
+          // The order does not matter here because they will be "re-sorted" by emitBRTable
+          val possibleTargetEntries =
+            enclosingLabeledBlocks.valuesIterator.filter(_.wasCrossUsed).toList
+
+          val nextTryFinallyEntry = innermostTryFinally // note that we're out of ourselves already
+            .filter(nextTry => possibleTargetEntries.exists(nextTry.isInside(_)))
+
+          /* Build the destination table for `br_table`. Target Labeled's that
+           * are outside of the next try..finally in line go to the latter;
+           * for other `Labeled`'s, we go to their cross label.
+           */
+          val brTableDests: List[(Int, WasmLabelName)] = possibleTargetEntries.map { targetEntry =>
+            val (destinationTag, _, crossLabel) = targetEntry.requireCrossInfo()
+            val label = nextTryFinallyEntry.filter(_.isInside(targetEntry)) match {
+              case None          => crossLabel
+              case Some(nextTry) => nextTry.requireCrossInfo()._2
+            }
+            destinationTag -> label
+          }
+
+          instrs += LOCAL_GET(entry.requireCrossInfo()._1)
+          for (nextTry <- nextTryFinallyEntry) {
+            // Transfer the destinationTag to the next try..finally in line
+            instrs += LOCAL_TEE(nextTry.requireCrossInfo()._1)
+          }
+          emitBRTable(brTableDests, doneLabel)
+        }
+      } // end block $done
+
+      // reload the result onto the stack
+      for (resultLocal <- resultLocals)
+        instrs += LOCAL_GET(resultLocal)
+
+      if (t.tpe == IRTypes.NothingType)
+        instrs += UNREACHABLE
+
+      t.tpe
+    }
+
+    private def emitBRTable(
+        dests: List[(Int, WasmLabelName)],
+        defaultLabel: WasmLabelName
+    ): Unit = {
+      dests match {
+        case Nil =>
+          instrs += DROP
+          instrs += BR(defaultLabel)
+
+        case (singleDestValue, singleDestLabel) :: Nil =>
+          /* Common case (as far as getting here in the first place is concerned):
+           * All the `Return`s that cross the current `TryFinally` have the same
+           * target destination (namely the enclosing `def` in the original program).
+           */
+          instrs += I32_CONST(singleDestValue)
+          instrs += I32_EQ
+          instrs += BR_IF(singleDestLabel)
+          instrs += BR(defaultLabel)
+
+        case _ :: _ =>
+          // `max` is safe here because the list is non-empty
+          val table = Array.fill(dests.map(_._1).max + 1)(defaultLabel)
+          for (dest <- dests)
+            table(dest._1) = dest._2
+          instrs += BR_TABLE(table.toList, defaultLabel)
+      }
+    }
+
+    def genReturn(t: IRTrees.Return): IRTypes.Type = {
+      val targetEntry = enclosingLabeledBlocks(t.label.name)
+
+      genTree(t.expr, targetEntry.expectedType)
+
+      if (targetEntry.expectedType != IRTypes.NothingType) {
+        innermostTryFinally.filter(_.isInside(targetEntry)) match {
+          case None =>
+            // Easy case: directly branch out of the block
+            instrs += BR(targetEntry.regularWasmLabel)
+
+          case Some(tryFinallyEntry) =>
+            /* Here we need to branch to the innermost enclosing `finally` block,
+             * while remembering the destination label and the result value.
+             */
+            val (destinationTag, resultLocals, _) = targetEntry.requireCrossInfo()
+            val (destinationTagLocal, crossLabel) = tryFinallyEntry.requireCrossInfo()
+
+            // 1. Store the result in the label's result locals.
+            for (local <- resultLocals.reverse)
+              instrs += LOCAL_SET(local)
+
+            // 2. Store the label's destination tag into the try..finally's destination local.
+            instrs += I32_CONST(destinationTag)
+            instrs += LOCAL_SET(destinationTagLocal)
+
+            // 3. Branch to the enclosing `finally` block's cross label.
+            instrs += BR(crossLabel)
+        }
+      }
+
+      IRTypes.NothingType
+    }
   }
 }
