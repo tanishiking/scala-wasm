@@ -1637,10 +1637,19 @@ private class WasmExpressionBuilder private (
   private def genIf(t: IRTrees.If, expectedType: IRTypes.Type): IRTypes.Type = {
     val ty = TypeTransformer.transformResultType(expectedType)(ctx)
     genTree(t.cond, IRTypes.BooleanType)
-    fctx.ifThenElse(ty) {
-      genTree(t.thenp, expectedType)
-    } {
-      genTree(t.elsep, expectedType)
+
+    t.elsep match {
+      case IRTrees.Skip() =>
+        assert(expectedType == IRTypes.NoType)
+        fctx.ifThen() {
+          genTree(t.thenp, expectedType)
+        }
+      case _ =>
+        fctx.ifThenElse(ty) {
+          genTree(t.thenp, expectedType)
+        } {
+          genTree(t.elsep, expectedType)
+        }
     }
 
     if (expectedType == IRTypes.NothingType)
