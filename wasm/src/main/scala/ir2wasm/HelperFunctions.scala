@@ -264,13 +264,17 @@ object HelperFunctions {
         instrs += CALL(WasmFunctionName.stringConcat)
       } {
         // it is not an array; its name is stored in nameData
-        instrs += LOCAL_GET(typeDataParam)
-        instrs += STRUCT_GET(
-          WasmStructTypeName.typeData,
-          WasmFieldIdx.typeData.nameDataIdx
-        )
-        instrs += REF_AS_NOT_NULL
-        instrs += CALL(WasmFunctionName.createStringFromData)
+        for (
+          idx <- List(
+            WasmFieldIdx.typeData.nameOffsetIdx,
+            WasmFieldIdx.typeData.nameSizeIdx,
+            WasmFieldIdx.typeData.nameStringIndexIdx
+          )
+        ) {
+          instrs += LOCAL_GET(typeDataParam)
+          instrs += STRUCT_GET(WasmStructTypeName.typeData, idx)
+        }
+        instrs += CALL(WasmFunctionName.stringLiteral)
       }
 
       // typeData.name := <top of stack> ; leave it on the stack
@@ -483,7 +487,9 @@ object HelperFunctions {
         instrs += LOCAL_GET(typeDataParam)
 
         // typeData := new typeData(...)
-        instrs += REF_NULL(WasmHeapType.None) // nameData
+        instrs += I32_CONST(0) // nameOffset
+        instrs += I32_CONST(0) // nameSize
+        instrs += I32_CONST(0) // nameStringIndex
         instrs += I32_CONST(KindArray) // kind = KindArray
         instrs += I32_CONST(0) // specialInstanceTypes = 0
 
