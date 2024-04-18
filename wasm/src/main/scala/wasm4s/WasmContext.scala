@@ -863,7 +863,7 @@ object WasmContext {
     private def resolvePublicMethodOpt(
         methodName: IRNames.MethodName
     )(implicit ctx: ReadOnlyWasmContext): Option[IRNames.ClassName] = {
-      if (methods.exists(_.name.simpleName == methodName.nameString)) {
+      if (methods.exists(m => m.name.simpleName == methodName.nameString && !m.isAbstract)) {
         Some(name)
       } else {
         superClass match {

@@ -46,7 +46,6 @@ object TestSuites {
     TestSuite("testsuite.core.MatchTest"),
     TestSuite("testsuite.core.WrapUnwrapThrowableTest"),
     TestSuite("testsuite.core.StringEncodingTest"),
-    TestSuite("testsuite.core.ReflectiveCallTest"),
     TestSuite(
       "testsuite.core.JSExportTopLevelTest",
       postLoadTests = Some({ moduleExports =>

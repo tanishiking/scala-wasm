@@ -183,7 +183,6 @@ lazy val `scalajs-test-suite` = project
 
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
-        .filterNot(endsWith(_, "/compiler/ReflectiveCallTest.scala")) // reflective calls
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala")) // js.dynamicImport (multi-modules)
     },
 
