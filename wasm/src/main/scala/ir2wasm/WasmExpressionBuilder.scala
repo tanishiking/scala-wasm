@@ -299,7 +299,7 @@ private class WasmExpressionBuilder private (
         instrs += CALL(WasmFunctionName.jsSuperSet)
 
       case assign: IRTrees.JSGlobalRef =>
-        genLiteral(IRTrees.StringLiteral(assign.name)(assign.pos))
+        instrs ++= ctx.getConstantStringInstr(assign.name)
         genTree(t.rhs, IRTypes.AnyType)
         instrs += CALL(WasmFunctionName.jsGlobalRefSet)
 
@@ -1194,7 +1194,7 @@ private class WasmExpressionBuilder private (
               instrs += BR_ON_NON_NULL(labelDone)
             }
 
-            genLiteral(IRTrees.StringLiteral("null")(tree.pos))
+            instrs ++= ctx.getConstantStringInstr("null")
           }
         } else {
           /* Dispatch where the receiver can be a JS value.
@@ -1498,7 +1498,7 @@ private class WasmExpressionBuilder private (
     targetTpe match {
       case IRTypes.UndefType =>
         instrs += DROP
-        genLiteral(IRTrees.Undefined())
+        instrs += CALL(WasmFunctionName.undef)
       case IRTypes.StringType =>
         instrs += REF_AS_NOT_NULL
 
@@ -2071,13 +2071,13 @@ private class WasmExpressionBuilder private (
   }
 
   private def genJSGlobalRef(tree: IRTrees.JSGlobalRef): IRTypes.Type = {
-    genLiteral(IRTrees.StringLiteral(tree.name)(tree.pos))
+    instrs ++= ctx.getConstantStringInstr(tree.name)
     instrs += CALL(WasmFunctionName.jsGlobalRefGet)
     IRTypes.AnyType
   }
 
   private def genJSTypeOfGlobalRef(tree: IRTrees.JSTypeOfGlobalRef): IRTypes.Type = {
-    genLiteral(IRTrees.StringLiteral(tree.globalRef.name)(tree.pos))
+    instrs ++= ctx.getConstantStringInstr(tree.globalRef.name)
     instrs += CALL(WasmFunctionName.jsGlobalRefTypeof)
     IRTypes.AnyType
   }
