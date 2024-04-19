@@ -458,15 +458,34 @@ object WasmBinaryWriter {
   private final val SectionTag = 0x0D
 
   private final class Buffer {
-    private val buf = new java.io.ByteArrayOutputStream()
+    private var buf: Array[Byte] = new Array[Byte](1024 * 1024)
+    private var size: Int = 0
 
-    def result(): Array[Byte] = buf.toByteArray()
+    private def ensureCapacity(capacity: Int): Unit = {
+      if (buf.length < capacity) {
+        val newCapacity = Integer.highestOneBit(capacity) << 1
+        buf = java.util.Arrays.copyOf(buf, newCapacity)
+      }
+    }
 
-    def byte(b: Byte): Unit =
-      buf.write(b & 0xFF)
+    def currentGlobalOffset: Int = size
 
-    def rawByteArray(array: Array[Byte]): Unit =
-      buf.write(array)
+    def result(): Array[Byte] =
+      java.util.Arrays.copyOf(buf, size)
+
+    def byte(b: Byte): Unit = {
+      val newSize = size + 1
+      ensureCapacity(newSize)
+      buf(size) = b
+      size = newSize
+    }
+
+    def rawByteArray(array: Array[Byte]): Unit = {
+      val newSize = size + array.length
+      ensureCapacity(newSize)
+      System.arraycopy(array, 0, buf, size, array.length)
+      size = newSize
+    }
 
     def boolean(b: Boolean): Unit =
       byte(if (b) 1 else 0)
@@ -526,21 +545,40 @@ object WasmBinaryWriter {
     }
 
     def byteLengthSubSection(f: Buffer => Unit): Unit = {
-      val subBuffer = new Buffer()
-      f(subBuffer)
-      val subResult = subBuffer.result()
+      // Reserve 4 bytes at the current offset to store the byteLength later
+      val byteLengthOffset = size
+      val startOffset = byteLengthOffset + 4
+      ensureCapacity(startOffset)
+      size = startOffset // do not write the 4 bytes for now
 
-      this.u32(subResult.length)
-      this.rawByteArray(subResult)
+      f(this)
+
+      // Compute byteLength
+      val endOffset = size
+      val byteLength = endOffset - startOffset
+
+      assert(byteLength < (1 << 28), s"Cannot write a subsection that large: $byteLength")
+
+      /* Write the byteLength in the reserved slot. Note that we *always* use
+       * 4 bytes to store the byteLength, even when less bytes are necessary in
+       * the unsigned LEB encoding. The WebAssembly spec specifically calls out
+       * this choice as valid. We leverage it to have predictable total offsets
+       * when write the code section, which is important to efficiently
+       * generate source maps.
+       */
+      buf(byteLengthOffset) = ((byteLength & 0x7F) | 0x80).toByte
+      buf(byteLengthOffset + 1) = (((byteLength >>> 7) & 0x7F) | 0x80).toByte
+      buf(byteLengthOffset + 2) = (((byteLength >>> 14) & 0x7F) | 0x80).toByte
+      buf(byteLengthOffset + 3) = ((byteLength >>> 21) & 0x7F).toByte
     }
 
     @tailrec
     private def unsignedLEB128(value: Long): Unit = {
       val next = value >>> 7
       if (next == 0) {
-        buf.write(value.toInt)
+        byte(value.toByte)
       } else {
-        buf.write((value.toInt & 0x7F) | 0x80)
+        byte(((value.toInt & 0x7F) | 0x80).toByte)
         unsignedLEB128(next)
       }
     }
@@ -550,9 +588,9 @@ object WasmBinaryWriter {
       val chunk = value.toInt & 0x7F
       val next = value >> 7
       if (next == (if ((chunk & 0x40) != 0) -1 else 0)) {
-        buf.write(chunk)
+        byte(chunk.toByte)
       } else {
-        buf.write(chunk | 0x80)
+        byte((chunk | 0x80).toByte)
         signedLEB128(next)
       }
     }
