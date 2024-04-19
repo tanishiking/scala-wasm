@@ -281,13 +281,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         )
     }
 
-    val nameDataValueItems = nameStr.toList.map(c => I32_CONST(c.toInt))
-    val nameDataValueArrayNew =
-      ARRAY_NEW_FIXED(
-        WasmTypeName.WasmArrayTypeName.i16Array,
-        nameDataValueItems.size
-      )
-    val nameDataValue: List[WasmInstr] = nameDataValueItems :+ nameDataValueArrayNew
+    val nameDataValue: List[WasmInstr] = ctx.getConstantStringDataInstr(nameStr)
 
     val strictAncestorsValue: List[WasmInstr] = {
       typeRef match {

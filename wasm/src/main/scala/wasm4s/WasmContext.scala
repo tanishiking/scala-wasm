@@ -200,7 +200,10 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
     }
   }
 
-  def getConstantStringInstr(str: String): List[WasmInstr] = {
+  def getConstantStringInstr(str: String): List[WasmInstr] =
+    getConstantStringDataInstr(str) :+ WasmInstr.CALL(WasmFunctionName.stringLiteral)
+
+  def getConstantStringDataInstr(str: String): List[WasmInstr.I32_CONST] = {
     val data = addConstantStringGlobal(str)
     List(
       WasmInstr.I32_CONST(data.offset),
@@ -208,8 +211,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
       // constant string from the data section using "array.newData $i16Array ..."
       // The length of the array should be equal to the length of the WTF-16 encoded string
       WasmInstr.I32_CONST(str.length()),
-      WasmInstr.I32_CONST(data.constantStringIndex),
-      WasmInstr.CALL(WasmFunctionName.stringLiteral)
+      WasmInstr.I32_CONST(data.constantStringIndex)
     )
   }
 

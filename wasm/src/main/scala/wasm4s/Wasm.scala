@@ -135,8 +135,18 @@ object WasmStructType {
   def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
     List(
       WasmStructField(
-        WasmFieldName.typeData.nameData,
-        WasmRefType.nullable(WasmArrayTypeName.i16Array),
+        WasmFieldName.typeData.nameOffset,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.nameSize,
+        WasmInt32,
+        isMutable = false
+      ),
+      WasmStructField(
+        WasmFieldName.typeData.nameStringIndex,
+        WasmInt32,
         isMutable = false
       ),
       WasmStructField(

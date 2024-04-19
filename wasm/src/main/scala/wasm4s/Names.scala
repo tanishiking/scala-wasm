@@ -313,12 +313,18 @@ object Names {
     // Fields of the typeData structs
     object typeData {
 
-      /** The name data as `(ref null (array u16))` so that it can be initialized as a constant.
+      /** The name data as the 3 arguments to `stringLiteral`.
         *
-        * It is non-null for primitives and for classes. It is null for array types, as array types
-        * compute their `name` from the `name` of their component type.
+        * It is only meaningful for primitives and for classes. For array types, they are all 0, as
+        * array types compute their `name` from the `name` of their component type.
         */
-      val nameData = new WasmFieldName("nameData")
+      val nameOffset = new WasmFieldName("nameOffset")
+
+      /** See `nameOffset`. */
+      val nameSize = new WasmFieldName("nameSize")
+
+      /** See `nameOffset`. */
+      val nameStringIndex = new WasmFieldName("nameStringIndex")
 
       /** The kind of type data, an `i32`.
         *
@@ -410,17 +416,19 @@ object Names {
     val uniqueRegularField = WasmFieldIdx(2)
 
     object typeData {
-      val nameDataIdx = WasmFieldIdx(0)
-      val kindIdx = WasmFieldIdx(1)
-      val specialInstanceTypesIdx = WasmFieldIdx(2)
-      val strictAncestorsIdx = WasmFieldIdx(3)
-      val componentTypeIdx = WasmFieldIdx(4)
-      val nameIdx = WasmFieldIdx(5)
-      val classOfIdx = WasmFieldIdx(6)
-      val arrayOfIdx = WasmFieldIdx(7)
-      val cloneFunctionIdx = WasmFieldIdx(8)
-      val isJSClassInstanceIdx = WasmFieldIdx(9)
-      val reflectiveProxiesIdx = WasmFieldIdx(10)
+      val nameOffsetIdx = WasmFieldIdx(0)
+      val nameSizeIdx = WasmFieldIdx(1)
+      val nameStringIndexIdx = WasmFieldIdx(2)
+      val kindIdx = WasmFieldIdx(3)
+      val specialInstanceTypesIdx = WasmFieldIdx(4)
+      val strictAncestorsIdx = WasmFieldIdx(5)
+      val componentTypeIdx = WasmFieldIdx(6)
+      val nameIdx = WasmFieldIdx(7)
+      val classOfIdx = WasmFieldIdx(8)
+      val arrayOfIdx = WasmFieldIdx(9)
+      val cloneFunctionIdx = WasmFieldIdx(10)
+      val isJSClassInstanceIdx = WasmFieldIdx(11)
+      val reflectiveProxiesIdx = WasmFieldIdx(12)
     }
 
     object reflectiveProxy {
