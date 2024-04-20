@@ -329,23 +329,30 @@ class WasmTextWriter {
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
-      case END | ELSE | _: CATCH | CATCH_ALL => b.deindent()
-      case _                                 => ()
-    }
-    b.newLine()
-    b.appendElement(instr.mnemonic)
-    instr match {
-      case instr: StructuredLabeledInstr =>
-        instr.label.foreach(writeLabelIdx(_))
-      case _ =>
+      case WasmInstr.PositionMark(_) =>
+        // ignore
         ()
-    }
 
-    writeInstrImmediates(instr)
+      case _ =>
+        instr match {
+          case END | ELSE | _: CATCH | CATCH_ALL => b.deindent()
+          case _                                 => ()
+        }
+        b.newLine()
+        b.appendElement(instr.mnemonic)
+        instr match {
+          case instr: StructuredLabeledInstr =>
+            instr.label.foreach(writeLabelIdx(_))
+          case _ =>
+            ()
+        }
 
-    instr match {
-      case _: StructuredLabeledInstr | ELSE | _: CATCH | CATCH_ALL => b.indent()
-      case _                                                       => ()
+        writeInstrImmediates(instr)
+
+        instr match {
+          case _: StructuredLabeledInstr | ELSE | _: CATCH | CATCH_ALL => b.indent()
+          case _                                                       => ()
+        }
     }
   }
 
@@ -419,6 +426,9 @@ class WasmTextWriter {
         writeLabelIdx(labelIdx)
         writeType(from)
         writeType(to)
+
+      case PositionMark(pos) =>
+        throw new AssertionError(s"Unexpected $instr")
     }
   }
 }

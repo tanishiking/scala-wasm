@@ -3,8 +3,8 @@ package wasm.ir2wasm
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.{ClassKind, Position}
 import org.scalajs.linker.standard.LinkedClass
-import org.scalajs.ir.ClassKind
 
 import wasm.wasm4s._
 import wasm.wasm4s.WasmContext._
@@ -17,6 +17,7 @@ import EmbeddedConstants._
 import TypeTransformer._
 
 object HelperFunctions {
+  private implicit val noPos: Position = Position.NoPosition
 
   def genGlobalHelpers()(implicit ctx: WasmContext): Unit = {
     genStringLiteral()

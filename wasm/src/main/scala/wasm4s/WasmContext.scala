@@ -626,7 +626,9 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     import WasmInstr._
     import WasmTypeName._
 
-    val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this)
+    implicit val pos = Position.NoPosition
+
+    val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this, pos)
 
     import fctx.instrs
 
@@ -719,7 +721,6 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
           WasmFunctionName(IRTrees.MemberNamespace.PublicStatic, className, methodName)
         instrs += WasmInstr.CALL(functionName)
       }
-      implicit val noPos: Position = Position.NoPosition
 
       val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.BoxedStringClass), 1)
 

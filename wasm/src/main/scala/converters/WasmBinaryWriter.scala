@@ -6,12 +6,15 @@ import scala.annotation.tailrec
 import java.io.OutputStream
 import java.io.ByteArrayOutputStream
 
+import org.scalajs.ir.Position
+import org.scalajs.linker.backend.javascript.SourceMapWriter
+
 import wasm.wasm4s._
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types._
 import wasm.wasm4s.WasmInstr.{BlockType, END}
 
-final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
+class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
 
   private val typeIdxValues: Map[WasmTypeName, Int] =
@@ -56,6 +59,11 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     finally localIdxValues = saved
   }
 
+  protected def emitStartFuncPosition(buf: Buffer, pos: Position): Unit = ()
+  protected def emitPosition(buf: Buffer, pos: Position): Unit = ()
+  protected def emitEndFuncPosition(buf: Buffer): Unit = ()
+  protected def emitSourceMapSection(buf: Buffer): Unit = ()
+
   def write(): Array[Byte] = {
     val fullOutput = new Buffer()
 
@@ -88,6 +96,8 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     if (emitDebugInfo)
       writeCustomSection(fullOutput, "name")(writeNameCustomSection(_))
 
+    emitSourceMapSection(fullOutput)
+
     fullOutput.result()
   }
 
@@ -96,7 +106,7 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     fullOutput.byteLengthSubSection(f)
   }
 
-  private def writeCustomSection(fullOutput: Buffer, customSectionName: String)(
+  protected final def writeCustomSection(fullOutput: Buffer, customSectionName: String)(
       f: Buffer => Unit
   ): Unit = {
     writeSection(fullOutput, SectionCustom) { buf =>
@@ -254,6 +264,8 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeFunc(buf: Buffer, func: WasmFunction): Unit = {
+    emitStartFuncPosition(buf, func.pos)
+
     buf.vec(func.locals.filter(!_.isParameter)) { local =>
       buf.u32(1)
       writeType(buf, local.typ)
@@ -262,6 +274,8 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     withLocalIdxValues(func.locals.map(_.name).zipWithIndex.toMap) {
       writeExpr(buf, func.body)
     }
+
+    emitEndFuncPosition(buf)
   }
 
   private def writeType(buf: Buffer, typ: WasmStorageType): Unit = {
@@ -327,28 +341,34 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeInstr(buf: Buffer, instr: WasmInstr): Unit = {
-    val opcode = instr.opcode
-    if (opcode <= 0xFF) {
-      buf.byte(opcode.toByte)
-    } else {
-      assert(
-        opcode <= 0xFFFF,
-        s"cannot encode an opcode longer than 2 bytes yet: ${opcode.toHexString}"
-      )
-      buf.byte((opcode >>> 8).toByte)
-      buf.byte(opcode.toByte)
-    }
-
-    writeInstrImmediates(buf, instr)
-
     instr match {
-      case instr: WasmInstr.StructuredLabeledInstr =>
-        // We must register even the `None` labels, because they contribute to relative numbering
-        labelsInScope ::= instr.label
-      case END =>
-        labelsInScope = labelsInScope.tail
+      case WasmInstr.PositionMark(pos) =>
+        emitPosition(buf, pos)
+
       case _ =>
-        ()
+        val opcode = instr.opcode
+        if (opcode <= 0xFF) {
+          buf.byte(opcode.toByte)
+        } else {
+          assert(
+            opcode <= 0xFFFF,
+            s"cannot encode an opcode longer than 2 bytes yet: ${opcode.toHexString}"
+          )
+          buf.byte((opcode >>> 8).toByte)
+          buf.byte(opcode.toByte)
+        }
+
+        writeInstrImmediates(buf, instr)
+
+        instr match {
+          case instr: WasmInstr.StructuredLabeledInstr =>
+            // We must register even the `None` labels, because they contribute to relative numbering
+            labelsInScope ::= instr.label
+          case END =>
+            labelsInScope = labelsInScope.tail
+          case _ =>
+            ()
+        }
     }
   }
 
@@ -429,6 +449,9 @@ final class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
         writeBrOnCast(labelIdx, from, to)
       case BR_ON_CAST_FAIL(labelIdx, from, to) =>
         writeBrOnCast(labelIdx, from, to)
+
+      case PositionMark(pos) =>
+        throw new AssertionError(s"Unexpected $instr")
     }
   }
 
@@ -592,6 +615,31 @@ object WasmBinaryWriter {
       } else {
         byte((chunk | 0x80).toByte)
         signedLEB128(next)
+      }
+    }
+  }
+
+  final class WithSourceMap(
+      module: WasmModule,
+      emitDebugInfo: Boolean,
+      sourceMapWriter: SourceMapWriter,
+      sourceMapURI: String
+  ) extends WasmBinaryWriter(module, emitDebugInfo) {
+
+    override protected def emitStartFuncPosition(buf: Buffer, pos: Position): Unit =
+      sourceMapWriter.startNode(buf.currentGlobalOffset, pos)
+
+    override protected def emitPosition(buf: Buffer, pos: Position): Unit = {
+      sourceMapWriter.endNode(buf.currentGlobalOffset)
+      sourceMapWriter.startNode(buf.currentGlobalOffset, pos)
+    }
+
+    override protected def emitEndFuncPosition(buf: Buffer): Unit =
+      sourceMapWriter.endNode(buf.currentGlobalOffset)
+
+    override protected def emitSourceMapSection(buf: Buffer): Unit = {
+      writeCustomSection(buf, "sourceMappingURL") { buf =>
+        buf.name(sourceMapURI)
       }
     }
   }

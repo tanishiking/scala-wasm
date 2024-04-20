@@ -10,9 +10,12 @@ import org.scalajs.ir.Names._
 import org.scalajs.logging.Logger
 
 import org.scalajs.linker._
+import org.scalajs.linker.backend.javascript.SourceMapWriter
 import org.scalajs.linker.interface._
 import org.scalajs.linker.interface.unstable._
 import org.scalajs.linker.standard._
+
+import org.scalajs.linker.backend.webassembly.SourceMapWriterAccess
 
 import wasm.ir2wasm._
 import wasm.ir2wasm.SpecialNames._
@@ -111,6 +114,7 @@ final class WebAssemblyLinkerBackend(
 
     val watFileName = s"$moduleID.wat"
     val wasmFileName = s"$moduleID.wasm"
+    val sourceMapFileName = s"$wasmFileName.map"
     val jsFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, moduleID)
     val loaderJSFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, "__loader")
 
@@ -119,9 +123,12 @@ final class WebAssemblyLinkerBackend(
       loaderJSFileName,
       jsFileName
     )
-    val filesToProduce =
-      if (linkerConfig.prettyPrint) filesToProduce0 + watFileName
+    val filesToProduce1 =
+      if (linkerConfig.sourceMap) filesToProduce0 + sourceMapFileName
       else filesToProduce0
+    val filesToProduce =
+      if (linkerConfig.prettyPrint) filesToProduce1 + watFileName
+      else filesToProduce1
 
     def maybeWriteWatFile(): Future[Unit] = {
       if (linkerConfig.prettyPrint) {
@@ -135,8 +142,30 @@ final class WebAssemblyLinkerBackend(
 
     def writeWasmFile(): Future[Unit] = {
       val emitDebugInfo = !linkerConfig.minify
-      val binaryOutput = new converters.WasmBinaryWriter(wasmModule, emitDebugInfo).write()
-      outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
+
+      if (linkerConfig.sourceMap) {
+        val sourceMapWriter = new SourceMapWriterAccess.ByteArrayWriterBox()
+
+        val wasmFileURI = s"./$wasmFileName"
+        val sourceMapURI = s"./$sourceMapFileName"
+
+        val smWriter =
+          sourceMapWriter.createSourceMapWriter(wasmFileURI, linkerConfig.relativizeSourceMapBase)
+        val binaryOutput = new converters.WasmBinaryWriter.WithSourceMap(
+          wasmModule,
+          emitDebugInfo,
+          smWriter,
+          sourceMapURI
+        ).write()
+        smWriter.complete()
+
+        outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput)).flatMap { _ =>
+          outputImpl.writeFull(sourceMapFileName, sourceMapWriter.toByteBuffer())
+        }
+      } else {
+        val binaryOutput = new converters.WasmBinaryWriter(wasmModule, emitDebugInfo).write()
+        outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
+      }
     }
 
     def writeLoaderFile(): Future[Unit] =

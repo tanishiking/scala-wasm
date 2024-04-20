@@ -472,6 +472,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
   }
 
   private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
     assert(clazz.kind == ClassKind.ModuleClass)
     val ctor = clazz.methods
       .find(_.methodName.isConstructor)
@@ -934,6 +936,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
     val cachedJSClassGlobal = WasmGlobal(
       WasmGlobalName.forJSClassValue(clazz.className),
       WasmRefType.anyref,
@@ -964,6 +968,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
     val className = clazz.className
     val cacheGlobalName = WasmGlobalName.forModuleInstance(className)
 
@@ -1005,6 +1011,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
   private def transformTopLevelMethodExportDef(
       exportDef: IRTrees.TopLevelMethodExportDef
   )(implicit ctx: WasmContext): Unit = {
+    implicit val pos = exportDef.pos
+
     val method = exportDef.methodDef
     val exportedName = exportDef.topLevelExportName
 
@@ -1070,6 +1078,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
       clazz: LinkedClass,
       method: IRTrees.MethodDef
   )(implicit ctx: WasmContext): WasmFunction = {
+    implicit val pos = method.pos
+
     val functionName = Names.WasmFunctionName(
       method.flags.namespace,
       clazz.name.name,
