@@ -8,18 +8,25 @@ import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Traversers
 
-import org.scalajs.linker.standard.LinkedClass
+import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
 
 import EmbeddedConstants._
 import WasmContext._
 
 object Preprocessor {
-  def preprocess(classes: List[LinkedClass])(implicit ctx: WasmContext): Unit = {
+  def preprocess(classes: List[LinkedClass], tles: List[LinkedTopLevelExport])(implicit
+      ctx: WasmContext
+  ): Unit = {
     for (clazz <- classes)
       preprocess(clazz)
 
+    val collector = new AbstractMethodCallCollector(ctx)
+    for (clazz <- classes)
+      collector.collectAbstractMethodCalls(clazz)
+    for (tle <- tles)
+      collector.collectAbstractMethodCalls(tle)
+
     for (clazz <- classes) {
-      collectAbstractMethodCalls(clazz)
       if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
       HelperFunctions.genCloneFunction(clazz)
@@ -162,35 +169,47 @@ object Preprocessor {
     * It keeps B.c because it's concrete and used. But because `C.c` isn't there at all anymore, if
     * we have val `x: C` and we call `x.c`, we don't find the method at all.
     */
-  private def collectAbstractMethodCalls(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    object traverser extends Traversers.Traverser {
-      import IRTrees._
+  private class AbstractMethodCallCollector(ctx: WasmContext) extends Traversers.Traverser {
+    import IRTrees._
 
-      override def traverse(tree: Tree): Unit = {
-        super.traverse(tree)
+    def collectAbstractMethodCalls(clazz: LinkedClass): Unit = {
+      for (method <- clazz.methods)
+        traverseMethodDef(method)
+      for (jsConstructor <- clazz.jsConstructorDef)
+        traverseJSConstructorDef(jsConstructor)
+      for (export <- clazz.exportedMembers)
+        traverseJSMethodPropDef(export)
+    }
 
-        tree match {
-          case Apply(flags, receiver, methodName, _) =>
-            receiver.tpe match {
-              case IRTypes.ClassType(className) =>
-                val classInfo = ctx.getClassInfo(className)
-                if (classInfo.hasInstances)
-                  classInfo.maybeAddAbstractMethod(methodName.name, ctx)
-              case _ =>
-                ()
-            }
-
-          case _ =>
-            ()
-        }
+    def collectAbstractMethodCalls(tle: LinkedTopLevelExport): Unit = {
+      tle.tree match {
+        case IRTrees.TopLevelMethodExportDef(_, jsMethodDef) =>
+          traverseJSMethodPropDef(jsMethodDef)
+        case _ =>
+          ()
       }
     }
 
-    for (method <- clazz.methods)
-      traverser.traverseMethodDef(method)
-    for (jsConstructor <- clazz.jsConstructorDef)
-      traverser.traverseJSConstructorDef(jsConstructor)
-    for (export <- clazz.exportedMembers)
-      traverser.traverseJSMethodPropDef(export)
+    override def traverse(tree: Tree): Unit = {
+      super.traverse(tree)
+
+      tree match {
+        case Apply(flags, receiver, methodName, _) if !methodName.name.isReflectiveProxy =>
+          receiver.tpe match {
+            case IRTypes.ClassType(className) =>
+              val classInfo = ctx.getClassInfo(className)
+              if (classInfo.hasInstances)
+                classInfo.maybeAddAbstractMethod(methodName.name, ctx)
+            case IRTypes.AnyType | IRTypes.ArrayType(_) =>
+              ctx.getClassInfo(IRNames.ObjectClass).maybeAddAbstractMethod(methodName.name, ctx)
+            case _ =>
+              // For all other cases, we will always perform a static dispatch
+              ()
+          }
+
+        case _ =>
+          ()
+      }
+    }
   }
 }
