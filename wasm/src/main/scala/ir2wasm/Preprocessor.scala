@@ -183,10 +183,10 @@ object Preprocessor {
               val classInfo = ctx.getClassInfo(className)
               if (classInfo.hasInstances)
                 classInfo.registerDynamicCall(methodName.name)
-            case IRTypes.AnyType | IRTypes.ArrayType(_) =>
+            case IRTypes.AnyType =>
               ctx.getClassInfo(IRNames.ObjectClass).registerDynamicCall(methodName.name)
             case _ =>
-              // For all other cases, we will always perform a static dispatch
+              // For all other cases, including arrays, we will always perform a static dispatch
               ()
           }
 

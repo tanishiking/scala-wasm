@@ -352,6 +352,16 @@ private class WasmExpressionBuilder private (
       case _ if t.method.name.isReflectiveProxy =>
         genReflectiveCall(t)
 
+      case IRTypes.ArrayType(_) =>
+        /* Array classes always inherit all their methods from jl.Object, so we
+         * can always statically resolve the call.
+         */
+        genApplyStatically(
+          IRTrees.ApplyStatically(t.flags, t.receiver, IRNames.ObjectClass, t.method, t.args)(
+            t.tpe
+          )(t.pos)
+        )
+
       case _ =>
         genApplyNonPrim(t)
     }
@@ -411,7 +421,6 @@ private class WasmExpressionBuilder private (
     val receiverClassName = t.receiver.tpe match {
       case ClassType(className) => className
       case IRTypes.AnyType      => IRNames.ObjectClass
-      case IRTypes.ArrayType(_) => IRNames.ObjectClass
       case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
     }
     val receiverClassInfo = ctx.getClassInfo(receiverClassName)
