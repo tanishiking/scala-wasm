@@ -334,36 +334,35 @@ private class WasmExpressionBuilder private (
         instrs += UNREACHABLE // trap
         IRTypes.NothingType
 
-      case prim: IRTypes.PrimType =>
-        // statically resolved call with non-null argument
-        val receiverClassName = IRTypes.PrimTypeToBoxedClass(prim)
-        genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(
-            t.pos
-          )
-        )
-
-      case IRTypes.ClassType(className) if IRNames.HijackedClasses.contains(className) =>
-        // statically resolved call with maybe-null argument
-        genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, className, t.method, t.args)(t.tpe)(t.pos)
-        )
-
       case _ if t.method.name.isReflectiveProxy =>
         genReflectiveCall(t)
 
-      case IRTypes.ArrayType(_) =>
-        /* Array classes always inherit all their methods from jl.Object, so we
-         * can always statically resolve the call.
-         */
-        genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, IRNames.ObjectClass, t.method, t.args)(
-            t.tpe
-          )(t.pos)
-        )
-
       case _ =>
-        genApplyNonPrim(t)
+        val receiverClassName = t.receiver.tpe match {
+          case prim: IRTypes.PrimType  => IRTypes.PrimTypeToBoxedClass(prim)
+          case IRTypes.ClassType(cls)  => cls
+          case IRTypes.AnyType         => IRNames.ObjectClass
+          case IRTypes.ArrayType(_)    => IRNames.ObjectClass
+          case tpe: IRTypes.RecordType => throw new AssertionError(s"Invalid receiver type $tpe")
+        }
+        val receiverClassInfo = ctx.getClassInfo(receiverClassName)
+
+        val canUseStaticallyResolved = {
+          receiverClassInfo.kind == ClassKind.HijackedClass ||
+          t.receiver.tpe.isInstanceOf[IRTypes.ArrayType] ||
+          receiverClassInfo.resolvedMethodInfos.get(t.method.name).exists(_.isEffectivelyFinal)
+        }
+        if (canUseStaticallyResolved) {
+          genApplyStatically(
+            IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(
+              t.tpe
+            )(
+              t.pos
+            )
+          )
+        } else {
+          genApplyWithDispatch(t, receiverClassInfo)
+        }
     }
   }
 
@@ -409,21 +408,18 @@ private class WasmExpressionBuilder private (
     // done
   }
 
-  /** Generates the code an `Apply` call where the receiver's type is not statically known to be a
-    * primitive or hijacked class.
+  /** Generates the code an `Apply` call that requires dynamic dispatch.
     *
     * In that case, there is always at least a vtable/itable-based dispatch. It may also contain
     * primitive-based dispatch if the receiver's type is an ancestor of a hijacked class.
     */
-  private def genApplyNonPrim(t: IRTrees.Apply): IRTypes.Type = {
+  private def genApplyWithDispatch(
+      t: IRTrees.Apply,
+      receiverClassInfo: WasmContext.WasmClassInfo
+  ): IRTypes.Type = {
     implicit val pos: Position = t.pos
 
-    val receiverClassName = t.receiver.tpe match {
-      case ClassType(className) => className
-      case IRTypes.AnyType      => IRNames.ObjectClass
-      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
-    }
-    val receiverClassInfo = ctx.getClassInfo(receiverClassName)
+    val receiverClassName = receiverClassInfo.name
 
     /* Similar to transformType(t.receiver.tpe), but:
      * - it is non-null,

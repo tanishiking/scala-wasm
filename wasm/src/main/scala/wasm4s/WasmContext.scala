@@ -735,6 +735,9 @@ object WasmContext {
           case None             => Map.empty
         }
 
+        for (methodName <- classConcretePublicMethodNames)
+          inherited.get(methodName).foreach(_.markOverridden())
+
         classConcretePublicMethodNames.foldLeft(inherited) { (prev, methodName) =>
           prev.updated(methodName, new ConcreteMethodInfo(name, methodName))
         }
@@ -815,8 +818,14 @@ object WasmContext {
               _.tableMethodInfos
             )
 
+          /* When computing the table entries to add for this class, exclude:
+           * - methods that are already in the super class' table entries, and
+           * - methods that are effectively final, since they will always be
+           *   statically resolved instead of using the table dispatch.
+           */
           val newTableEntries = methodsCalledDynamically.toList
             .filter(!superTableMethodInfos.contains(_))
+            .filterNot(m => resolvedMethodInfos.get(m).exists(_.isEffectivelyFinal))
             .sorted // for stability
 
           val baseIndex = superTableMethodInfos.size
@@ -871,6 +880,13 @@ object WasmContext {
       val methodName: IRNames.MethodName
   ) {
     val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, ownerClass, methodName)
+
+    private var effectivelyFinal: Boolean = true
+
+    private[WasmContext] def markOverridden(): Unit =
+      effectivelyFinal = false
+
+    def isEffectivelyFinal: Boolean = effectivelyFinal
   }
 
   final class TableMethodInfo(val methodName: IRNames.MethodName, val tableIndex: Int)
