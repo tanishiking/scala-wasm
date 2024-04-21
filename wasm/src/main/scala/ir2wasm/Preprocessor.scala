@@ -27,6 +27,8 @@ object Preprocessor {
       collector.collectAbstractMethodCalls(tle)
 
     for (clazz <- classes) {
+      ctx.getClassInfo(clazz.className).buildMethodTable()
+
       if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
       HelperFunctions.genCloneFunction(clazz)
@@ -53,20 +55,14 @@ object Preprocessor {
         Nil
       }
 
-    val classMethodInfos = {
+    val classConcretePublicMethodNames = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
-        clazz.methods
-          .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
-          .map(method => makeWasmFunctionInfo(clazz, method))
-      } else {
-        Nil
-      }
-    }
-    val reflectiveProxies = {
-      if (kind.isClass || kind == ClassKind.HijackedClass) {
-        clazz.methods
-          .filter(_.name.name.isReflectiveProxy)
-          .map(method => makeWasmFunctionInfo(clazz, method))
+        for {
+          m <- clazz.methods
+          if m.body.isDefined && m.flags.namespace == IRTrees.MemberNamespace.Public
+        } yield {
+          m.methodName
+        }
       } else {
         Nil
       }
@@ -92,11 +88,11 @@ object Preprocessor {
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(
+        ctx,
         clazz.name.name,
         kind,
         clazz.jsClassCaptures,
-        classMethodInfos,
-        reflectiveProxies,
+        classConcretePublicMethodNames,
         allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
@@ -134,19 +130,6 @@ object Preprocessor {
      */
     if (clazz.hasDirectInstances && !kind.isJSType)
       clazz.ancestors.foreach(ancestor => ctx.getClassInfo(ancestor).setHasInstances())
-  }
-
-  private def makeWasmFunctionInfo(
-      clazz: LinkedClass,
-      method: IRTrees.MethodDef
-  ): WasmFunctionInfo = {
-    WasmFunctionInfo(
-      Names.WasmFunctionName(method.flags.namespace, clazz.name.name, method.name.name),
-      method.args.map(_.ptpe),
-      method.resultType,
-      isAbstract = method.body.isEmpty,
-      isReflectiveProxy = method.name.name.isReflectiveProxy
-    )
   }
 
   /** Collect WasmFunctionInfo based on the abstract method call
@@ -199,9 +182,9 @@ object Preprocessor {
             case IRTypes.ClassType(className) =>
               val classInfo = ctx.getClassInfo(className)
               if (classInfo.hasInstances)
-                classInfo.maybeAddAbstractMethod(methodName.name, ctx)
+                classInfo.registerDynamicCall(methodName.name)
             case IRTypes.AnyType | IRTypes.ArrayType(_) =>
-              ctx.getClassInfo(IRNames.ObjectClass).maybeAddAbstractMethod(methodName.name, ctx)
+              ctx.getClassInfo(IRNames.ObjectClass).registerDynamicCall(methodName.name)
             case _ =>
               // For all other cases, we will always perform a static dispatch
               ()

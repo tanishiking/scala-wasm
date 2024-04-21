@@ -548,9 +548,10 @@ object HelperFunctions {
         // reflectiveProxies
         instrs += ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, 0) // TODO
 
-        instrs ++= ctx
-          .calculateGlobalVTable(IRNames.ObjectClass)
-          .map(method => WasmInstr.REF_FUNC(method.name))
+        val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
+        instrs ++= objectClassInfo.tableEntries.map { methodName =>
+          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).wasmName)
+        }
         instrs += STRUCT_NEW(WasmTypeName.WasmStructTypeName.ObjectVTable)
         instrs += LOCAL_TEE(arrayTypeDataLocal)
 

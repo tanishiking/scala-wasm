@@ -294,8 +294,8 @@ object Names {
     def forITable(className: IRNames.ClassName): WasmFieldName =
       new WasmFieldName(className.nameString)
 
-    def forMethodTableEntry(name: WasmFunctionName): WasmFieldName =
-      new WasmFieldName(name.name)
+    def forMethodTableEntry(name: IRNames.MethodName): WasmFieldName =
+      new WasmFieldName("m." + name.nameString)
 
     def captureParam(i: Int): WasmFieldName = new WasmFieldName("c" + i)
 
