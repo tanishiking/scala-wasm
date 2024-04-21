@@ -21,8 +21,6 @@ import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
 import org.scalajs.linker.standard.LinkedTopLevelExport
 
-import java.nio.charset.StandardCharsets
-
 abstract class ReadOnlyWasmContext {
   import WasmContext._
 
@@ -188,7 +186,9 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
         data
 
       case None =>
-        val bytes = encodeStringToWTF16LE(str)
+        val bytes = str.toCharArray.flatMap { char =>
+          Array((char & 0xFF).toByte, (char >> 8).toByte)
+        }
         val offset = nextConstatnStringOffset
         val data = StringData(nextConstantStringIndex, offset)
         constantStringGlobals(str) = data
@@ -242,32 +242,6 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
   private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
     if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
     else inferTypeFromTypeRef(typeRef.base)
-  }
-
-  /** http://simonsapin.github.io/wtf-8/#encoding-ill-formed-utf-16
-    */
-  private def encodeStringToWTF16LE(input: String): Array[Byte] = {
-    val result = scala.collection.mutable.ArrayBuffer[Int]()
-    var i = 0
-    while (i < input.length) {
-      val codePoint = input.codePointAt(i)
-      if (codePoint < 0x10000) {
-        // BMP code point
-        result += codePoint
-        i += Character.charCount(codePoint)
-      } else {
-        // Supplementary code point
-        val highSurrogate = ((codePoint - 0x10000) >> 10) + 0xD800
-        val lowSurrogate = ((codePoint - 0x10000) & 0x3FF) + 0xDC00
-        result += highSurrogate
-        result += lowSurrogate
-        i += 2
-      }
-    }
-
-    result
-      .flatMap(codeUnit => Seq((codeUnit & 0xFF).toByte, ((codeUnit >> 8) & 0xFF).toByte))
-      .toArray
   }
 }
 
