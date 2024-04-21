@@ -891,7 +891,6 @@ object WasmContext {
       TypeTransformer.transformFunctionType(this)
 
   }
-  case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
 
   case class WasmVTable(val functions: List[WasmFunctionInfo]) {
     def resolve(name: WasmFunctionName): WasmFunctionInfo =
