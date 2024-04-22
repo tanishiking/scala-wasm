@@ -23,7 +23,10 @@ object Types {
   case object WasmInt8 extends WasmPackedType("i8", 0x78)
   case object WasmInt16 extends WasmPackedType("i16", 0x77)
 
-  final case class WasmRefType(nullable: Boolean, heapType: WasmHeapType) extends WasmType
+  final case class WasmRefType(nullable: Boolean, heapType: WasmHeapType) extends WasmType {
+    def toNullable: WasmRefType = WasmRefType(true, heapType)
+    def toNonNullable: WasmRefType = WasmRefType(false, heapType)
+  }
 
   object WasmRefType {
 

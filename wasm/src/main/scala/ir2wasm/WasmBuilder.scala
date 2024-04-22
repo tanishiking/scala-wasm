@@ -489,29 +489,35 @@ class WasmBuilder(coreSpec: CoreSpec) {
       ctor.name.name
     )
 
+    val resultTyp = WasmRefType(typeName)
+
     implicit val fctx = WasmFunctionContext(
       WasmFunctionName.loadModule(clazz.className),
       Nil,
-      List(WasmRefType.nullable(typeName))
+      List(resultTyp)
     )
+
+    val instanceLocal = fctx.addLocal("instance", resultTyp)
 
     import fctx.instrs
 
-    // global.get $module_name
-    // ref.if_null
-    //   ref.null $module_type
-    //   call $module_init ;; should set to global
-    // end
-    // global.get $module_name
-    instrs += GLOBAL_GET(globalInstanceName) // [rt]
-    instrs += REF_IS_NULL // [rt] -> [i32] (bool)
-    instrs += IF(BlockType.ValueType())
-    instrs += CALL(WasmFunctionName.newDefault(clazz.name.name))
-    instrs += GLOBAL_SET(globalInstanceName)
-    instrs += GLOBAL_GET(globalInstanceName)
-    instrs += CALL(ctorName)
-    instrs += END
-    instrs += GLOBAL_GET(globalInstanceName) // [rt]
+    fctx.block(resultTyp) { nonNullLabel =>
+      // load global, return if not null
+      instrs += GLOBAL_GET(globalInstanceName)
+      instrs += BR_ON_NON_NULL(nonNullLabel)
+
+      // create an instance and call its constructor
+      instrs += CALL(WasmFunctionName.newDefault(clazz.name.name))
+      instrs += LOCAL_TEE(instanceLocal)
+      instrs += CALL(ctorName)
+
+      // store it in the global
+      instrs += LOCAL_GET(instanceLocal)
+      instrs += GLOBAL_SET(globalInstanceName)
+
+      // return it
+      instrs += LOCAL_GET(instanceLocal)
+    }
 
     fctx.buildAndAddToContext()
   }
@@ -1093,7 +1099,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       else if (isHijackedClass)
         Some(transformType(IRTypes.BoxedClassToPrimType(className)))
       else
-        Some(transformType(IRTypes.ClassType(className)))
+        Some(transformClassType(className).toNonNullable)
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(

@@ -43,28 +43,23 @@ object TypeTransformer {
         Types.WasmRefType.nullable(
           Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
         )
-      case IRTypes.ClassType(className) => transformClassByName(className)
+      case IRTypes.ClassType(className) => transformClassType(className)
       case IRTypes.RecordType(fields)   => ???
       case IRTypes.StringType | IRTypes.UndefType =>
         Types.WasmRefType.any
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 
-  private def transformClassByName(
+  def transformClassType(
       className: IRNames.ClassName
-  )(implicit ctx: ReadOnlyWasmContext): Types.WasmType = {
-    className match {
-      case _ =>
-        val info = ctx.getClassInfo(className)
-        if (info.isAncestorOfHijackedClass)
-          Types.WasmRefType.anyref
-        else if (info.isInterface)
-          Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
-        else
-          Types.WasmRefType.nullable(
-            Names.WasmTypeName.WasmStructTypeName.forClass(className)
-          )
-    }
+  )(implicit ctx: ReadOnlyWasmContext): Types.WasmRefType = {
+    val info = ctx.getClassInfo(className)
+    if (info.isAncestorOfHijackedClass)
+      Types.WasmRefType.anyref
+    else if (info.isInterface)
+      Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
+    else
+      Types.WasmRefType.nullable(WasmTypeName.WasmStructTypeName.forClass(className))
   }
 
   private def transformPrimType(
