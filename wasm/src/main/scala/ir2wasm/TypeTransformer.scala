@@ -30,17 +30,6 @@ object TypeTransformer {
       case _                   => List(transformType(t))
     }
 
-  def transformTypeRef(t: IRTypes.TypeRef)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
-    t match {
-      case arrayTypeRef: IRTypes.ArrayTypeRef =>
-        Types.WasmRefType.nullable(
-          Names.WasmTypeName.WasmStructTypeName.forArrayClass(arrayTypeRef)
-        )
-      case IRTypes.ClassRef(className) =>
-        transformClassByName(className)
-      case IRTypes.PrimRef(tpe) => transformPrimType(tpe)
-    }
-
   /** Transforms a value type to a unique Wasm type.
     *
     * This method cannot be used for `void` and `nothing`, since they have no corresponding Wasm
