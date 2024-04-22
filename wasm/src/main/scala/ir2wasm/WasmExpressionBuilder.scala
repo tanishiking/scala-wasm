@@ -1699,21 +1699,6 @@ private class WasmExpressionBuilder private (
       case _                      => t.tpe
     }
 
-    /* If the receiver is a Class/ModuleClass, its wasm type will be declared
-     * as `(ref any)`, and therefore we must cast it down.
-     */
-    fixedTpe match {
-      case IRTypes.ClassType(className) if className != IRNames.ObjectClass =>
-        val info = ctx.getClassInfo(className)
-        if (info.kind.isClass) {
-          instrs += REF_CAST(Types.WasmRefType(WasmStructTypeName.forClass(className)))
-        } else if (info.isInterface) {
-          instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType.ObjectType))
-        }
-      case _ =>
-        ()
-    }
-
     fixedTpe
   }
 

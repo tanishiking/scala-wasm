@@ -337,7 +337,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         val proxyId = ctx.getReflectiveProxyId(proxyInfo.methodName)
         List(
           I32_CONST(proxyId),
-          REF_FUNC(proxyInfo.wasmName),
+          REF_FUNC(proxyInfo.tableEntryName),
           STRUCT_NEW(WasmStructTypeName.reflectiveProxy)
         )
       } :+ ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, reflectiveProxies.size)
@@ -417,7 +417,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         classInfo.resolvedMethodInfos.valuesIterator.filter(_.methodName.isReflectiveProxy).toList
       val typeDataFieldValues = genTypeDataFieldValues(clazz, reflectiveProxies)
       val vtableElems = classInfo.tableEntries.map { methodName =>
-        REF_FUNC(classInfo.resolvedMethodInfos(methodName).wasmName)
+        REF_FUNC(classInfo.resolvedMethodInfos(methodName).tableEntryName)
       }
       val globalVTable =
         genTypeDataGlobal(typeRef, vtableTypeName, typeDataFieldValues, vtableElems)
@@ -1076,31 +1076,28 @@ class WasmBuilder(coreSpec: CoreSpec) {
   private def genFunction(
       clazz: LinkedClass,
       method: IRTrees.MethodDef
-  )(implicit ctx: WasmContext): WasmFunction = {
+  )(implicit ctx: WasmContext): Unit = {
     implicit val pos = method.pos
 
-    val functionName = Names.WasmFunctionName(
-      method.flags.namespace,
-      clazz.name.name,
-      method.name.name
-    )
+    val namespace = method.flags.namespace
+    val className = clazz.className
+    val methodName = method.methodName
 
-    // Receiver type for non-constructor methods needs to be `(ref any)` because params are invariant
-    // Otherwise, vtable can't be a subtype of the supertype's subtype
-    // Constructor can use the exact type because it won't be registered to vtables.
+    val functionName = Names.WasmFunctionName(namespace, className, methodName)
+
+    val isHijackedClass = ctx.getClassInfo(className).kind == ClassKind.HijackedClass
+
     val receiverTyp =
-      if (method.flags.namespace.isStatic)
+      if (namespace.isStatic)
         None
-      else if (clazz.kind == ClassKind.HijackedClass)
-        Some(transformType(IRTypes.BoxedClassToPrimType(clazz.name.name)))
-      else if (method.flags.namespace.isConstructor)
-        Some(WasmRefType.nullable(WasmTypeName.WasmStructTypeName.forClass(clazz.name.name)))
+      else if (isHijackedClass)
+        Some(transformType(IRTypes.BoxedClassToPrimType(className)))
       else
-        Some(WasmRefType.any)
+        Some(transformType(IRTypes.ClassType(className)))
 
     // Prepare for function context, set receiver and parameters
     implicit val fctx = WasmFunctionContext(
-      Some(clazz.className),
+      Some(className),
       functionName,
       receiverTyp,
       method.args,
@@ -1111,7 +1108,48 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
     WasmExpressionBuilder.generateIRBody(body, method.resultType)
 
-    fctx.buildAndAddToContext(useFunctionTypeInMainRecType = true)
+    fctx.buildAndAddToContext()
+
+    if (namespace == IRTrees.MemberNamespace.Public && !isHijackedClass) {
+      /* Also generate the bridge that is stored in the table entries. In table
+       * entries, the receiver type is always `(ref any)`.
+       *
+       * TODO: generate this only when the method is actually referred to from
+       * at least one table.
+       */
+
+      implicit val fctx = WasmFunctionContext(
+        Some(className),
+        WasmFunctionName.forTableEntry(className, methodName),
+        Some(WasmRefType.any),
+        method.args,
+        method.resultType
+      )
+
+      import fctx.instrs
+
+      val receiverLocal :: paramLocals = fctx.paramIndices: @unchecked
+
+      // Load and cast down the receiver
+      instrs += LOCAL_GET(receiverLocal)
+      receiverTyp match {
+        case Some(Types.WasmRefType(_, WasmHeapType.Any)) =>
+          () // no cast necessary
+        case Some(receiverTyp: Types.WasmRefType) =>
+          instrs += REF_CAST(receiverTyp)
+        case _ =>
+          throw new AssertionError(s"Unexpected receiver type $receiverTyp")
+      }
+
+      // Load the other parameters
+      for (paramLocal <- paramLocals)
+        instrs += LOCAL_GET(paramLocal)
+
+      // Call the statically resolved method
+      instrs += RETURN_CALL(functionName)
+
+      fctx.buildAndAddToContext(useFunctionTypeInMainRecType = true)
+    }
   }
 
   private def transformField(

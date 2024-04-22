@@ -118,6 +118,9 @@ object Names {
       }
     }
 
+    def forTableEntry(clazz: IRNames.ClassName, method: IRNames.MethodName): WasmFunctionName =
+      new WasmFunctionName("t#" + clazz.nameString, method.nameString)
+
     def forExport(exportedName: String): WasmFunctionName =
       new WasmFunctionName("export", exportedName)
 

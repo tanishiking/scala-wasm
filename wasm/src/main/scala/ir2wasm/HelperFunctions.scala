@@ -550,7 +550,7 @@ object HelperFunctions {
 
         val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
         instrs ++= objectClassInfo.tableEntries.map { methodName =>
-          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).wasmName)
+          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryName)
         }
         instrs += STRUCT_NEW(WasmTypeName.WasmStructTypeName.ObjectVTable)
         instrs += LOCAL_TEE(arrayTypeDataLocal)

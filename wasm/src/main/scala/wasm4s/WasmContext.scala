@@ -578,7 +578,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         instrs += WasmInstr.I32_CONST(idx)
 
         for (method <- iface.tableEntries)
-          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).wasmName)
+          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
         instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
         instrs += WasmInstr.ARRAY_SET(WasmTypeName.WasmArrayTypeName.itables)
       }
@@ -598,7 +598,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         instrs += I32_CONST(getItableIdx(interfaceName))
 
         for (method <- interfaceInfo.tableEntries)
-          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).wasmName)
+          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
         instrs += STRUCT_NEW(WasmStructTypeName.forITable(interfaceName))
         instrs += ARRAY_SET(WasmArrayTypeName.itables)
       }
@@ -879,7 +879,7 @@ object WasmContext {
       val ownerClass: IRNames.ClassName,
       val methodName: IRNames.MethodName
   ) {
-    val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, ownerClass, methodName)
+    val tableEntryName = WasmFunctionName.forTableEntry(ownerClass, methodName)
 
     private var effectivelyFinal: Boolean = true
 
