@@ -2,6 +2,8 @@ package wasm.wasm4s
 
 import scala.collection.mutable
 
+import org.scalajs.ir.Position
+
 import Types._
 import Names._
 import Names.WasmTypeName._
@@ -36,7 +38,8 @@ case class WasmFunction(
     val typeName: WasmTypeName,
     val locals: List[WasmLocal],
     val results: List[WasmType],
-    val body: WasmExpr
+    val body: WasmExpr,
+    val pos: Position
 )
 
 /** The index space for locals is only accessible inside a function and includes the parameters of

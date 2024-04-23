@@ -5,6 +5,7 @@ import scala.collection.mutable
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
+import org.scalajs.ir.Position
 
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Types.WasmType
@@ -20,7 +21,8 @@ class WasmFunctionContext private (
     _newTargetStorage: Option[WasmFunctionContext.VarStorage.Local],
     _receiverStorage: Option[WasmFunctionContext.VarStorage.Local],
     _paramsEnv: WasmFunctionContext.Env,
-    _resultTypes: List[WasmType]
+    _resultTypes: List[WasmType],
+    functionPos: Position
 ) {
   import WasmFunctionContext._
 
@@ -100,6 +102,11 @@ class WasmFunctionContext private (
     innerFuncIdx += 1
     innerName
   }
+
+  // Position handling
+
+  def markPosition(tree: IRTrees.Tree): Unit =
+    instrs += PositionMark(tree.pos)
 
   // Helpers to build structured control flow
 
@@ -342,7 +349,8 @@ class WasmFunctionContext private (
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
     val expr = WasmExpr(dcedInstrs)
-    val func = WasmFunction(functionName, functionTypeName, locals.toList, _resultTypes, expr)
+    val func =
+      WasmFunction(functionName, functionTypeName, locals.toList, _resultTypes, expr, functionPos)
     ctx.addFunction(func)
     func
   }
@@ -428,7 +436,7 @@ object WasmFunctionContext {
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     def makeCaptureLikeParamListAndEnv(
         captureParamName: String,
         captureLikes: Option[List[(IRNames.LocalName, IRTypes.Type)]]
@@ -497,7 +505,8 @@ object WasmFunctionContext {
       newTargetStorage,
       receiverStorage,
       fullEnv,
-      resultTypes
+      resultTypes,
+      pos
     )
   }
 
@@ -508,7 +517,7 @@ object WasmFunctionContext {
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     apply(
       enclosingClassName,
       name,
@@ -527,7 +536,7 @@ object WasmFunctionContext {
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     apply(
       enclosingClassName,
       name,
@@ -544,7 +553,7 @@ object WasmFunctionContext {
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultType: IRTypes.Type
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     apply(
       enclosingClassName,
       name,
@@ -558,16 +567,16 @@ object WasmFunctionContext {
       name: WasmFunctionName,
       params: List[(String, WasmType)],
       resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext): WasmFunctionContext = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     val paramLocals = params.map { param =>
       WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
     }
-    new WasmFunctionContext(ctx, None, name, paramLocals, None, None, Map.empty, resultTypes)
+    new WasmFunctionContext(ctx, None, name, paramLocals, None, None, Map.empty, resultTypes, pos)
   }
 
   def paramDefsToWasmParams(
       paramDefs: List[IRTrees.ParamDef]
-  )(implicit ctx: TypeDefinableWasmContext): List[WasmLocal] = {
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): List[WasmLocal] = {
     paramDefs.map { paramDef =>
       WasmLocal(
         WasmLocalName.fromIR(paramDef.name.name),

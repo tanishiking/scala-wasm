@@ -1,6 +1,8 @@
 package wasm.wasm4s
 // https://webassembly.github.io/spec/core/syntax/instructions.html
 
+import org.scalajs.ir.Position
+
 import Types._
 import Names._
 import Names.WasmTypeName._
@@ -95,6 +97,9 @@ object WasmInstr {
   ) extends WasmInstr(mnemonic, opcode)
 
   // The actual instruction list
+
+  // Fake instruction to mark position changes
+  final case class PositionMark(pos: Position) extends WasmInstr("pos", -1)
 
   // Unary operations
   case object I32_EQZ extends WasmSimpleInstr("i32.eqz", 0x45)
