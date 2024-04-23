@@ -8,18 +8,27 @@ import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Traversers
 
-import org.scalajs.linker.standard.LinkedClass
+import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
 
 import EmbeddedConstants._
 import WasmContext._
 
 object Preprocessor {
-  def preprocess(classes: List[LinkedClass])(implicit ctx: WasmContext): Unit = {
+  def preprocess(classes: List[LinkedClass], tles: List[LinkedTopLevelExport])(implicit
+      ctx: WasmContext
+  ): Unit = {
     for (clazz <- classes)
       preprocess(clazz)
 
+    val collector = new AbstractMethodCallCollector(ctx)
+    for (clazz <- classes)
+      collector.collectAbstractMethodCalls(clazz)
+    for (tle <- tles)
+      collector.collectAbstractMethodCalls(tle)
+
     for (clazz <- classes) {
-      collectAbstractMethodCalls(clazz)
+      ctx.getClassInfo(clazz.className).buildMethodTable()
+
       if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
       HelperFunctions.genCloneFunction(clazz)
@@ -46,20 +55,14 @@ object Preprocessor {
         Nil
       }
 
-    val classMethodInfos = {
+    val classConcretePublicMethodNames = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
-        clazz.methods
-          .filter(_.flags.namespace == IRTrees.MemberNamespace.Public)
-          .map(method => makeWasmFunctionInfo(clazz, method))
-      } else {
-        Nil
-      }
-    }
-    val reflectiveProxies = {
-      if (kind.isClass || kind == ClassKind.HijackedClass) {
-        clazz.methods
-          .filter(_.name.name.isReflectiveProxy)
-          .map(method => makeWasmFunctionInfo(clazz, method))
+        for {
+          m <- clazz.methods
+          if m.body.isDefined && m.flags.namespace == IRTrees.MemberNamespace.Public
+        } yield {
+          m.methodName
+        }
       } else {
         Nil
       }
@@ -85,11 +88,11 @@ object Preprocessor {
     ctx.putClassInfo(
       clazz.name.name,
       new WasmClassInfo(
+        ctx,
         clazz.name.name,
         kind,
         clazz.jsClassCaptures,
-        classMethodInfos,
-        reflectiveProxies,
+        classConcretePublicMethodNames,
         allFieldDefs,
         clazz.superClass.map(_.name),
         clazz.interfaces.map(_.name),
@@ -129,19 +132,6 @@ object Preprocessor {
       clazz.ancestors.foreach(ancestor => ctx.getClassInfo(ancestor).setHasInstances())
   }
 
-  private def makeWasmFunctionInfo(
-      clazz: LinkedClass,
-      method: IRTrees.MethodDef
-  ): WasmFunctionInfo = {
-    WasmFunctionInfo(
-      Names.WasmFunctionName(method.flags.namespace, clazz.name.name, method.name.name),
-      method.args.map(_.ptpe),
-      method.resultType,
-      isAbstract = method.body.isEmpty,
-      isReflectiveProxy = method.name.name.isReflectiveProxy
-    )
-  }
-
   /** Collect WasmFunctionInfo based on the abstract method call
     *
     * ```
@@ -162,35 +152,47 @@ object Preprocessor {
     * It keeps B.c because it's concrete and used. But because `C.c` isn't there at all anymore, if
     * we have val `x: C` and we call `x.c`, we don't find the method at all.
     */
-  private def collectAbstractMethodCalls(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    object traverser extends Traversers.Traverser {
-      import IRTrees._
+  private class AbstractMethodCallCollector(ctx: WasmContext) extends Traversers.Traverser {
+    import IRTrees._
 
-      override def traverse(tree: Tree): Unit = {
-        super.traverse(tree)
+    def collectAbstractMethodCalls(clazz: LinkedClass): Unit = {
+      for (method <- clazz.methods)
+        traverseMethodDef(method)
+      for (jsConstructor <- clazz.jsConstructorDef)
+        traverseJSConstructorDef(jsConstructor)
+      for (export <- clazz.exportedMembers)
+        traverseJSMethodPropDef(export)
+    }
 
-        tree match {
-          case Apply(flags, receiver, methodName, _) =>
-            receiver.tpe match {
-              case IRTypes.ClassType(className) =>
-                val classInfo = ctx.getClassInfo(className)
-                if (classInfo.hasInstances)
-                  classInfo.maybeAddAbstractMethod(methodName.name, ctx)
-              case _ =>
-                ()
-            }
-
-          case _ =>
-            ()
-        }
+    def collectAbstractMethodCalls(tle: LinkedTopLevelExport): Unit = {
+      tle.tree match {
+        case IRTrees.TopLevelMethodExportDef(_, jsMethodDef) =>
+          traverseJSMethodPropDef(jsMethodDef)
+        case _ =>
+          ()
       }
     }
 
-    for (method <- clazz.methods)
-      traverser.traverseMethodDef(method)
-    for (jsConstructor <- clazz.jsConstructorDef)
-      traverser.traverseJSConstructorDef(jsConstructor)
-    for (export <- clazz.exportedMembers)
-      traverser.traverseJSMethodPropDef(export)
+    override def traverse(tree: Tree): Unit = {
+      super.traverse(tree)
+
+      tree match {
+        case Apply(flags, receiver, methodName, _) if !methodName.name.isReflectiveProxy =>
+          receiver.tpe match {
+            case IRTypes.ClassType(className) =>
+              val classInfo = ctx.getClassInfo(className)
+              if (classInfo.hasInstances)
+                classInfo.registerDynamicCall(methodName.name)
+            case IRTypes.AnyType =>
+              ctx.getClassInfo(IRNames.ObjectClass).registerDynamicCall(methodName.name)
+            case _ =>
+              // For all other cases, including arrays, we will always perform a static dispatch
+              ()
+          }
+
+        case _ =>
+          ()
+      }
+    }
   }
 }

@@ -89,7 +89,7 @@ final class WebAssemblyLinkerBackend(
 
     // sortedClasses.foreach(cls => println(utils.LinkedClassPrinters.showLinkedClass(cls)))
 
-    Preprocessor.preprocess(sortedClasses)(context)
+    Preprocessor.preprocess(sortedClasses, onlyModule.topLevelExports)(context)
     HelperFunctions.genGlobalHelpers()
     builder.genPrimitiveTypeDataGlobals()
     sortedClasses.foreach { clazz =>

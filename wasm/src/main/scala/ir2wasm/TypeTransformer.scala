@@ -11,24 +11,6 @@ import wasm.wasm4s.Names._
 
 object TypeTransformer {
 
-  val makeReceiverType: Types.WasmType =
-    Types.WasmRefType.any
-
-  def transformFunctionType(
-      // clazz: WasmContext.WasmClassInfo,
-      method: WasmContext.WasmFunctionInfo
-  )(implicit ctx: TypeDefinableWasmContext): WasmTypeName = {
-    // val className = clazz.name
-    val name = method.name
-    val receiverType = makeReceiverType
-    //   if (clazz.kind.isClass) List(makeReceiverType) else Nil
-    val sig = WasmFunctionSignature(
-      receiverType +: method.argTypes.map(transformType),
-      transformResultType(method.resultType)
-    )
-    ctx.addFunctionTypeInMainRecType(sig)
-  }
-
   /** This transformation should be used only for the result types of functions or blocks.
     *
     * `nothing` translates to an empty result type list, because Wasm does not have a bottom type

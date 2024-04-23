@@ -334,26 +334,35 @@ private class WasmExpressionBuilder private (
         instrs += UNREACHABLE // trap
         IRTypes.NothingType
 
-      case prim: IRTypes.PrimType =>
-        // statically resolved call with non-null argument
-        val receiverClassName = IRTypes.PrimTypeToBoxedClass(prim)
-        genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(t.tpe)(
-            t.pos
-          )
-        )
-
-      case IRTypes.ClassType(className) if IRNames.HijackedClasses.contains(className) =>
-        // statically resolved call with maybe-null argument
-        genApplyStatically(
-          IRTrees.ApplyStatically(t.flags, t.receiver, className, t.method, t.args)(t.tpe)(t.pos)
-        )
-
       case _ if t.method.name.isReflectiveProxy =>
         genReflectiveCall(t)
 
       case _ =>
-        genApplyNonPrim(t)
+        val receiverClassName = t.receiver.tpe match {
+          case prim: IRTypes.PrimType  => IRTypes.PrimTypeToBoxedClass(prim)
+          case IRTypes.ClassType(cls)  => cls
+          case IRTypes.AnyType         => IRNames.ObjectClass
+          case IRTypes.ArrayType(_)    => IRNames.ObjectClass
+          case tpe: IRTypes.RecordType => throw new AssertionError(s"Invalid receiver type $tpe")
+        }
+        val receiverClassInfo = ctx.getClassInfo(receiverClassName)
+
+        val canUseStaticallyResolved = {
+          receiverClassInfo.kind == ClassKind.HijackedClass ||
+          t.receiver.tpe.isInstanceOf[IRTypes.ArrayType] ||
+          receiverClassInfo.resolvedMethodInfos.get(t.method.name).exists(_.isEffectivelyFinal)
+        }
+        if (canUseStaticallyResolved) {
+          genApplyStatically(
+            IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(
+              t.tpe
+            )(
+              t.pos
+            )
+          )
+        } else {
+          genApplyWithDispatch(t, receiverClassInfo)
+        }
     }
   }
 
@@ -362,16 +371,10 @@ private class WasmExpressionBuilder private (
     val receiverLocalForDispatch =
       fctx.addSyntheticLocal(Types.WasmRefType.any)
 
-    val proxyId = ctx.getReflectiveProxyId(t.method.name.nameString)
-    val receiverType = TypeTransformer.makeReceiverType
-    val paramTys = t.method.name.paramTypeRefs.map(TypeTransformer.transformTypeRef(_)(ctx))
-    val sig = WasmFunctionSignature(
-      receiverType +: paramTys,
-      TypeTransformer.transformResultType(IRTypes.AnyType)(ctx)
-    )
-    val funcTypeName = ctx.addFunctionTypeInMainRecType(sig)
+    val proxyId = ctx.getReflectiveProxyId(t.method.name)
+    val funcTypeName = ctx.tableFunctionType(t.method.name)
 
-    fctx.block(sig.results) { done =>
+    fctx.block(Types.WasmRefType.anyref) { done =>
       fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
         // arguments
         genTree(t.receiver, IRTypes.AnyType)
@@ -405,22 +408,18 @@ private class WasmExpressionBuilder private (
     // done
   }
 
-  /** Generates the code an `Apply` call where the receiver's type is not statically known to be a
-    * primitive or hijacked class.
+  /** Generates the code an `Apply` call that requires dynamic dispatch.
     *
     * In that case, there is always at least a vtable/itable-based dispatch. It may also contain
     * primitive-based dispatch if the receiver's type is an ancestor of a hijacked class.
     */
-  private def genApplyNonPrim(t: IRTrees.Apply): IRTypes.Type = {
+  private def genApplyWithDispatch(
+      t: IRTrees.Apply,
+      receiverClassInfo: WasmContext.WasmClassInfo
+  ): IRTypes.Type = {
     implicit val pos: Position = t.pos
 
-    val receiverClassName = t.receiver.tpe match {
-      case ClassType(className) => className
-      case IRTypes.AnyType      => IRNames.ObjectClass
-      case IRTypes.ArrayType(_) => IRNames.ObjectClass
-      case _                    => throw new Error(s"Invalid receiver type ${t.receiver.tpe}")
-    }
-    val receiverClassInfo = ctx.getClassInfo(receiverClassName)
+    val receiverClassName = receiverClassInfo.name
 
     /* Similar to transformType(t.receiver.tpe), but:
      * - it is non-null,
@@ -657,14 +656,7 @@ private class WasmExpressionBuilder private (
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
       val itableIdx = ctx.getItableIdx(receiverClassInfo.name)
-      val methodIdx =
-        receiverClassInfo.methods.indexWhere(meth => meth.name.simpleName == methodName.nameString)
-      if (methodIdx < 0)
-        throw new Error(
-          s"Method ${methodName.nameString} not found in class ${receiverClassInfo.name}"
-        )
-
-      val methodInfo = receiverClassInfo.methods(methodIdx)
+      val methodIdx = receiverClassInfo.tableMethodInfos(methodName).tableIndex
 
       instrs += LOCAL_GET(receiverLocalForDispatch)
       instrs += STRUCT_GET(
@@ -680,22 +672,13 @@ private class WasmExpressionBuilder private (
         WasmStructTypeName.forITable(receiverClassInfo.name),
         WasmFieldIdx(methodIdx)
       )
-      instrs += CALL_REF(methodInfo.toWasmFunctionType()(ctx))
+      instrs += CALL_REF(ctx.tableFunctionType(methodName))
     }
 
     // Generates a vtable-based dispatch.
     def genVTableDispatch(): Unit = {
       val receiverClassName = receiverClassInfo.name
-
-      val (methodIdx, info) = ctx
-        .calculateVtableType(receiverClassName)
-        .resolveWithIdx(
-          WasmFunctionName(
-            IRTrees.MemberNamespace.Public,
-            receiverClassName,
-            methodName
-          )
-        )
+      val methodIdx = receiverClassInfo.tableMethodInfos(methodName).tableIndex
 
       // // push args to the stacks
       // local.get $this ;; for accessing funcref
@@ -713,7 +696,7 @@ private class WasmExpressionBuilder private (
         WasmStructTypeName.forVTable(receiverClassName),
         WasmFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
       )
-      instrs += CALL_REF(info.toWasmFunctionType()(ctx))
+      instrs += CALL_REF(ctx.tableFunctionType(methodName))
     }
 
     if (receiverClassInfo.isInterface)
@@ -736,8 +719,13 @@ private class WasmExpressionBuilder private (
 
       case _ =>
         val namespace = IRTrees.MemberNamespace.forNonStaticCall(t.flags)
-        val targetClassName =
-          ctx.getClassInfo(t.className).resolvePublicMethod(namespace, t.method.name)(ctx)
+        val targetClassName = {
+          val classInfo = ctx.getClassInfo(t.className)
+          if (!classInfo.isInterface && namespace == IRTrees.MemberNamespace.Public)
+            classInfo.resolvedMethodInfos(t.method.name).ownerClass
+          else
+            t.className
+        }
 
         IRTypes.BoxedClassToPrimType.get(targetClassName) match {
           case None =>

@@ -165,10 +165,13 @@ class WasmBuilder(coreSpec: CoreSpec) {
     }
   }
 
-  private def genTypeDataFieldValues(clazz: LinkedClass, vtableElems: List[WasmFunctionInfo])(
-      implicit ctx: WasmContext
+  private def genTypeDataFieldValues(
+      clazz: LinkedClass,
+      reflectiveProxies: List[ConcreteMethodInfo]
+  )(implicit
+      ctx: WasmContext
   ): List[WasmInstr] = {
-    import WasmFieldName.typeData._
+    import WasmFieldName.typeData.{reflectiveProxies => _, _}
 
     val className = clazz.className
     val classInfo = ctx.getClassInfo(className)
@@ -201,7 +204,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       classInfo.specialInstanceTypes,
       IRTypes.ClassRef(clazz.className),
       isJSClassInstanceFuncOpt,
-      vtableElems
+      reflectiveProxies
     )
   }
 
@@ -267,7 +270,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       specialInstanceTypes: Int,
       typeRef: IRTypes.NonArrayTypeRef,
       isJSClassInstanceFuncOpt: Option[WasmFunctionName],
-      vtableElems: List[WasmFunctionInfo]
+      reflectiveProxies: List[ConcreteMethodInfo]
   )(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
@@ -329,16 +332,15 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case Some(funcName) => REF_FUNC(funcName)
     }
 
-    val reflectiveProxies: List[WasmInstr] = {
-      val proxies = vtableElems.filter(_.isReflectiveProxy)
-      proxies.flatMap { method =>
-        val proxyId = ctx.getReflectiveProxyId(method.name.simpleName)
+    val reflectiveProxiesInstrs: List[WasmInstr] = {
+      reflectiveProxies.flatMap { proxyInfo =>
+        val proxyId = ctx.getReflectiveProxyId(proxyInfo.methodName)
         List(
           I32_CONST(proxyId),
-          REF_FUNC(method.name),
-          STRUCT_NEW(Names.WasmTypeName.WasmStructTypeName.reflectiveProxy)
+          REF_FUNC(proxyInfo.wasmName),
+          STRUCT_NEW(WasmStructTypeName.reflectiveProxy)
         )
-      } :+ ARRAY_NEW_FIXED(Names.WasmTypeName.WasmArrayTypeName.reflectiveProxies, proxies.size)
+      } :+ ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, reflectiveProxies.size)
     }
 
     nameDataValue :::
@@ -368,7 +370,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       // reflective proxies - used to reflective call on the class at runtime.
       // Generated instructions create an array of reflective proxy structs, where each struct
       // contains the ID of the reflective proxy and a reference to the actual method implementation.
-      reflectiveProxies
+      reflectiveProxiesInstrs
   }
 
   private def genTypeDataGlobal(
@@ -399,8 +401,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val classInfo = ctx.getClassInfo(className)
 
     // generate vtable type, this should be done for both abstract and concrete classes
-    val vtable = ctx.calculateVtableType(className)
-    val vtableTypeName = genVTableType(clazz, vtable.functions)
+    val vtableTypeName = genVTableType(classInfo)
 
     val isAbstractClass = !clazz.hasDirectInstances
 
@@ -412,9 +413,12 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     if (!isAbstractClass) {
       // Generate an actual vtable
-      val functions = ctx.calculateGlobalVTable(className)
-      val typeDataFieldValues = genTypeDataFieldValues(clazz, functions)
-      val vtableElems = functions.map(method => WasmInstr.REF_FUNC(method.name))
+      val reflectiveProxies =
+        classInfo.resolvedMethodInfos.valuesIterator.filter(_.methodName.isReflectiveProxy).toList
+      val typeDataFieldValues = genTypeDataFieldValues(clazz, reflectiveProxies)
+      val vtableElems = classInfo.tableEntries.map { methodName =>
+        REF_FUNC(classInfo.resolvedMethodInfos(methodName).wasmName)
+      }
       val globalVTable =
         genTypeDataGlobal(typeRef, vtableTypeName, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
@@ -447,21 +451,19 @@ class WasmBuilder(coreSpec: CoreSpec) {
     structType
   }
 
-  private def genVTableType(clazz: LinkedClass, functions: List[WasmFunctionInfo])(implicit
-      ctx: WasmContext
-  ): WasmTypeName = {
-    val typeName = Names.WasmTypeName.WasmStructTypeName.forVTable(clazz.name.name)
+  private def genVTableType(classInfo: WasmClassInfo)(implicit ctx: WasmContext): WasmTypeName = {
+    val typeName = Names.WasmTypeName.WasmStructTypeName.forVTable(classInfo.name)
     val vtableFields =
-      functions.map { method =>
+      classInfo.tableEntries.map { methodName =>
         WasmStructField(
-          Names.WasmFieldName.forMethodTableEntry(method.name),
-          WasmRefType.nullable(method.toWasmFunctionType()),
+          Names.WasmFieldName.forMethodTableEntry(methodName),
+          WasmRefType(ctx.tableFunctionType(methodName)),
           isMutable = false
         )
       }
-    val superType = clazz.superClass match {
+    val superType = classInfo.superClass match {
       case None    => WasmTypeName.WasmStructTypeName.typeData
-      case Some(s) => WasmTypeName.WasmStructTypeName.forVTable(s.name)
+      case Some(s) => WasmTypeName.WasmStructTypeName.forVTable(s)
     }
     val structType = WasmStructType(
       WasmStructType.typeData.fields ::: vtableFields
@@ -561,18 +563,15 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val classInfo = ctx.getClassInfo(clazz.className)
     val itableTypeName = Names.WasmTypeName.WasmStructTypeName.forITable(className)
     val itableType = WasmStructType(
-      classInfo.methods.map { m =>
+      classInfo.tableEntries.map { methodName =>
         WasmStructField(
-          Names.WasmFieldName(m.name.simpleName),
-          WasmRefType.nullable(m.toWasmFunctionType()),
+          Names.WasmFieldName.forMethodTableEntry(methodName),
+          WasmRefType(ctx.tableFunctionType(methodName)),
           isMutable = false
         )
       }
     )
     ctx.mainRecType.addSubType(itableTypeName, itableType)
-    // typeName
-    // genITable
-    // generateVTable()
   }
 
   private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {

@@ -26,7 +26,6 @@ abstract class ReadOnlyWasmContext {
 
   protected val itableIdx = mutable.Map[IRNames.ClassName, Int]()
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
-  private val vtablesCache = mutable.Map[IRNames.ClassName, WasmVTable]()
   protected var nextItableIdx: Int
 
   val cloneFunctionTypeName: WasmTypeName
@@ -60,60 +59,6 @@ abstract class ReadOnlyWasmContext {
     case typeRef: IRTypes.ArrayTypeRef =>
       IRTypes.ArrayType(typeRef)
   }
-
-  /** Collects all methods declared and inherited by the given class, super-class.
-    *
-    * @param className
-    *   class to collect methods from
-    * @param includeAbstractMethods
-    *   whether to include abstract methods
-    * @return
-    *   list of methods in order that "collectVTableMethods(superClass) ++ methods from the class"
-    */
-  private def collectVTableMethods(
-      className: IRNames.ClassName,
-      includeAbstractMethods: Boolean
-  ): List[WasmFunctionInfo] = {
-    val info = classInfo.getOrElse(className, throw new Error(s"Class not found: $className"))
-    assert(
-      info.kind.isClass || info.kind == ClassKind.HijackedClass,
-      s"collectVTableMethods cannot be called for non-class ${className.nameString}"
-    )
-    val fromSuperClass =
-      info.superClass.map(collectVTableMethods(_, includeAbstractMethods)).getOrElse(Nil)
-    fromSuperClass ++
-      (if (includeAbstractMethods) info.methods
-       else info.methods.filterNot(_.isAbstract))
-  }
-
-  def calculateGlobalVTable(name: IRNames.ClassName): List[WasmFunctionInfo] = {
-    val vtableType = calculateVtableType(name)
-    // Do not include abstract methods when calculating vtable instance,
-    // all slots should be filled with the function reference to the concrete methods
-    val methodsReverse = collectVTableMethods(name, includeAbstractMethods = false).reverse
-    vtableType.functions.map { slot =>
-      methodsReverse
-        .find(_.name.simpleName == slot.name.simpleName)
-        .getOrElse(throw new Error(s"No implementation found for ${slot.name} in ${name}"))
-    }
-  }
-
-  def calculateVtableType(name: IRNames.ClassName): WasmVTable = {
-    vtablesCache.getOrElseUpdate(
-      name, {
-        val functions =
-          collectVTableMethods(name, includeAbstractMethods = true)
-            .foldLeft(Array.empty[WasmFunctionInfo]) { case (acc, m) =>
-              acc.indexWhere(_.name.simpleName == m.name.simpleName) match {
-                case i if i < 0 => acc :+ m
-                case i          => if (m.isAbstract) acc else acc.updated(i, m)
-              }
-            }
-            .toList
-        WasmVTable(functions)
-      }
-    )
-  }
 }
 
 case class StringData(
@@ -124,10 +69,11 @@ case class StringData(
 abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   private val functionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
   private val recFunctionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
+  private val tableFunctionTypes = mutable.HashMap.empty[IRNames.MethodName, WasmTypeName]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = LinkedHashMap.empty[IRNames.ClassName, WasmGlobalName]
   private val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmTypeName]
-  private val reflectiveProxies = LinkedHashMap.empty[String, Int]
+  private val reflectiveProxies = LinkedHashMap.empty[IRNames.MethodName, Int]
 
   protected var stringPool = new mutable.ArrayBuffer[Byte]()
   protected var nextConstantStringIndex: Int = 0
@@ -142,7 +88,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
   protected def addFuncDeclaration(name: WasmFunctionName): Unit
 
   /** Retrieves a unique identifier for a reflective proxy with the given name */
-  def getReflectiveProxyId(name: String): Int =
+  def getReflectiveProxyId(name: IRNames.MethodName): Int =
     reflectiveProxies.getOrElseUpdate(
       name, {
         val idx = nextReflectiveProxyIdx
@@ -176,6 +122,20 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
         val typeName = WasmFunctionTypeName.rec(recFunctionTypes.size)
         mainRecType.addSubType(typeName, WasmFunctionType(sig))
         typeName
+      }
+    )
+  }
+
+  def tableFunctionType(methodName: IRNames.MethodName): WasmTypeName = {
+    tableFunctionTypes.getOrElseUpdate(
+      methodName, {
+        val regularParamTyps = methodName.paramTypeRefs.map { typeRef =>
+          TypeTransformer.transformType(inferTypeFromTypeRef(typeRef))(this)
+        }
+        val resultTyp =
+          TypeTransformer.transformResultType(inferTypeFromTypeRef(methodName.resultTypeRef))(this)
+        val sig = WasmFunctionSignature(WasmRefType.any :: regularParamTyps, resultTyp)
+        addFunctionTypeInMainRecType(sig)
       }
     )
   }
@@ -611,25 +571,23 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     for ((name, globalName) <- classItableGlobals) {
       val classInfo = getClassInfo(name)
       val interfaces = classInfo.ancestors.map(getClassInfo(_)).filter(_.isInterface)
-      val vtable = calculateVtableType(name)
+      val resolvedMethodInfos = classInfo.resolvedMethodInfos
       interfaces.foreach { iface =>
         val idx = getItableIdx(iface.name)
         instrs += WasmInstr.GLOBAL_GET(globalName)
         instrs += WasmInstr.I32_CONST(idx)
 
-        iface.methods.foreach { method =>
-          val func = vtable.resolve(method.name)
-          instrs += WasmInstr.REF_FUNC(func.name)
-        }
+        for (method <- iface.tableEntries)
+          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).wasmName)
         instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
         instrs += WasmInstr.ARRAY_SET(WasmTypeName.WasmArrayTypeName.itables)
       }
     }
 
     locally {
-      // For array classes, resolve methods in the vtable of jl.Object
+      // For array classes, resolve methods in jl.Object
       val globalName = WasmGlobalName.arrayClassITable
-      val objectVTable = calculateVtableType(IRNames.ObjectClass)
+      val resolvedMethodInfos = getClassInfo(IRNames.ObjectClass).resolvedMethodInfos
 
       for {
         interfaceName <- List(IRNames.SerializableClass, IRNames.CloneableClass)
@@ -638,8 +596,9 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
       } {
         instrs += GLOBAL_GET(globalName)
         instrs += I32_CONST(getItableIdx(interfaceName))
-        for (method <- interfaceInfo.methods)
-          instrs += refFuncWithDeclaration(objectVTable.resolve(method.name).name)
+
+        for (method <- interfaceInfo.tableEntries)
+          instrs += refFuncWithDeclaration(resolvedMethodInfos(method).wasmName)
         instrs += STRUCT_NEW(WasmStructTypeName.forITable(interfaceName))
         instrs += ARRAY_SET(WasmArrayTypeName.itables)
       }
@@ -751,11 +710,11 @@ object WasmContext {
   private val classFieldOffset = 2 // vtable, itables
 
   final class WasmClassInfo(
+      ctx: WasmContext,
       val name: IRNames.ClassName,
       val kind: ClassKind,
       val jsClassCaptures: Option[List[IRTrees.ParamDef]],
-      private var _methods: List[WasmFunctionInfo],
-      val reflectiveProxies: List[WasmFunctionInfo],
+      classConcretePublicMethodNames: List[IRNames.MethodName],
       val allFieldDefs: List[IRTrees.FieldDef],
       val superClass: Option[IRNames.ClassName],
       val interfaces: List[IRNames.ClassName],
@@ -768,6 +727,29 @@ object WasmContext {
   ) {
     private val fieldIdxByName: Map[IRNames.FieldName, Int] =
       allFieldDefs.map(_.name.name).zipWithIndex.map(p => p._1 -> (p._2 + classFieldOffset)).toMap
+
+    val resolvedMethodInfos: Map[IRNames.MethodName, ConcreteMethodInfo] = {
+      if (kind.isClass || kind == ClassKind.HijackedClass) {
+        val inherited: Map[IRNames.MethodName, ConcreteMethodInfo] = superClass match {
+          case Some(superClass) => ctx.getClassInfo(superClass).resolvedMethodInfos
+          case None             => Map.empty
+        }
+
+        for (methodName <- classConcretePublicMethodNames)
+          inherited.get(methodName).foreach(_.markOverridden())
+
+        classConcretePublicMethodNames.foldLeft(inherited) { (prev, methodName) =>
+          prev.updated(methodName, new ConcreteMethodInfo(name, methodName))
+        }
+      } else {
+        Map.empty
+      }
+    }
+
+    private val methodsCalledDynamically = mutable.HashSet.empty[IRNames.MethodName]
+
+    private var _tableEntries: List[IRNames.MethodName] = null
+    private var _tableMethodInfos: Map[IRNames.MethodName, TableMethodInfo] = null
 
     // See caller in Preprocessor.preprocess
     def setHasInstances(): Unit =
@@ -819,51 +801,65 @@ object WasmContext {
 
     def isInterface = kind == ClassKind.Interface
 
-    def methods: List[WasmFunctionInfo] = _methods
+    def registerDynamicCall(methodName: IRNames.MethodName): Unit =
+      methodsCalledDynamically += methodName
 
-    def maybeAddAbstractMethod(methodName: IRNames.MethodName, ctx: WasmContext): Unit = {
-      if (!methods.exists(_.name.simpleName == methodName.nameString)) {
-        val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, name, methodName)
-        val argTypes = methodName.paramTypeRefs.map(ctx.inferTypeFromTypeRef(_))
-        val resultType = ctx.inferTypeFromTypeRef(methodName.resultTypeRef)
-        _methods = _methods :+ WasmFunctionInfo(
-          wasmName,
-          argTypes,
-          resultType,
-          isAbstract = true,
-          isReflectiveProxy = methodName.isReflectiveProxy
-        )
+    def buildMethodTable(): Unit = {
+      if (_tableEntries != null)
+        throw new IllegalStateException(s"Duplicate call to buildMethodTable() for $name")
+
+      kind match {
+        case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass =>
+          val superClassInfo = superClass.map(ctx.getClassInfo(_))
+          val superTableEntries =
+            superClassInfo.fold[List[IRNames.MethodName]](Nil)(_.tableEntries)
+          val superTableMethodInfos =
+            superClassInfo.fold[Map[IRNames.MethodName, TableMethodInfo]](Map.empty)(
+              _.tableMethodInfos
+            )
+
+          /* When computing the table entries to add for this class, exclude:
+           * - methods that are already in the super class' table entries, and
+           * - methods that are effectively final, since they will always be
+           *   statically resolved instead of using the table dispatch.
+           */
+          val newTableEntries = methodsCalledDynamically.toList
+            .filter(!superTableMethodInfos.contains(_))
+            .filterNot(m => resolvedMethodInfos.get(m).exists(_.isEffectivelyFinal))
+            .sorted // for stability
+
+          val baseIndex = superTableMethodInfos.size
+          val newTableMethodInfos = newTableEntries.zipWithIndex.map { case (m, index) =>
+            m -> new TableMethodInfo(m, baseIndex + index)
+          }
+
+          _tableEntries = superTableEntries ::: newTableEntries
+          _tableMethodInfos = superTableMethodInfos ++ newTableMethodInfos
+
+        case ClassKind.Interface =>
+          _tableEntries = methodsCalledDynamically.toList.sorted // for stability
+          _tableMethodInfos = tableEntries.zipWithIndex.map { case (m, index) =>
+            m -> new TableMethodInfo(m, index)
+          }.toMap
+
+        case _ =>
+          _tableEntries = Nil
+          _tableMethodInfos = Map.empty
       }
+
+      methodsCalledDynamically.clear() // gc
     }
 
-    @tailrec
-    private def resolvePublicMethodOpt(
-        methodName: IRNames.MethodName
-    )(implicit ctx: ReadOnlyWasmContext): Option[IRNames.ClassName] = {
-      if (methods.exists(m => m.name.simpleName == methodName.nameString && !m.isAbstract)) {
-        Some(name)
-      } else {
-        superClass match {
-          case None =>
-            None
-          case Some(superClass) =>
-            ctx.getClassInfo(superClass).resolvePublicMethodOpt(methodName)
-        }
-      }
+    def tableEntries: List[IRNames.MethodName] = {
+      if (_tableEntries == null)
+        throw new IllegalStateException(s"Table not yet built for $name")
+      _tableEntries
     }
 
-    def resolvePublicMethod(namespace: IRTrees.MemberNamespace, methodName: IRNames.MethodName)(
-        implicit ctx: ReadOnlyWasmContext
-    ): IRNames.ClassName = {
-      if (isInterface || namespace != IRTrees.MemberNamespace.Public) {
-        name
-      } else {
-        resolvePublicMethodOpt(methodName).getOrElse {
-          throw new AssertionError(
-            s"Cannot find method ${methodName.nameString} in class ${name.nameString}"
-          )
-        }
-      }
+    def tableMethodInfos: Map[IRNames.MethodName, TableMethodInfo] = {
+      if (_tableMethodInfos == null)
+        throw new IllegalStateException(s"Table not yet built for $name")
+      _tableMethodInfos
     }
 
     def getFieldIdx(name: IRNames.FieldName): WasmFieldIdx = {
@@ -879,30 +875,19 @@ object WasmContext {
     }
   }
 
-  case class WasmFunctionInfo(
-      name: WasmFunctionName,
-      argTypes: List[IRTypes.Type],
-      resultType: IRTypes.Type,
-      // flags: IRTrees.MemberFlags,
-      isAbstract: Boolean,
-      isReflectiveProxy: Boolean
+  final class ConcreteMethodInfo(
+      val ownerClass: IRNames.ClassName,
+      val methodName: IRNames.MethodName
   ) {
-    def toWasmFunctionType()(implicit ctx: TypeDefinableWasmContext): WasmTypeName =
-      TypeTransformer.transformFunctionType(this)
+    val wasmName = WasmFunctionName(IRTrees.MemberNamespace.Public, ownerClass, methodName)
 
-  }
-  case class WasmFieldInfo(name: WasmFieldName, tpe: Types.WasmType)
+    private var effectivelyFinal: Boolean = true
 
-  case class WasmVTable(val functions: List[WasmFunctionInfo]) {
-    def resolve(name: WasmFunctionName): WasmFunctionInfo =
-      functions
-        .find(_.name.simpleName == name.simpleName)
-        .getOrElse(throw new Error(s"Function not found: $name"))
-    def resolveWithIdx(name: WasmFunctionName): (Int, WasmFunctionInfo) = {
-      val idx = functions.indexWhere(_.name.simpleName == name.simpleName)
-      if (idx < 0)
-        throw new Error(s"Function not found: $name among ${functions.map(_.name.simpleName)}")
-      else (idx, functions(idx))
-    }
+    private[WasmContext] def markOverridden(): Unit =
+      effectivelyFinal = false
+
+    def isEffectivelyFinal: Boolean = effectivelyFinal
   }
+
+  final class TableMethodInfo(val methodName: IRNames.MethodName, val tableIndex: Int)
 }
