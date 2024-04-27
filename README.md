@@ -4,20 +4,16 @@
 
 ### Prerequisites
 
-This project requires Node.js >= 22, which is available as nightly builds as of this writing.
-This is necessary to get enough support of WasmGC.
+This project requires Node.js >= 22 to get enough support of WasmGC.
 
 If you are using NVM, you can instal Node.js 22 as follows:
 
 ```sh
-# Enable resolution of nightly builds
-$ NVM_NODEJS_ORG_MIRROR=https://nodejs.org/download/nightly nvm install v22
+# Install Node.js v22
+$ nvm install 22
 # Switch to Node.js 22
 $ nvm use 22
 ```
-
-Otherwise, you can [manually download nightly builds of Node.js](https://nodejs.org/download/nightly/).
-You will need a nightly of v22 from 2024/04/01 or later.
 
 ### Setup
 
@@ -46,7 +42,7 @@ You can also use the `run.mjs` script to play with `@JSExportTopLevel` exports.
 - Run from the command line with `DENO_V8_FLAGS=--experimental-wasm-exnref deno run --allow-read run.mjs`.
 - Run from the browser by starting an HTTP server (e.g., `python -m http.server`) and navigate to `testrun.html`.
 
-If you encounter the `Invalid opcode 0x1f` error with Node.js, you need to use a more recent nightly build (minimum required: v22 nightly from 2024/04/01).
+If you encounter the `Invalid opcode 0x1f` error with Node.js, you need to use a Node.js >= 22.
 
 ### Unit test suite
 

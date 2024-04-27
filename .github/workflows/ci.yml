@@ -19,7 +19,7 @@ jobs:
           java-version: '21'
       - uses: actions/setup-node@v4
         with:
-          node-version: '22-nightly'
+          node-version: '22'
       - name: npm install
         run: npm install
       - name: Tests
