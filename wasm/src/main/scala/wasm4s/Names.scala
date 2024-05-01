@@ -69,11 +69,9 @@ object Names {
       new WasmGlobalName("idHashCodeMap")
   }
 
-  final case class WasmFunctionName private (
-      val namespace: String,
-      val simpleName: String
-  ) extends WasmName {
-    val name = namespace + "#" + simpleName
+  final case class WasmFunctionName private (name: String) extends WasmName {
+    def this(namespace: String, simpleName: String) =
+      this(namespace + "#" + simpleName)
   }
 
   object WasmFunctionName {
@@ -141,7 +139,7 @@ object Names {
     val start = new WasmFunctionName("start", "start")
 
     private def helper(name: String): WasmFunctionName =
-      new WasmFunctionName("__scalaJSHelpers", name)
+      new WasmFunctionName(name)
 
     // JS helpers
 
