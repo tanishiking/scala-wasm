@@ -30,17 +30,6 @@ object TypeTransformer {
       case _                   => List(transformType(t))
     }
 
-  def transformTypeRef(t: IRTypes.TypeRef)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
-    t match {
-      case arrayTypeRef: IRTypes.ArrayTypeRef =>
-        Types.WasmRefType.nullable(
-          Names.WasmTypeName.WasmStructTypeName.forArrayClass(arrayTypeRef)
-        )
-      case IRTypes.ClassRef(className) =>
-        transformClassByName(className)
-      case IRTypes.PrimRef(tpe) => transformPrimType(tpe)
-    }
-
   /** Transforms a value type to a unique Wasm type.
     *
     * This method cannot be used for `void` and `nothing`, since they have no corresponding Wasm
@@ -54,28 +43,23 @@ object TypeTransformer {
         Types.WasmRefType.nullable(
           Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
         )
-      case IRTypes.ClassType(className) => transformClassByName(className)
+      case IRTypes.ClassType(className) => transformClassType(className)
       case IRTypes.RecordType(fields)   => ???
       case IRTypes.StringType | IRTypes.UndefType =>
         Types.WasmRefType.any
       case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
     }
 
-  private def transformClassByName(
+  def transformClassType(
       className: IRNames.ClassName
-  )(implicit ctx: ReadOnlyWasmContext): Types.WasmType = {
-    className match {
-      case _ =>
-        val info = ctx.getClassInfo(className)
-        if (info.isAncestorOfHijackedClass)
-          Types.WasmRefType.anyref
-        else if (info.isInterface)
-          Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
-        else
-          Types.WasmRefType.nullable(
-            Names.WasmTypeName.WasmStructTypeName.forClass(className)
-          )
-    }
+  )(implicit ctx: ReadOnlyWasmContext): Types.WasmRefType = {
+    val info = ctx.getClassInfo(className)
+    if (info.isAncestorOfHijackedClass)
+      Types.WasmRefType.anyref
+    else if (info.isInterface)
+      Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
+    else
+      Types.WasmRefType.nullable(WasmTypeName.WasmStructTypeName.forClass(className))
   }
 
   private def transformPrimType(

@@ -1699,21 +1699,6 @@ private class WasmExpressionBuilder private (
       case _                      => t.tpe
     }
 
-    /* If the receiver is a Class/ModuleClass, its wasm type will be declared
-     * as `(ref any)`, and therefore we must cast it down.
-     */
-    fixedTpe match {
-      case IRTypes.ClassType(className) if className != IRNames.ObjectClass =>
-        val info = ctx.getClassInfo(className)
-        if (info.kind.isClass) {
-          instrs += REF_CAST(Types.WasmRefType(WasmStructTypeName.forClass(className)))
-        } else if (info.isInterface) {
-          instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType.ObjectType))
-        }
-      case _ =>
-        ()
-    }
-
     fixedTpe
   }
 
@@ -1908,8 +1893,7 @@ private class WasmExpressionBuilder private (
      * if the given class is an ancestor of hijacked classes (which in practice
      * is only the case for j.l.Object).
      */
-    val instanceTyp =
-      Types.WasmRefType.nullable(WasmStructTypeName.forClass(n.className))
+    val instanceTyp = Types.WasmRefType(WasmStructTypeName.forClass(n.className))
     val localInstance = fctx.addSyntheticLocal(instanceTyp)
 
     fctx.markPosition(n)
@@ -1941,7 +1925,7 @@ private class WasmExpressionBuilder private (
     val primLocal = fctx.addSyntheticLocal(primTyp)
 
     val boxClassType = IRTypes.ClassType(boxClassName)
-    val boxTyp = TypeTransformer.transformType(boxClassType)(ctx)
+    val boxTyp = TypeTransformer.transformClassType(boxClassName)(ctx).toNonNullable
     val instanceLocal = fctx.addSyntheticLocal(boxTyp)
 
     /* The generated code is as follows. Before the codegen, the stack contains
@@ -1986,12 +1970,12 @@ private class WasmExpressionBuilder private (
 
   private def genWrapAsThrowable(tree: IRTrees.WrapAsThrowable): IRTypes.Type = {
     val throwableClassType = IRTypes.ClassType(IRNames.ThrowableClass)
-    val throwableTyp = TypeTransformer.transformType(throwableClassType)(ctx)
+    val nonNullThrowableTyp = Types.WasmRefType(Types.WasmHeapType.ThrowableType)
 
-    val jsExceptionClassType = IRTypes.ClassType(SpecialNames.JSExceptionClass)
-    val jsExceptionTyp = TypeTransformer.transformType(jsExceptionClassType)(ctx)
+    val jsExceptionTyp =
+      TypeTransformer.transformClassType(SpecialNames.JSExceptionClass)(ctx).toNonNullable
 
-    fctx.block(throwableTyp) { doneLabel =>
+    fctx.block(nonNullThrowableTyp) { doneLabel =>
       genTree(tree.expr, IRTypes.AnyType)
 
       fctx.markPosition(tree)
@@ -2000,7 +1984,7 @@ private class WasmExpressionBuilder private (
       instrs += BR_ON_CAST(
         doneLabel,
         Types.WasmRefType.anyref,
-        Types.WasmRefType(Types.WasmHeapType.ThrowableType)
+        nonNullThrowableTyp
       )
 
       // otherwise, wrap in a new JavaScriptException

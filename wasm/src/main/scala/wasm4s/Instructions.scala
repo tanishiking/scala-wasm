@@ -258,6 +258,7 @@ object WasmInstr {
       with StackPolymorphicInstr
   case object RETURN extends WasmSimpleInstr("return", 0x0F) with StackPolymorphicInstr
   case class CALL(i: WasmFunctionName) extends WasmFuncInstr("call", 0x10, i)
+  case class RETURN_CALL(i: WasmFunctionName) extends WasmFuncInstr("return_call", 0x12, i)
   case class THROW(i: WasmTagName) extends WasmTagInstr("throw", 0x08, i) with StackPolymorphicInstr
   case object THROW_REF extends WasmSimpleInstr("throw_ref", 0x0A) with StackPolymorphicInstr
   case class TRY_TABLE(i: BlockType, cs: List[CatchClause], label: Option[WasmLabelName] = None)
