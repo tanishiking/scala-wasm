@@ -258,7 +258,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     buf.byteLengthSubSection { buf =>
       buf.vec(allFunctionNames.zipWithIndex) { elem =>
         buf.u32(elem._2)
-        buf.name(elem._1.show)
+        buf.name(elem._1.name)
       }
     }
   }

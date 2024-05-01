@@ -475,7 +475,20 @@ object WasmTextWriter {
     }
 
     def appendName(name: WasmName): Unit =
-      appendElement(name.show)
+      appendElement("$" + sanitizeWatIdentifier(name.name))
+
+    /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
+    private def sanitizeWatIdentifier(name: String): String = {
+      if (name.isEmpty) "_"
+      else if (name.forall(isValidWatIdentifierChar)) name
+      else name.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
+    }
+
+    private def isValidWatIdentifierChar(c: Char): Boolean = {
+      c.isDigit || c.isLetter ||
+      "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
+      "$.@_".contains(c)
+    }
 
     override def toString: String =
       builder.toString()
