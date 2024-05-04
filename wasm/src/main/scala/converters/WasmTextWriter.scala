@@ -67,17 +67,21 @@ class WasmTextWriter {
   }
 
   private def writeCompositeType(t: WasmCompositeType)(implicit b: WatBuilder): Unit = {
+    def writeFieldType(fieldType: WasmFieldType): Unit = {
+      if (fieldType.isMutable)
+        b.sameLineList(
+          "mut", {
+            writeType(fieldType.typ)
+          }
+        )
+      else writeType(fieldType.typ)
+    }
+
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
         "field", {
           b.appendName(field.name)
-          if (field.isMutable)
-            b.sameLineList(
-              "mut", {
-                writeType(field.typ)
-              }
-            )
-          else writeType(field.typ)
+          writeFieldType(field.fieldType)
         }
       )
     }
@@ -95,16 +99,10 @@ class WasmTextWriter {
           }
         )
 
-      case WasmArrayType(field) =>
+      case WasmArrayType(fieldType) =>
         b.sameLineList(
           "array", {
-            if (field.isMutable)
-              b.sameLineList(
-                "mut", {
-                  writeType(field.typ)
-                }
-              )
-            else writeType(field.typ)
+            writeFieldType(fieldType)
           }
         )
 

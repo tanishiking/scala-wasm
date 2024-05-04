@@ -226,13 +226,12 @@ object WasmStructType {
   )
 }
 
-case class WasmArrayType(field: WasmStructField) extends WasmCompositeType
+case class WasmArrayType(fieldType: WasmFieldType) extends WasmCompositeType
 object WasmArrayType {
 
   /** array (ref typeData) */
   val typeDataArray = WasmArrayType(
-    WasmStructField(
-      genFieldName.arrayItem,
+    WasmFieldType(
       WasmRefType(genTypeName.typeData),
       isMutable = false
     )
@@ -240,65 +239,51 @@ object WasmArrayType {
 
   /** array (ref struct) */
   val itables = WasmArrayType(
-    WasmStructField(
-      genFieldName.itable,
+    WasmFieldType(
       WasmRefType.nullable(WasmHeapType.Struct),
       isMutable = true
     )
   )
 
   val reflectiveProxies = WasmArrayType(
-    WasmStructField(
-      genFieldName.reflectiveProxyField,
+    WasmFieldType(
       WasmRefType(genTypeName.reflectiveProxy),
       isMutable = false
     )
   )
 
   /** array i8 */
-  val i8Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmInt8, true)
-  )
+  val i8Array = WasmArrayType(WasmFieldType(WasmInt8, true))
 
   /** array i16 */
-  val i16Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmInt16, true)
-  )
+  val i16Array = WasmArrayType(WasmFieldType(WasmInt16, true))
 
   /** array i32 */
-  val i32Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmInt32, true)
-  )
+  val i32Array = WasmArrayType(WasmFieldType(WasmInt32, true))
 
   /** array i64 */
-  val i64Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmInt64, true)
-  )
+  val i64Array = WasmArrayType(WasmFieldType(WasmInt64, true))
 
   /** array f32 */
-  val f32Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmFloat32, true)
-  )
+  val f32Array = WasmArrayType(WasmFieldType(WasmFloat32, true))
 
   /** array f64 */
-  val f64Array = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmFloat64, true)
-  )
+  val f64Array = WasmArrayType(WasmFieldType(WasmFloat64, true))
 
   /** array anyref */
-  val anyArray = WasmArrayType(
-    WasmStructField(genFieldName.arrayItem, WasmRefType.anyref, true)
-  )
+  val anyArray = WasmArrayType(WasmFieldType(WasmRefType.anyref, true))
 }
 
-case class WasmStructField(
-    name: WasmFieldName,
-    typ: WasmStorageType,
-    isMutable: Boolean
-)
+final case class WasmFieldType(typ: WasmStorageType, isMutable: Boolean)
+
+final case class WasmStructField(name: WasmFieldName, fieldType: WasmFieldType)
+
 object WasmStructField {
+  def apply(name: WasmFieldName, typ: WasmStorageType, isMutable: Boolean): WasmStructField =
+    WasmStructField(name, WasmFieldType(typ, isMutable))
+
   val itables = WasmStructField(
-    genFieldName.itables,
+    genFieldName.objStruct.itables,
     WasmRefType.nullable(genTypeName.itables),
     isMutable = false
   )

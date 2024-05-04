@@ -113,7 +113,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     // The vtable type is always the same as j.l.Object
     val vtableTypeName = genTypeName.ObjectVTable
     val vtableField = WasmStructField(
-      genFieldName.vtable,
+      genFieldName.objStruct.vtable,
       WasmRefType(vtableTypeName),
       isMutable = false
     )
@@ -135,7 +135,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     for ((baseRef, structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
       val underlyingArrayField = WasmStructField(
-        genFieldName.arrayField,
+        genFieldName.objStruct.arrayUnderlying,
         WasmRefType(underlyingArrayTypeName),
         isMutable = false
       )
@@ -429,7 +429,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     // Declare the struct type for the class
     val vtableField = WasmStructField(
-      genFieldName.vtable,
+      genFieldName.objStruct.vtable,
       WasmRefType(vtableTypeName),
       isMutable = false
     )

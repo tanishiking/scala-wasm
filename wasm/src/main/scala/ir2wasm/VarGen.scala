@@ -258,12 +258,11 @@ object VarGen {
     def captureParam(i: Int): WasmFieldName =
       WasmFieldName("c" + i)
 
-    val vtable = WasmFieldName("vtable")
-    val itable = WasmFieldName("itable")
-    val itables = WasmFieldName("itables")
-    val arrayItem = WasmFieldName("array_item")
-    val arrayField = WasmFieldName("array_field")
-    val reflectiveProxyField = WasmFieldName("reflective_proxy_field")
+    object objStruct {
+      val vtable = WasmFieldName("vtable")
+      val itables = WasmFieldName("itables")
+      val arrayUnderlying = WasmFieldName("underlying")
+    }
 
     object reflectiveProxy {
       val func_name = WasmFieldName("reflective_proxy_func_name")

@@ -139,18 +139,18 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeCompositeType(buf: Buffer, compositeType: WasmCompositeType): Unit = {
-    def writeFieldType(field: WasmStructField): Unit = {
-      writeType(buf, field.typ)
-      buf.boolean(field.isMutable)
+    def writeFieldType(fieldType: WasmFieldType): Unit = {
+      writeType(buf, fieldType.typ)
+      buf.boolean(fieldType.isMutable)
     }
 
     compositeType match {
-      case WasmArrayType(field) =>
+      case WasmArrayType(fieldType) =>
         buf.byte(0x5E) // array
-        writeFieldType(field)
+        writeFieldType(fieldType)
       case WasmStructType(fields) =>
         buf.byte(0x5F) // struct
-        buf.vec(fields)(writeFieldType(_))
+        buf.vec(fields)(field => writeFieldType(field.fieldType))
       case WasmFunctionType(params, results) =>
         buf.byte(0x60) // func
         writeResultType(buf, params)
