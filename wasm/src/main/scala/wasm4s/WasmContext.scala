@@ -14,6 +14,7 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{ClassKind, Position}
 
+import wasm.ir2wasm.VarGen._
 import wasm.ir2wasm.TypeTransformer
 import wasm.ir2wasm.WasmExpressionBuilder
 
@@ -97,13 +98,11 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
       }
     )
 
-  val exceptionTagName: WasmTagName
-
   /** Adds or reuses a function type for the given signature. */
   def addFunctionType(sig: WasmFunctionSignature): WasmTypeName = {
     functionTypes.getOrElseUpdate(
       sig, {
-        val typeName = WasmFunctionTypeName(functionTypes.size)
+        val typeName = genTypeName.forFunction(functionTypes.size)
         module.addRecType(typeName, WasmFunctionType(sig))
         typeName
       }
@@ -119,7 +118,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
   def addFunctionTypeInMainRecType(sig: WasmFunctionSignature): WasmTypeName = {
     recFunctionTypes.getOrElseUpdate(
       sig, {
-        val typeName = WasmFunctionTypeName.rec(recFunctionTypes.size)
+        val typeName = genTypeName.forRecFunction(recFunctionTypes.size)
         mainRecType.addSubType(typeName, WasmFunctionType(sig))
         typeName
       }
@@ -161,7 +160,7 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
   }
 
   def getConstantStringInstr(str: String): List[WasmInstr] =
-    getConstantStringDataInstr(str) :+ WasmInstr.CALL(WasmFunctionName.stringLiteral)
+    getConstantStringDataInstr(str) :+ WasmInstr.CALL(genFunctionName.stringLiteral)
 
   def getConstantStringDataInstr(str: String): List[WasmInstr.I32_CONST] = {
     val data = addConstantStringGlobal(str)
@@ -181,11 +180,11 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
         val fields: List[WasmStructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
             yield WasmStructField(
-              WasmFieldName.captureParam(i),
+              genFieldName.captureParam(i),
               TypeTransformer.transformType(tpe)(this),
               isMutable = false
             )
-        val structTypeName = WasmStructTypeName.captureData(nextClosureDataTypeIndex)
+        val structTypeName = genTypeName.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
         val structType = WasmStructType(fields)
         module.addRecType(structTypeName, structType)
@@ -238,7 +237,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   def getImportedModuleGlobal(moduleName: String): WasmGlobalName = {
-    val name = WasmGlobalName.forImportedModule(moduleName)
+    val name = genGlobalName.forImportedModule(moduleName)
     if (_importedModules.add(moduleName)) {
       module.addImport(
         WasmImport(
@@ -261,8 +260,6 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
   def addJSPrivateFieldName(fieldName: IRNames.FieldName): Unit =
     _jsPrivateFieldNames += fieldName
-
-  val exceptionTagName: WasmTagName = WasmTagName("exception")
 
   private def addHelperImport(
       name: WasmFunctionName,
@@ -291,13 +288,13 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
   }
 
   locally {
-    module.addRecType(WasmArrayTypeName.i8Array, WasmArrayType.i8Array)
-    module.addRecType(WasmArrayTypeName.i16Array, WasmArrayType.i16Array)
-    module.addRecType(WasmArrayTypeName.i32Array, WasmArrayType.i32Array)
-    module.addRecType(WasmArrayTypeName.i64Array, WasmArrayType.i64Array)
-    module.addRecType(WasmArrayTypeName.f32Array, WasmArrayType.f32Array)
-    module.addRecType(WasmArrayTypeName.f64Array, WasmArrayType.f64Array)
-    module.addRecType(WasmArrayTypeName.anyArray, WasmArrayType.anyArray)
+    module.addRecType(genTypeName.i8Array, WasmArrayType.i8Array)
+    module.addRecType(genTypeName.i16Array, WasmArrayType.i16Array)
+    module.addRecType(genTypeName.i32Array, WasmArrayType.i32Array)
+    module.addRecType(genTypeName.i64Array, WasmArrayType.i64Array)
+    module.addRecType(genTypeName.f32Array, WasmArrayType.f32Array)
+    module.addRecType(genTypeName.f64Array, WasmArrayType.f64Array)
+    module.addRecType(genTypeName.anyArray, WasmArrayType.anyArray)
 
     module.addRecType(mainRecType)
   }
@@ -314,28 +311,32 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     addFunctionTypeInMainRecType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
 
   locally {
-    mainRecType.addSubType(WasmArrayTypeName.typeDataArray, WasmArrayType.typeDataArray)
-    mainRecType.addSubType(WasmArrayTypeName.itables, WasmArrayType.itables)
-    mainRecType.addSubType(WasmArrayTypeName.reflectiveProxies, WasmArrayType.reflectiveProxies)
+    mainRecType.addSubType(genTypeName.typeDataArray, WasmArrayType.typeDataArray)
+    mainRecType.addSubType(genTypeName.itables, WasmArrayType.itables)
+    mainRecType.addSubType(genTypeName.reflectiveProxies, WasmArrayType.reflectiveProxies)
 
     mainRecType.addSubType(
-      WasmSubType(WasmStructTypeName.typeData, isFinal = false, None, WasmStructType.typeData(this))
+      WasmSubType(genTypeName.typeData, isFinal = false, None, WasmStructType.typeData(this))
     )
-    mainRecType.addSubType(WasmStructTypeName.reflectiveProxy, WasmStructType.reflectiveProxy)
+    mainRecType.addSubType(genTypeName.reflectiveProxy, WasmStructType.reflectiveProxy)
   }
 
   locally {
     val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
     val typeName = addFunctionType(exceptionSig)
     module.addImport(
-      WasmImport("__scalaJSHelpers", "JSTag", WasmImportDesc.Tag(exceptionTagName, typeName))
+      WasmImport(
+        "__scalaJSHelpers",
+        "JSTag",
+        WasmImportDesc.Tag(genTagName.exceptionTagName, typeName)
+      )
     )
   }
 
-  addHelperImport(WasmFunctionName.is, List(anyref, anyref), List(WasmInt32))
+  addHelperImport(genFunctionName.is, List(anyref, anyref), List(WasmInt32))
 
-  addHelperImport(WasmFunctionName.undef, List(), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.isUndef, List(anyref), List(WasmInt32))
+  addHelperImport(genFunctionName.undef, List(), List(WasmRefType.any))
+  addHelperImport(genFunctionName.isUndef, List(anyref), List(WasmInt32))
 
   locally {
     import IRTypes._
@@ -345,171 +346,171 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
         case DoubleRef => WasmFloat64
         case _         => WasmInt32
       }
-      addHelperImport(WasmFunctionName.box(primRef), List(wasmType), List(anyref))
-      addHelperImport(WasmFunctionName.unbox(primRef), List(anyref), List(wasmType))
-      addHelperImport(WasmFunctionName.unboxOrNull(primRef), List(anyref), List(anyref))
-      addHelperImport(WasmFunctionName.typeTest(primRef), List(anyref), List(WasmInt32))
+      addHelperImport(genFunctionName.box(primRef), List(wasmType), List(anyref))
+      addHelperImport(genFunctionName.unbox(primRef), List(anyref), List(wasmType))
+      addHelperImport(genFunctionName.unboxOrNull(primRef), List(anyref), List(anyref))
+      addHelperImport(genFunctionName.typeTest(primRef), List(anyref), List(WasmInt32))
     }
   }
 
-  addHelperImport(WasmFunctionName.fmod, List(WasmFloat64, WasmFloat64), List(WasmFloat64))
+  addHelperImport(genFunctionName.fmod, List(WasmFloat64, WasmFloat64), List(WasmFloat64))
 
   addHelperImport(
-    WasmFunctionName.closure,
+    genFunctionName.closure,
     List(WasmRefType.func, anyref),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.closureThis,
+    genFunctionName.closureThis,
     List(WasmRefType.func, anyref),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.closureRest,
+    genFunctionName.closureRest,
     List(WasmRefType.func, anyref, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.closureThisRest,
+    genFunctionName.closureThisRest,
     List(WasmRefType.func, anyref, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.closureRestNoData,
+    genFunctionName.closureRestNoData,
     List(WasmRefType.func, WasmInt32),
     List(WasmRefType.any)
   )
 
-  addHelperImport(WasmFunctionName.emptyString, List(), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(WasmFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
-  addHelperImport(WasmFunctionName.jsValueToString, List(WasmRefType.any), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.jsValueToStringForConcat, List(anyref), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
+  addHelperImport(genFunctionName.emptyString, List(), List(WasmRefType.any))
+  addHelperImport(genFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(genFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
+  addHelperImport(genFunctionName.jsValueToString, List(WasmRefType.any), List(WasmRefType.any))
+  addHelperImport(genFunctionName.jsValueToStringForConcat, List(anyref), List(WasmRefType.any))
+  addHelperImport(genFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(genFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(genFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
+  addHelperImport(genFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
+  addHelperImport(genFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
   addHelperImport(
-    WasmFunctionName.stringConcat,
+    genFunctionName.stringConcat,
     List(WasmRefType.any, WasmRefType.any),
     List(WasmRefType.any)
   )
-  addHelperImport(WasmFunctionName.isString, List(anyref), List(WasmInt32))
+  addHelperImport(genFunctionName.isString, List(anyref), List(WasmInt32))
 
-  addHelperImport(WasmFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(WasmFunctionName.bigintHashCode, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(genFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
+  addHelperImport(genFunctionName.bigintHashCode, List(WasmRefType.any), List(WasmInt32))
   addHelperImport(
-    WasmFunctionName.symbolDescription,
+    genFunctionName.symbolDescription,
     List(WasmRefType.any),
     List(WasmRefType.anyref)
   )
   addHelperImport(
-    WasmFunctionName.idHashCodeGet,
+    genFunctionName.idHashCodeGet,
     List(WasmRefType.extern, WasmRefType.any),
     List(WasmInt32)
   )
   addHelperImport(
-    WasmFunctionName.idHashCodeSet,
+    genFunctionName.idHashCodeSet,
     List(WasmRefType.extern, WasmRefType.any, WasmInt32),
     Nil
   )
 
-  addHelperImport(WasmFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
-  addHelperImport(WasmFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
-  addHelperImport(WasmFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
-  addHelperImport(WasmFunctionName.jsNewArray, Nil, List(anyref))
-  addHelperImport(WasmFunctionName.jsArrayPush, List(anyref, anyref), List(anyref))
+  addHelperImport(genFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
+  addHelperImport(genFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
+  addHelperImport(genFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
+  addHelperImport(genFunctionName.jsNewArray, Nil, List(anyref))
+  addHelperImport(genFunctionName.jsArrayPush, List(anyref, anyref), List(anyref))
   addHelperImport(
-    WasmFunctionName.jsArraySpreadPush,
+    genFunctionName.jsArraySpreadPush,
     List(anyref, anyref),
     List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsNewObject, Nil, List(anyref))
+  addHelperImport(genFunctionName.jsNewObject, Nil, List(anyref))
   addHelperImport(
-    WasmFunctionName.jsObjectPush,
+    genFunctionName.jsObjectPush,
     List(anyref, anyref, anyref),
     List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsSelect, List(anyref, anyref), List(anyref))
-  addHelperImport(WasmFunctionName.jsSelectSet, List(anyref, anyref, anyref), Nil)
-  addHelperImport(WasmFunctionName.jsNew, List(anyref, anyref), List(anyref))
-  addHelperImport(WasmFunctionName.jsFunctionApply, List(anyref, anyref), List(anyref))
+  addHelperImport(genFunctionName.jsSelect, List(anyref, anyref), List(anyref))
+  addHelperImport(genFunctionName.jsSelectSet, List(anyref, anyref, anyref), Nil)
+  addHelperImport(genFunctionName.jsNew, List(anyref, anyref), List(anyref))
+  addHelperImport(genFunctionName.jsFunctionApply, List(anyref, anyref), List(anyref))
   addHelperImport(
-    WasmFunctionName.jsMethodApply,
+    genFunctionName.jsMethodApply,
     List(anyref, anyref, anyref),
     List(anyref)
   )
-  addHelperImport(WasmFunctionName.jsImportCall, List(anyref), List(anyref))
-  addHelperImport(WasmFunctionName.jsImportMeta, Nil, List(anyref))
-  addHelperImport(WasmFunctionName.jsDelete, List(anyref, anyref), Nil)
-  addHelperImport(WasmFunctionName.jsForInSimple, List(anyref, anyref), Nil)
-  addHelperImport(WasmFunctionName.jsIsTruthy, List(anyref), List(WasmInt32))
-  addHelperImport(WasmFunctionName.jsLinkingInfo, Nil, List(anyref))
+  addHelperImport(genFunctionName.jsImportCall, List(anyref), List(anyref))
+  addHelperImport(genFunctionName.jsImportMeta, Nil, List(anyref))
+  addHelperImport(genFunctionName.jsDelete, List(anyref, anyref), Nil)
+  addHelperImport(genFunctionName.jsForInSimple, List(anyref, anyref), Nil)
+  addHelperImport(genFunctionName.jsIsTruthy, List(anyref), List(WasmInt32))
+  addHelperImport(genFunctionName.jsLinkingInfo, Nil, List(anyref))
 
-  for ((op, name) <- WasmFunctionName.jsUnaryOps)
+  for ((op, name) <- genFunctionName.jsUnaryOps)
     addHelperImport(name, List(anyref), List(anyref))
 
-  for ((op, name) <- WasmFunctionName.jsBinaryOps) {
+  for ((op, name) <- genFunctionName.jsBinaryOps) {
     val resultType =
       if (op == IRTrees.JSBinaryOp.=== || op == IRTrees.JSBinaryOp.!==) WasmInt32
       else anyref
     addHelperImport(name, List(anyref, anyref), List(resultType))
   }
 
-  addHelperImport(WasmFunctionName.newSymbol, Nil, List(anyref))
+  addHelperImport(genFunctionName.newSymbol, Nil, List(anyref))
   addHelperImport(
-    WasmFunctionName.createJSClass,
+    genFunctionName.createJSClass,
     List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.createJSClassRest,
+    genFunctionName.createJSClassRest,
     List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
     List(WasmRefType.any)
   )
   addHelperImport(
-    WasmFunctionName.installJSField,
+    genFunctionName.installJSField,
     List(anyref, anyref, anyref),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.installJSMethod,
+    genFunctionName.installJSMethod,
     List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.installJSStaticMethod,
+    genFunctionName.installJSStaticMethod,
     List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.installJSProperty,
+    genFunctionName.installJSProperty,
     List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.installJSStaticProperty,
+    genFunctionName.installJSStaticProperty,
     List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.jsSuperGet,
+    genFunctionName.jsSuperGet,
     List(anyref, anyref, anyref),
     List(anyref)
   )
   addHelperImport(
-    WasmFunctionName.jsSuperSet,
+    genFunctionName.jsSuperSet,
     List(anyref, anyref, anyref, anyref),
     Nil
   )
   addHelperImport(
-    WasmFunctionName.jsSuperCall,
+    genFunctionName.jsSuperCall,
     List(anyref, anyref, anyref, anyref),
     List(anyref)
   )
 
-  addGlobalHelperImport(WasmGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
+  addGlobalHelperImport(genGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
 
   def complete(
       moduleInitializers: List[ModuleInitializer.Initializer],
@@ -529,15 +530,15 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     }
 
     // string
-    module.addData(WasmData(WasmDataName.string, stringPool.toArray, WasmData.Mode.Passive))
+    module.addData(WasmData(genDataName.string, stringPool.toArray, WasmData.Mode.Passive))
     addGlobal(
       WasmGlobal(
-        WasmGlobalName.stringLiteralCache,
-        WasmRefType(WasmArrayTypeName.anyArray),
+        genGlobalName.stringLiteralCache,
+        WasmRefType(genTypeName.anyArray),
         WasmExpr(
           List(
             WasmInstr.I32_CONST(nextConstantStringIndex),
-            WasmInstr.ARRAY_NEW_DEFAULT(WasmArrayTypeName.anyArray)
+            WasmInstr.ARRAY_NEW_DEFAULT(genTypeName.anyArray)
           )
         ),
         isMutable = false
@@ -558,7 +559,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
     implicit val pos = Position.NoPosition
 
-    val fctx = WasmFunctionContext(WasmFunctionName.start, Nil, Nil)(this, pos)
+    val fctx = WasmFunctionContext(genFunctionName.start, Nil, Nil)(this, pos)
 
     import fctx.instrs
 
@@ -575,14 +576,14 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
         for (method <- iface.tableEntries)
           instrs += refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += WasmInstr.STRUCT_NEW(WasmTypeName.WasmStructTypeName.forITable(iface.name))
-        instrs += WasmInstr.ARRAY_SET(WasmTypeName.WasmArrayTypeName.itables)
+        instrs += WasmInstr.STRUCT_NEW(genTypeName.forITable(iface.name))
+        instrs += WasmInstr.ARRAY_SET(genTypeName.itables)
       }
     }
 
     locally {
       // For array classes, resolve methods in jl.Object
-      val globalName = WasmGlobalName.arrayClassITable
+      val globalName = genGlobalName.arrayClassITable
       val resolvedMethodInfos = getClassInfo(IRNames.ObjectClass).resolvedMethodInfos
 
       for {
@@ -595,22 +596,22 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
         for (method <- interfaceInfo.tableEntries)
           instrs += refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += STRUCT_NEW(WasmStructTypeName.forITable(interfaceName))
-        instrs += ARRAY_SET(WasmArrayTypeName.itables)
+        instrs += STRUCT_NEW(genTypeName.forITable(interfaceName))
+        instrs += ARRAY_SET(genTypeName.itables)
       }
     }
 
     // Initialize the JS private field symbols
 
     for (fieldName <- _jsPrivateFieldNames) {
-      instrs += WasmInstr.CALL(WasmFunctionName.newSymbol)
-      instrs += WasmInstr.GLOBAL_SET(WasmGlobalName.forJSPrivateField(fieldName))
+      instrs += WasmInstr.CALL(genFunctionName.newSymbol)
+      instrs += WasmInstr.GLOBAL_SET(genGlobalName.forJSPrivateField(fieldName))
     }
 
     // Emit the static initializers
 
     for (className <- classesWithStaticInit) {
-      val funcName = WasmFunctionName(
+      val funcName = genFunctionName.forMethod(
         IRTrees.MemberNamespace.StaticConstructor,
         className,
         IRNames.StaticInitializerName
@@ -623,18 +624,18 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     for (tle <- topLevelExportDefs) {
       tle.tree match {
         case IRTrees.TopLevelJSClassExportDef(_, exportName) =>
-          instrs += CALL(WasmFunctionName.loadJSClass(tle.owningClass))
-          instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+          instrs += CALL(genFunctionName.loadJSClass(tle.owningClass))
+          instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case IRTrees.TopLevelModuleExportDef(_, exportName) =>
-          instrs += CALL(WasmFunctionName.loadModule(tle.owningClass))
-          instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+          instrs += CALL(genFunctionName.loadModule(tle.owningClass))
+          instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case IRTrees.TopLevelMethodExportDef(_, methodDef) =>
           // We only need initialization if there is a restParam
           if (methodDef.restParam.isDefined) {
-            instrs += refFuncWithDeclaration(WasmFunctionName.forExport(tle.exportName))
+            instrs += refFuncWithDeclaration(genFunctionName.forExport(tle.exportName))
             instrs += I32_CONST(methodDef.args.size)
-            instrs += CALL(WasmFunctionName.closureRestNoData)
-            instrs += GLOBAL_SET(WasmGlobalName.forTopLevelExport(tle.exportName))
+            instrs += CALL(genFunctionName.closureRestNoData)
+            instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
           }
         case IRTrees.TopLevelFieldExportDef(_, _, _) =>
           // Nothing to do
@@ -647,7 +648,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     moduleInitializers.foreach { init =>
       def genCallStatic(className: IRNames.ClassName, methodName: IRNames.MethodName): Unit = {
         val functionName =
-          WasmFunctionName(IRTrees.MemberNamespace.PublicStatic, className, methodName)
+          genFunctionName.forMethod(IRTrees.MemberNamespace.PublicStatic, className, methodName)
         instrs += WasmInstr.CALL(functionName)
       }
 
@@ -678,7 +679,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
 
     if (instrs.nonEmpty) {
       fctx.buildAndAddToContext()
-      module.setStartFunction(WasmFunctionName.start)
+      module.setStartFunction(genFunctionName.start)
     }
   }
 
@@ -1018,7 +1019,7 @@ object WasmContext {
       val ownerClass: IRNames.ClassName,
       val methodName: IRNames.MethodName
   ) {
-    val tableEntryName = WasmFunctionName.forTableEntry(ownerClass, methodName)
+    val tableEntryName = genFunctionName.forTableEntry(ownerClass, methodName)
 
     private var effectivelyFinal: Boolean = true
 

@@ -4,6 +4,8 @@ import scala.collection.mutable
 
 import org.scalajs.ir.Position
 
+import wasm.ir2wasm.VarGen._
+
 import Types._
 import Names._
 import Names.WasmTypeName._
@@ -133,73 +135,73 @@ object WasmStructType {
     * operations.
     *
     * @see
-    *   [[Names.WasmFieldName.typeData]], which contains documentation of what is in each field.
+    *   [[Names.genFieldName.typeData]], which contains documentation of what is in each field.
     */
   def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
     List(
       WasmStructField(
-        WasmFieldName.typeData.nameOffset,
+        genFieldName.typeData.nameOffset,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.nameSize,
+        genFieldName.typeData.nameSize,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.nameStringIndex,
+        genFieldName.typeData.nameStringIndex,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.kind,
+        genFieldName.typeData.kind,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.specialInstanceTypes,
+        genFieldName.typeData.specialInstanceTypes,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.strictAncestors,
-        WasmRefType.nullable(WasmTypeName.WasmArrayTypeName.typeDataArray),
+        genFieldName.typeData.strictAncestors,
+        WasmRefType.nullable(genTypeName.typeDataArray),
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.componentType,
-        WasmRefType.nullable(WasmTypeName.WasmStructTypeName.typeData),
+        genFieldName.typeData.componentType,
+        WasmRefType.nullable(genTypeName.typeData),
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.name,
+        genFieldName.typeData.name,
         WasmRefType.anyref,
         isMutable = true
       ),
       WasmStructField(
-        WasmFieldName.typeData.classOfValue,
+        genFieldName.typeData.classOfValue,
         WasmRefType.nullable(WasmHeapType.ClassType),
         isMutable = true
       ),
       WasmStructField(
-        WasmFieldName.typeData.arrayOf,
-        WasmRefType.nullable(WasmTypeName.WasmStructTypeName.ObjectVTable),
+        genFieldName.typeData.arrayOf,
+        WasmRefType.nullable(genTypeName.ObjectVTable),
         isMutable = true
       ),
       WasmStructField(
-        WasmFieldName.typeData.cloneFunction,
+        genFieldName.typeData.cloneFunction,
         WasmRefType.nullable(ctx.cloneFunctionTypeName),
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.isJSClassInstance,
+        genFieldName.typeData.isJSClassInstance,
         WasmRefType.nullable(ctx.isJSClassInstanceFuncTypeName),
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.typeData.reflectiveProxies,
-        WasmRefType(WasmHeapType(WasmArrayTypeName.reflectiveProxies)),
+        genFieldName.typeData.reflectiveProxies,
+        WasmRefType(WasmHeapType(genTypeName.reflectiveProxies)),
         isMutable = false
       )
     )
@@ -211,12 +213,12 @@ object WasmStructType {
   val reflectiveProxy: WasmStructType = WasmStructType(
     List(
       WasmStructField(
-        WasmFieldName.reflectiveProxy.func_name,
+        genFieldName.reflectiveProxy.func_name,
         WasmInt32,
         isMutable = false
       ),
       WasmStructField(
-        WasmFieldName.reflectiveProxy.func_ref,
+        genFieldName.reflectiveProxy.func_ref,
         WasmRefType(WasmHeapType.Func),
         isMutable = false
       )
@@ -230,8 +232,8 @@ object WasmArrayType {
   /** array (ref typeData) */
   val typeDataArray = WasmArrayType(
     WasmStructField(
-      WasmFieldName.arrayItem,
-      WasmRefType(WasmStructTypeName.typeData),
+      genFieldName.arrayItem,
+      WasmRefType(genTypeName.typeData),
       isMutable = false
     )
   )
@@ -239,7 +241,7 @@ object WasmArrayType {
   /** array (ref struct) */
   val itables = WasmArrayType(
     WasmStructField(
-      WasmFieldName.itable,
+      genFieldName.itable,
       WasmRefType.nullable(WasmHeapType.Struct),
       isMutable = true
     )
@@ -247,45 +249,45 @@ object WasmArrayType {
 
   val reflectiveProxies = WasmArrayType(
     WasmStructField(
-      WasmFieldName.reflectiveProxyField,
-      WasmRefType(WasmStructTypeName.reflectiveProxy),
+      genFieldName.reflectiveProxyField,
+      WasmRefType(genTypeName.reflectiveProxy),
       isMutable = false
     )
   )
 
   /** array i8 */
   val i8Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmInt8, true)
+    WasmStructField(genFieldName.arrayItem, WasmInt8, true)
   )
 
   /** array i16 */
   val i16Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmInt16, true)
+    WasmStructField(genFieldName.arrayItem, WasmInt16, true)
   )
 
   /** array i32 */
   val i32Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmInt32, true)
+    WasmStructField(genFieldName.arrayItem, WasmInt32, true)
   )
 
   /** array i64 */
   val i64Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmInt64, true)
+    WasmStructField(genFieldName.arrayItem, WasmInt64, true)
   )
 
   /** array f32 */
   val f32Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmFloat32, true)
+    WasmStructField(genFieldName.arrayItem, WasmFloat32, true)
   )
 
   /** array f64 */
   val f64Array = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmFloat64, true)
+    WasmStructField(genFieldName.arrayItem, WasmFloat64, true)
   )
 
   /** array anyref */
   val anyArray = WasmArrayType(
-    WasmStructField(WasmFieldName.arrayItem, WasmRefType.anyref, true)
+    WasmStructField(genFieldName.arrayItem, WasmRefType.anyref, true)
   )
 }
 
@@ -296,8 +298,8 @@ case class WasmStructField(
 )
 object WasmStructField {
   val itables = WasmStructField(
-    WasmFieldName.itables,
-    WasmRefType.nullable(WasmArrayTypeName.itables),
+    genFieldName.itables,
+    WasmRefType.nullable(genTypeName.itables),
     isMutable = false
   )
 }

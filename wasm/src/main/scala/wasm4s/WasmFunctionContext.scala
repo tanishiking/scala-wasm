@@ -47,7 +47,7 @@ class WasmFunctionContext private (
   val instrs: mutable.ListBuffer[WasmInstr] = mutable.ListBuffer.empty
 
   def genLabel(): WasmLabelName = {
-    val label = WasmLabelName.synthetic(labelIdx)
+    val label = WasmLabelName(labelIdx.toString())
     labelIdx += 1
     label
   }
@@ -61,7 +61,7 @@ class WasmFunctionContext private (
     addLocal(WasmLocalName(name), typ)
 
   private def addLocal(name: IRNames.LocalName, typ: WasmType): WasmLocalName =
-    addLocal(WasmLocalName.fromIR(name), typ)
+    addLocal(localNameFromIR(name), typ)
 
   def withNewLocal[A](name: IRNames.LocalName, typ: WasmType)(body: WasmLocalName => A): A = {
     val savedEnv = currentEnv
@@ -86,7 +86,7 @@ class WasmFunctionContext private (
   }
 
   private def genSyntheticLocalName(): WasmLocalName = {
-    val name = WasmLocalName.synthetic(cnt)
+    val name = WasmLocalName(s"local___$cnt")
     cnt += 1
     name
   }
@@ -410,6 +410,12 @@ class WasmFunctionContext private (
 }
 
 object WasmFunctionContext {
+  private val newTargetLocalName = WasmLocalName("new.target")
+  private val receiverLocalName = WasmLocalName("___<this>")
+
+  private def localNameFromIR(name: IRNames.LocalName): WasmLocalName =
+    WasmLocalName(name.nameString)
+
   sealed abstract class VarStorage
 
   object VarStorage {
@@ -477,11 +483,11 @@ object WasmFunctionContext {
 
     val newTarget =
       if (!hasNewTarget) None
-      else Some(WasmLocal(WasmLocalName.newTarget, Types.WasmRefType.anyref, isParameter = true))
+      else Some(WasmLocal(newTargetLocalName, Types.WasmRefType.anyref, isParameter = true))
     val newTargetStorage = newTarget.map(local => VarStorage.Local(local.name))
 
     val receiver = receiverTyp.map { typ =>
-      WasmLocal(WasmLocalName.receiver, typ, isParameter = true)
+      WasmLocal(receiverLocalName, typ, isParameter = true)
     }
     val receiverStorage = receiver.map(local => VarStorage.Local(local.name))
 
@@ -566,7 +572,7 @@ object WasmFunctionContext {
       resultTypes: List[WasmType]
   )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     val paramLocals = params.map { param =>
-      WasmLocal(WasmLocalName.fromStr(param._1), param._2, isParameter = true)
+      WasmLocal(WasmLocalName(param._1), param._2, isParameter = true)
     }
     new WasmFunctionContext(ctx, None, name, paramLocals, None, None, Map.empty, resultTypes, pos)
   }
@@ -576,7 +582,7 @@ object WasmFunctionContext {
   )(implicit ctx: TypeDefinableWasmContext, pos: Position): List[WasmLocal] = {
     paramDefs.map { paramDef =>
       WasmLocal(
-        WasmLocalName.fromIR(paramDef.name.name),
+        localNameFromIR(paramDef.name.name),
         TypeTransformer.transformType(paramDef.ptpe),
         isParameter = true
       )

@@ -20,12 +20,13 @@ import org.scalajs.linker.standard.{CoreSpec, LinkedClass, LinkedTopLevelExport}
 import collection.mutable
 
 import EmbeddedConstants._
+import VarGen._
 
 class WasmBuilder(coreSpec: CoreSpec) {
   // val module = new WasmModule()
 
   def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
-    import WasmFieldName.typeData._
+    import genFieldName.typeData._
 
     val primRefsWithTypeData = List(
       IRTypes.VoidRef -> KindVoid,
@@ -43,7 +44,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       val typeDataFieldValues =
         genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, None, Nil)
       val typeDataGlobal =
-        genTypeDataGlobal(primRef, WasmStructTypeName.typeData, typeDataFieldValues, Nil)
+        genTypeDataGlobal(primRef, genTypeName.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
     }
   }
@@ -56,7 +57,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       val typeRef = IRTypes.ClassRef(clazz.className)
       val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
       val typeDataGlobal =
-        genTypeDataGlobal(typeRef, WasmStructTypeName.typeData, typeDataFieldValues, Nil)
+        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(typeDataGlobal)
     }
 
@@ -66,7 +67,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       if flags.namespace.isStatic
     } {
       val global = WasmGlobal(
-        WasmGlobalName.forStaticField(name.name),
+        genGlobalName.forStaticField(name.name),
         transformType(ftpe),
         WasmExpr(List(genStaticVarInit(ftpe))),
         isMutable = true
@@ -109,12 +110,10 @@ class WasmBuilder(coreSpec: CoreSpec) {
   }
 
   def genArrayClasses()(implicit ctx: WasmContext): Unit = {
-    import WasmTypeName.WasmStructTypeName
-
     // The vtable type is always the same as j.l.Object
-    val vtableTypeName = WasmStructTypeName.ObjectVTable
+    val vtableTypeName = genTypeName.ObjectVTable
     val vtableField = WasmStructField(
-      Names.WasmFieldName.vtable,
+      genFieldName.vtable,
       WasmRefType(vtableTypeName),
       isMutable = false
     )
@@ -123,25 +122,25 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmTypeName, WasmTypeName)] =
       List(
-        (IRTypes.BooleanRef, WasmStructTypeName.BooleanArray, WasmArrayTypeName.i8Array),
-        (IRTypes.CharRef, WasmStructTypeName.CharArray, WasmArrayTypeName.i16Array),
-        (IRTypes.ByteRef, WasmStructTypeName.ByteArray, WasmArrayTypeName.i8Array),
-        (IRTypes.ShortRef, WasmStructTypeName.ShortArray, WasmArrayTypeName.i16Array),
-        (IRTypes.IntRef, WasmStructTypeName.IntArray, WasmArrayTypeName.i32Array),
-        (IRTypes.LongRef, WasmStructTypeName.LongArray, WasmArrayTypeName.i64Array),
-        (IRTypes.FloatRef, WasmStructTypeName.FloatArray, WasmArrayTypeName.f32Array),
-        (IRTypes.DoubleRef, WasmStructTypeName.DoubleArray, WasmArrayTypeName.f64Array),
-        (objectRef, WasmStructTypeName.ObjectArray, WasmArrayTypeName.anyArray)
+        (IRTypes.BooleanRef, genTypeName.BooleanArray, genTypeName.i8Array),
+        (IRTypes.CharRef, genTypeName.CharArray, genTypeName.i16Array),
+        (IRTypes.ByteRef, genTypeName.ByteArray, genTypeName.i8Array),
+        (IRTypes.ShortRef, genTypeName.ShortArray, genTypeName.i16Array),
+        (IRTypes.IntRef, genTypeName.IntArray, genTypeName.i32Array),
+        (IRTypes.LongRef, genTypeName.LongArray, genTypeName.i64Array),
+        (IRTypes.FloatRef, genTypeName.FloatArray, genTypeName.f32Array),
+        (IRTypes.DoubleRef, genTypeName.DoubleArray, genTypeName.f64Array),
+        (objectRef, genTypeName.ObjectArray, genTypeName.anyArray)
       )
 
     for ((baseRef, structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
       val underlyingArrayField = WasmStructField(
-        WasmFieldName.arrayField,
+        genFieldName.arrayField,
         WasmRefType(underlyingArrayTypeName),
         isMutable = false
       )
 
-      val superType = Names.WasmTypeName.WasmStructTypeName.forClass(IRNames.ObjectClass)
+      val superType = genTypeName.forClass(IRNames.ObjectClass)
       val structType = WasmStructType(
         List(vtableField, WasmStructField.itables, underlyingArrayField)
       )
@@ -171,7 +170,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
   )(implicit
       ctx: WasmContext
   ): List[WasmInstr] = {
-    import WasmFieldName.typeData.{reflectiveProxies => _, _}
+    import genFieldName.typeData.{reflectiveProxies => _, _}
 
     val className = clazz.className
     val classInfo = ctx.getClassInfo(className)
@@ -217,7 +216,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     def build(loadJSClass: (WasmFunctionContext) => Unit): WasmFunctionName = {
       implicit val fctx = WasmFunctionContext(
-        WasmFunctionName.isJSClassInstance(clazz.className),
+        genFunctionName.isJSClassInstance(clazz.className),
         List("x" -> WasmRefType.anyref),
         List(WasmInt32)
       )
@@ -234,8 +233,8 @@ class WasmBuilder(coreSpec: CoreSpec) {
       } else {
         instrs += LOCAL_GET(xParam)
         loadJSClass(fctx)
-        instrs += CALL(WasmFunctionName.jsBinaryOps(IRTrees.JSBinaryOp.instanceof))
-        instrs += CALL(WasmFunctionName.unbox(IRTypes.BooleanRef))
+        instrs += CALL(genFunctionName.jsBinaryOps(IRTrees.JSBinaryOp.instanceof))
+        instrs += CALL(genFunctionName.unbox(IRTypes.BooleanRef))
       }
 
       val func = fctx.buildAndAddToContext(ctx.isJSClassInstanceFuncTypeName)
@@ -253,7 +252,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case ClassKind.JSClass =>
         if (clazz.jsClassCaptures.isEmpty) {
           val funcName = build { fctx =>
-            fctx.instrs += CALL(WasmFunctionName.loadJSClass(clazz.className))
+            fctx.instrs += CALL(genFunctionName.loadJSClass(clazz.className))
           }
           Some(funcName)
         } else {
@@ -302,12 +301,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
             ancestor <- strictAncestors
             if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
           } yield {
-            GLOBAL_GET(WasmGlobalName.forVTable(ancestor))
+            GLOBAL_GET(genGlobalName.forVTable(ancestor))
           }
-          elems :+ ARRAY_NEW_FIXED(
-            WasmTypeName.WasmArrayTypeName.typeDataArray,
-            elems.size
-          )
+          elems :+ ARRAY_NEW_FIXED(genTypeName.typeDataArray, elems.size)
         case _ =>
           REF_NULL(WasmHeapType.None) :: Nil
       }
@@ -321,7 +317,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
           // If the class is concrete and implements the `java.lang.Cloneable`,
           // `HelperFunctions.genCloneFunction` should've generated the clone function
           if (!classInfo.isAbstract && classInfo.ancestors.contains(IRNames.CloneableClass))
-            REF_FUNC(WasmFunctionName.clone(className))
+            REF_FUNC(genFunctionName.clone(className))
           else nullref
         case _ => nullref
       }
@@ -338,9 +334,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
         List(
           I32_CONST(proxyId),
           REF_FUNC(proxyInfo.tableEntryName),
-          STRUCT_NEW(WasmStructTypeName.reflectiveProxy)
+          STRUCT_NEW(genTypeName.reflectiveProxy)
         )
-      } :+ ARRAY_NEW_FIXED(WasmArrayTypeName.reflectiveProxies, reflectiveProxies.size)
+      } :+ ARRAY_NEW_FIXED(genTypeName.reflectiveProxies, reflectiveProxies.size)
     }
 
     nameDataValue :::
@@ -355,13 +351,13 @@ class WasmBuilder(coreSpec: CoreSpec) {
       ) :::
       List(
         // componentType - always `null` since this method is not used for array types
-        REF_NULL(WasmHeapType(WasmTypeName.WasmStructTypeName.typeData)),
+        REF_NULL(WasmHeapType(genTypeName.typeData)),
         // name - initially `null`; filled in by the `typeDataName` helper
         REF_NULL(WasmHeapType.Any),
         // the classOf instance - initially `null`; filled in by the `createClassOf` helper
         REF_NULL(WasmHeapType.ClassType),
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
-        REF_NULL(WasmHeapType(WasmTypeName.WasmStructTypeName.ObjectVTable)),
+        REF_NULL(WasmHeapType(genTypeName.ObjectVTable)),
         // clonefFunction - will be invoked from `clone()` method invokaion on the class
         cloneFunction,
         // isJSClassInstance - invoked from the `isInstance()` helper for JS types
@@ -382,7 +378,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val instrs: List[WasmInstr] =
       typeDataFieldValues ::: vtableElems ::: STRUCT_NEW(typeDataTypeName) :: Nil
     WasmGlobal(
-      WasmGlobalName.forVTable(typeRef),
+      genGlobalName.forVTable(typeRef),
       WasmRefType(typeDataTypeName),
       WasmExpr(instrs),
       isMutable = false
@@ -427,19 +423,19 @@ class WasmBuilder(coreSpec: CoreSpec) {
       // Only generate typeData
       val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
       val globalTypeData =
-        genTypeDataGlobal(typeRef, WasmStructTypeName.typeData, typeDataFieldValues, Nil)
+        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
       ctx.addGlobal(globalTypeData)
     }
 
     // Declare the struct type for the class
     val vtableField = WasmStructField(
-      Names.WasmFieldName.vtable,
+      genFieldName.vtable,
       WasmRefType(vtableTypeName),
       isMutable = false
     )
     val fields = classInfo.allFieldDefs.map(transformField)
-    val structTypeName = WasmStructTypeName.forClass(clazz.name.name)
-    val superType = clazz.superClass.map(s => WasmStructTypeName.forClass(s.name))
+    val structTypeName = genTypeName.forClass(clazz.name.name)
+    val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
     val structType = WasmStructType(
       vtableField +: WasmStructField.itables +: fields
     )
@@ -452,18 +448,18 @@ class WasmBuilder(coreSpec: CoreSpec) {
   }
 
   private def genVTableType(classInfo: WasmClassInfo)(implicit ctx: WasmContext): WasmTypeName = {
-    val typeName = Names.WasmTypeName.WasmStructTypeName.forVTable(classInfo.name)
+    val typeName = genTypeName.forVTable(classInfo.name)
     val vtableFields =
       classInfo.tableEntries.map { methodName =>
         WasmStructField(
-          Names.WasmFieldName.forMethodTableEntry(methodName),
+          genFieldName.forMethodTableEntry(methodName),
           WasmRefType(ctx.tableFunctionType(methodName)),
           isMutable = false
         )
       }
     val superType = classInfo.superClass match {
-      case None    => WasmTypeName.WasmStructTypeName.typeData
-      case Some(s) => WasmTypeName.WasmStructTypeName.forVTable(s)
+      case None    => genTypeName.typeData
+      case Some(s) => genTypeName.forVTable(s)
     }
     val structType = WasmStructType(
       WasmStructType.typeData.fields ::: vtableFields
@@ -480,10 +476,10 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val ctor = clazz.methods
       .find(_.methodName.isConstructor)
       .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
-    val typeName = WasmTypeName.WasmStructTypeName.forClass(clazz.name.name)
-    val globalInstanceName = WasmGlobalName.forModuleInstance(clazz.name.name)
+    val typeName = genTypeName.forClass(clazz.name.name)
+    val globalInstanceName = genGlobalName.forModuleInstance(clazz.name.name)
 
-    val ctorName = WasmFunctionName(
+    val ctorName = genFunctionName.forMethod(
       ctor.flags.namespace,
       clazz.name.name,
       ctor.name.name
@@ -492,7 +488,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val resultTyp = WasmRefType(typeName)
 
     implicit val fctx = WasmFunctionContext(
-      WasmFunctionName.loadModule(clazz.className),
+      genFunctionName.loadModule(clazz.className),
       Nil,
       List(resultTyp)
     )
@@ -507,7 +503,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       instrs += BR_ON_NON_NULL(nonNullLabel)
 
       // create an instance and call its constructor
-      instrs += CALL(WasmFunctionName.newDefault(clazz.name.name))
+      instrs += CALL(genFunctionName.newDefault(clazz.name.name))
       instrs += LOCAL_TEE(instanceLocal)
       instrs += CALL(ctorName)
 
@@ -531,22 +527,22 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val info = ctx.getClassInfo(clazz.className)
     val implementsAnyInterface = info.ancestors.exists(a => ctx.getClassInfo(a).isInterface)
     if (implementsAnyInterface) {
-      val globalName = WasmGlobalName.forITable(clazz.className)
+      val globalName = genGlobalName.forITable(clazz.className)
       ctx.addGlobalITable(clazz.className, genITableGlobal(globalName))
     }
   }
 
   private def genArrayClassItable()(implicit ctx: WasmContext): Unit =
-    ctx.addGlobal(genITableGlobal(WasmGlobalName.arrayClassITable))
+    ctx.addGlobal(genITableGlobal(genGlobalName.arrayClassITable))
 
   private def genITableGlobal(name: WasmGlobalName)(implicit ctx: WasmContext): WasmGlobal = {
     val itablesInit = List(
       I32_CONST(ctx.itablesLength),
-      ARRAY_NEW_DEFAULT(WasmArrayTypeName.itables)
+      ARRAY_NEW_DEFAULT(genTypeName.itables)
     )
     WasmGlobal(
       name,
-      WasmRefType(WasmArrayTypeName.itables),
+      WasmRefType(genTypeName.itables),
       init = WasmExpr(itablesInit),
       isMutable = false
     )
@@ -567,11 +563,11 @@ class WasmBuilder(coreSpec: CoreSpec) {
     // gen itable type
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(clazz.className)
-    val itableTypeName = Names.WasmTypeName.WasmStructTypeName.forITable(className)
+    val itableTypeName = genTypeName.forITable(className)
     val itableType = WasmStructType(
       classInfo.tableEntries.map { methodName =>
         WasmStructField(
-          Names.WasmFieldName.forMethodTableEntry(methodName),
+          genFieldName.forMethodTableEntry(methodName),
           WasmRefType(ctx.tableFunctionType(methodName)),
           isMutable = false
         )
@@ -586,12 +582,12 @@ class WasmBuilder(coreSpec: CoreSpec) {
     transformClassCommon(clazz)
 
     if (clazz.hasInstances) {
-      val heapType = WasmHeapType(WasmStructTypeName.forClass(clazz.className))
+      val heapType = WasmHeapType(genTypeName.forClass(clazz.className))
 
       // global instance
       // (global name (ref null type))
       val global = WasmGlobal(
-        Names.WasmGlobalName.forModuleInstance(clazz.name.name),
+        genGlobalName.forModuleInstance(clazz.name.name),
         WasmRefType.nullable(heapType),
         WasmExpr(List(REF_NULL(heapType))),
         isMutable = true
@@ -611,7 +607,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         case IRTrees.FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
           ctx.addGlobal(
             WasmGlobal(
-              WasmGlobalName.forJSPrivateField(name.name),
+              genGlobalName.forJSPrivateField(name.name),
               WasmRefType.anyref,
               WasmExpr(List(REF_NULL(WasmHeapType.Any))),
               isMutable = true
@@ -674,7 +670,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
       implicit val fctx = WasmFunctionContext(
         Some(clazz.className),
-        WasmFunctionName.preSuperStats(clazz.className),
+        genFunctionName.preSuperStats(clazz.className),
         Some(jsClassCaptures),
         preSuperVarDefs = None,
         hasNewTarget = true,
@@ -699,7 +695,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val superArgsFun = {
       implicit val fctx = WasmFunctionContext(
         Some(clazz.className),
-        WasmFunctionName.superArgs(clazz.className),
+        genFunctionName.superArgs(clazz.className),
         Some(jsClassCaptures),
         Some(preSuperDecls),
         hasNewTarget = true,
@@ -720,7 +716,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val postSuperStatsFun = {
       implicit val fctx = WasmFunctionContext(
         Some(clazz.className),
-        WasmFunctionName.postSuperStats(clazz.className),
+        genFunctionName.postSuperStats(clazz.className),
         Some(jsClassCaptures),
         Some(preSuperDecls),
         hasNewTarget = true,
@@ -739,7 +735,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         // Load name
         fieldDef match {
           case IRTrees.FieldDef(_, name, _, _) =>
-            instrs += GLOBAL_GET(WasmGlobalName.forJSPrivateField(name.name))
+            instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(name.name))
           case IRTrees.JSFieldDef(_, nameTree, _) =>
             WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
         }
@@ -747,7 +743,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         // Generate boxed representation of the zero of the field
         WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
 
-        instrs += CALL(WasmFunctionName.installJSField)
+        instrs += CALL(genFunctionName.installJSField)
       }
 
       WasmExpressionBuilder.generateIRBody(
@@ -762,7 +758,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val createJSClassFun = {
       implicit val fctx = WasmFunctionContext(
         Some(clazz.className),
-        WasmFunctionName.createJSClassOf(clazz.className),
+        genFunctionName.createJSClassOf(clazz.className),
         None,
         None,
         jsClassCaptures,
@@ -800,9 +796,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
       // Call the createJSClass helper to bundle everything
       if (ctor.restParam.isDefined) {
         instrs += I32_CONST(ctor.args.size) // number of fixed params
-        instrs += CALL(WasmFunctionName.createJSClassRest)
+        instrs += CALL(genFunctionName.createJSClassRest)
       } else {
-        instrs += CALL(WasmFunctionName.createJSClass)
+        instrs += CALL(genFunctionName.createJSClass)
       }
 
       // Store the result, locally and possibly in the global cache
@@ -810,7 +806,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       if (clazz.jsClassCaptures.isEmpty) {
         // Static JS class with a global cache
         instrs += LOCAL_TEE(jsClassLocal)
-        instrs += GLOBAL_SET(WasmGlobalName.forJSClassValue(clazz.className))
+        instrs += GLOBAL_SET(genGlobalName.forJSClassValue(clazz.className))
       } else {
         // Local or inner JS class, which is new every time
         instrs += LOCAL_SET(jsClassLocal)
@@ -845,9 +841,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
             instrs += I32_CONST(if (restParam.isDefined) params.size else -1)
             if (isStatic)
-              instrs += CALL(WasmFunctionName.installJSStaticMethod)
+              instrs += CALL(genFunctionName.installJSStaticMethod)
             else
-              instrs += CALL(WasmFunctionName.installJSMethod)
+              instrs += CALL(genFunctionName.installJSMethod)
 
           case IRTrees.JSPropertyDef(flags, nameTree, optGetter, optSetter) =>
             WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
@@ -895,9 +891,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
             }
 
             if (isStatic)
-              instrs += CALL(WasmFunctionName.installJSStaticProperty)
+              instrs += CALL(genFunctionName.installJSStaticProperty)
             else
-              instrs += CALL(WasmFunctionName.installJSProperty)
+              instrs += CALL(genFunctionName.installJSProperty)
         }
       }
 
@@ -920,7 +916,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         // Generate boxed representation of the zero of the field
         WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
 
-        instrs += CALL(WasmFunctionName.installJSField)
+        instrs += CALL(genFunctionName.installJSField)
       }
 
       // Class initializer
@@ -930,7 +926,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
           s"Illegal class initializer in non-static class ${clazz.className.nameString}"
         )
         val namespace = IRTrees.MemberNamespace.StaticConstructor
-        instrs += CALL(WasmFunctionName(namespace, clazz.className, IRNames.ClassInitializerName))
+        instrs += CALL(
+          genFunctionName.forMethod(namespace, clazz.className, IRNames.ClassInitializerName)
+        )
       }
 
       // Final result
@@ -944,7 +942,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     implicit val pos = clazz.pos
 
     val cachedJSClassGlobal = WasmGlobal(
-      WasmGlobalName.forJSClassValue(clazz.className),
+      genGlobalName.forJSClassValue(clazz.className),
       WasmRefType.anyref,
       WasmExpr(List(REF_NULL(WasmHeapType.Any))),
       isMutable = true
@@ -953,7 +951,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     val fctx = WasmFunctionContext(
       Some(clazz.className),
-      WasmFunctionName.loadJSClass(clazz.className),
+      genFunctionName.loadJSClass(clazz.className),
       None,
       Nil,
       List(WasmRefType.any)
@@ -966,7 +964,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       instrs += GLOBAL_GET(cachedJSClassGlobal.name)
       instrs += BR_ON_NON_NULL(doneLabel)
       // Otherwise, call createJSClass -- it will also store the class in the cache
-      instrs += CALL(WasmFunctionName.createJSClassOf(clazz.className))
+      instrs += CALL(genFunctionName.createJSClassOf(clazz.className))
     }
 
     fctx.buildAndAddToContext()
@@ -976,7 +974,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     implicit val pos = clazz.pos
 
     val className = clazz.className
-    val cacheGlobalName = WasmGlobalName.forModuleInstance(className)
+    val cacheGlobalName = genGlobalName.forModuleInstance(className)
 
     ctx.addGlobal(
       WasmGlobal(
@@ -988,7 +986,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     )
 
     val fctx = WasmFunctionContext(
-      WasmFunctionName.loadModule(className),
+      genFunctionName.loadModule(className),
       Nil,
       List(WasmRefType.anyref)
     )
@@ -1001,9 +999,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
       instrs += BR_ON_NON_NULL(doneLabel)
 
       // Get the JS class and instantiate it
-      instrs += CALL(WasmFunctionName.loadJSClass(className))
-      instrs += CALL(WasmFunctionName.jsNewArray)
-      instrs += CALL(WasmFunctionName.jsNew)
+      instrs += CALL(genFunctionName.loadJSClass(className))
+      instrs += CALL(genFunctionName.jsNewArray)
+      instrs += CALL(genFunctionName.jsNew)
 
       // Store and return the result
       instrs += GLOBAL_SET(cacheGlobalName)
@@ -1023,7 +1021,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     implicit val fctx = WasmFunctionContext(
       enclosingClassName = None,
-      Names.WasmFunctionName.forExport(exportedName),
+      genFunctionName.forExport(exportedName),
       receiverTyp = None,
       method.args ::: method.restParam.toList,
       IRTypes.AnyType
@@ -1048,7 +1046,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
   )(implicit ctx: WasmContext): Unit = {
     val exprt = WasmExport.Global(
       exportDef.exportName,
-      WasmGlobalName.forStaticField(exportDef.field.name)
+      genGlobalName.forStaticField(exportDef.field.name)
     )
     ctx.addExport(exprt)
   }
@@ -1067,7 +1065,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     * `genStartFunction()` in `WasmContext`).
     */
   private def genDelayedTopLevelExport(exportedName: String)(implicit ctx: WasmContext): Unit = {
-    val globalName = WasmGlobalName.forTopLevelExport(exportedName)
+    val globalName = genGlobalName.forTopLevelExport(exportedName)
     ctx.addGlobal(
       WasmGlobal(
         globalName,
@@ -1089,7 +1087,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val className = clazz.className
     val methodName = method.methodName
 
-    val functionName = Names.WasmFunctionName(namespace, className, methodName)
+    val functionName = genFunctionName.forMethod(namespace, className, methodName)
 
     val isHijackedClass = ctx.getClassInfo(className).kind == ClassKind.HijackedClass
 
@@ -1126,7 +1124,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
       implicit val fctx = WasmFunctionContext(
         Some(className),
-        WasmFunctionName.forTableEntry(className, methodName),
+        genFunctionName.forTableEntry(className, methodName),
         Some(WasmRefType.any),
         method.args,
         method.resultType
@@ -1162,7 +1160,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       field: IRTrees.FieldDef
   )(implicit ctx: WasmContext): WasmStructField = {
     WasmStructField(
-      Names.WasmFieldName.forClassInstanceField(field.name.name),
+      genFieldName.forClassInstanceField(field.name.name),
       transformType(field.ftpe),
       // needs to be mutable even if it's flags.isMutable = false
       // because it's initialized by constructor

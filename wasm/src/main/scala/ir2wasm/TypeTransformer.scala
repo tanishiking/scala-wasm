@@ -9,6 +9,8 @@ import org.scalajs.ir.{Names => IRNames}
 import wasm.wasm4s._
 import wasm.wasm4s.Names._
 
+import VarGen._
+
 object TypeTransformer {
 
   /** This transformation should be used only for the result types of functions or blocks.
@@ -40,9 +42,7 @@ object TypeTransformer {
       case IRTypes.AnyType => Types.WasmRefType.anyref
 
       case tpe: IRTypes.ArrayType =>
-        Types.WasmRefType.nullable(
-          Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
-        )
+        Types.WasmRefType.nullable(genTypeName.forArrayClass(tpe.arrayTypeRef))
       case IRTypes.ClassType(className) => transformClassType(className)
       case IRTypes.RecordType(fields)   => ???
       case IRTypes.StringType | IRTypes.UndefType =>
@@ -59,7 +59,7 @@ object TypeTransformer {
     else if (info.isInterface)
       Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
     else
-      Types.WasmRefType.nullable(WasmTypeName.WasmStructTypeName.forClass(className))
+      Types.WasmRefType.nullable(genTypeName.forClass(className))
   }
 
   private def transformPrimType(
