@@ -1700,7 +1700,7 @@ object HelperFunctions {
     val itables = fctx.addLocal("itables", WasmRefType.nullable(WasmArrayTypeName.itables))
     val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
 
-    val itableIdx = ctx.getItableIdx(clazz.name.name)
+    val itableIdx = ctx.getItableIdx(classInfo)
     fctx.block(WasmRefType.anyref) { testFail =>
       // if expr is not an instance of Object, return false
       instrs += LOCAL_GET(exprParam)
@@ -1724,9 +1724,9 @@ object HelperFunctions {
       instrs += LOCAL_GET(itables)
       instrs += I32_CONST(itableIdx)
       instrs += ARRAY_GET(WasmTypeName.WasmArrayTypeName.itables)
-      instrs += BR_ON_NULL(testFail)
-
-      instrs += I32_CONST(1)
+      instrs += REF_TEST(
+        WasmRefType(WasmStructTypeName.forITable(clazz.name.name))
+      )
       instrs += RETURN
     } // test fail
 

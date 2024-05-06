@@ -655,7 +655,7 @@ private class WasmExpressionBuilder private (
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
-      val itableIdx = ctx.getItableIdx(receiverClassInfo.name)
+      val itableIdx = ctx.getItableIdx(receiverClassInfo)
       val methodIdx = receiverClassInfo.tableMethodInfos(methodName).tableIndex
 
       instrs += LOCAL_GET(receiverLocalForDispatch)
