@@ -47,7 +47,7 @@ class WasmTextWriter {
   private def writeTypeDefinition(subType: WasmSubType)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "type", {
-        b.appendElement(subType.name.show)
+        b.appendName(subType.name)
         subType match {
           case WasmSubType(_, true, None, compositeType) =>
             writeCompositeType(compositeType)
@@ -57,7 +57,7 @@ class WasmTextWriter {
                 if (subType.isFinal)
                   b.appendElement("final")
                 for (superType <- subType.superType)
-                  b.appendElement(superType.show)
+                  b.appendName(superType)
                 writeCompositeType(subType.compositeType)
               }
             )
@@ -70,7 +70,7 @@ class WasmTextWriter {
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
         "field", {
-          b.appendElement(field.name.show)
+          b.appendName(field.name)
           if (field.isMutable)
             b.sameLineList(
               "mut", {
@@ -127,14 +127,14 @@ class WasmTextWriter {
           case WasmImportDesc.Func(id, typeName) =>
             b.sameLineList(
               "func", {
-                b.appendElement(id.show)
+                b.appendName(id)
                 writeTypeUse(typeName)
               }
             )
           case WasmImportDesc.Global(id, typ, isMutable) =>
             b.sameLineList(
               "global", {
-                b.appendElement(id.show)
+                b.appendName(id)
                 if (isMutable)
                   b.sameLineList("mut", writeType(typ))
                 else
@@ -144,7 +144,7 @@ class WasmTextWriter {
           case WasmImportDesc.Tag(id, typeName) =>
             b.sameLineList(
               "tag", {
-                b.appendElement(id.show)
+                b.appendName(id)
                 writeTypeUse(typeName)
               }
             )
@@ -164,7 +164,7 @@ class WasmTextWriter {
     def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
-          b.appendElement(l.name.show)
+          b.appendName(l.name)
           writeType(l.typ)
         }
       )
@@ -173,7 +173,7 @@ class WasmTextWriter {
     def writeLocal(l: WasmLocal)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "local", {
-          b.appendElement(l.name.show)
+          b.appendName(l.name)
           writeType(l.typ)
         }
       )
@@ -182,7 +182,7 @@ class WasmTextWriter {
     b.newLineList(
       "func", {
         val (params, nonParams) = f.locals.partition(_.isParameter)
-        b.appendElement(f.name.show)
+        b.appendName(f.name)
         writeTypeUse(f.typeName)
 
         b.newLine()
@@ -201,7 +201,7 @@ class WasmTextWriter {
   private def writeTag(tag: WasmTag)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "tag", {
-        b.appendElement(tag.name.show)
+        b.appendName(tag.name)
         writeTypeUse(tag.typ)
       }
     )
@@ -210,7 +210,7 @@ class WasmTextWriter {
   private def writeGlobal(g: WasmGlobal)(implicit b: WatBuilder) =
     b.newLineList(
       "global", {
-        b.appendElement(g.name.show)
+        b.appendName(g.name)
         if (g.isMutable)
           b.sameLineList("mut", writeType(g.typ))
         else writeType(g.typ)
@@ -227,12 +227,12 @@ class WasmTextWriter {
         case WasmExport.Function(_, funcName) =>
           b.sameLineList(
             "func",
-            { b.appendElement(funcName.show) }
+            { b.appendName(funcName) }
           )
         case WasmExport.Global(_, globalName) =>
           b.sameLineList(
             "global",
-            { b.appendElement(globalName.show) }
+            { b.appendName(globalName) }
           )
       }
     }
@@ -241,7 +241,7 @@ class WasmTextWriter {
   private def writeStart(startFunction: WasmFunctionName)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "start", {
-        b.appendElement(startFunction.show)
+        b.appendName(startFunction)
       }
     )
   }
@@ -267,7 +267,7 @@ class WasmTextWriter {
   private def writeData(data: WasmData)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "data", {
-        b.appendElement(data.name.show)
+        b.appendName(data.name)
         data.mode match {
           case WasmData.Mode.Passive => ()
         }
@@ -277,7 +277,7 @@ class WasmTextWriter {
   }
 
   private def writeTypeUse(typeName: WasmTypeName)(implicit b: WatBuilder): Unit = {
-    b.sameLineListOne("type", typeName.show)
+    b.sameLineList("type", b.appendName(typeName))
   }
 
   private def writeType(typ: WasmStorageType)(implicit b: WatBuilder): Unit = {
@@ -301,7 +301,7 @@ class WasmTextWriter {
 
   private def writeHeapType(heapType: WasmHeapType)(implicit b: WatBuilder): Unit = {
     heapType match {
-      case WasmHeapType.Type(typeName)        => b.appendElement(typeName.show)
+      case WasmHeapType.Type(typeName)        => b.appendName(typeName)
       case heapType: WasmHeapType.AbsHeapType => b.appendElement(heapType.textName)
     }
   }
@@ -317,7 +317,7 @@ class WasmTextWriter {
   private def writeBlockType(blockType: BlockType)(implicit b: WatBuilder): Unit = {
     blockType match {
       case BlockType.FunctionType(name) =>
-        b.appendElement(s"(type ${name.show})")
+        writeTypeUse(name)
       case BlockType.ValueType(optTy) =>
         for (ty <- optTy)
           b.sameLineList("result", writeType(ty))
@@ -325,7 +325,7 @@ class WasmTextWriter {
   }
 
   private def writeLabelIdx(labelIdx: WasmLabelName)(implicit b: WatBuilder): Unit =
-    b.appendElement(labelIdx.show)
+    b.appendName(labelIdx)
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
@@ -367,21 +367,21 @@ class WasmTextWriter {
       case instr: WasmLabelInstr =>
         writeLabelIdx(instr.labelArgument)
       case instr: WasmFuncInstr =>
-        b.appendElement(instr.funcArgument.show)
+        b.appendName(instr.funcArgument)
       case instr: WasmTypeInstr =>
-        b.appendElement(instr.typeArgument.show)
+        b.appendName(instr.typeArgument)
       case instr: WasmTagInstr =>
-        b.appendElement(instr.tagArgument.show)
+        b.appendName(instr.tagArgument)
       case instr: WasmLocalInstr =>
-        b.appendElement(instr.localArgument.show)
+        b.appendName(instr.localArgument)
       case instr: WasmGlobalInstr =>
-        b.appendElement(instr.globalArgument.show)
+        b.appendName(instr.globalArgument)
       case instr: WasmHeapTypeInstr =>
         writeHeapType(instr.heapTypeArgument)
       case instr: WasmRefTypeInstr =>
         writeType(instr.refTypeArgument)
       case instr: WasmStructFieldInstr =>
-        b.appendElement(instr.structTypeName.show)
+        b.appendName(instr.structTypeName)
         b.appendElement(instr.fieldIdx.value.toString())
 
       // Specific instructions with unique-ish shapes
@@ -400,23 +400,23 @@ class WasmTextWriter {
         for (clause <- clauses) {
           b.sameLineList(
             clause.mnemonic, {
-              clause.tag.foreach(tag => b.appendElement(tag.show))
+              clause.tag.foreach(tag => b.appendName(tag))
               writeLabelIdx(clause.label)
             }
           )
         }
 
       case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
-        b.appendElement(typeIdx.show)
-        b.appendElement(dataIdx.show)
+        b.appendName(typeIdx)
+        b.appendName(dataIdx)
 
       case ARRAY_NEW_FIXED(typeIdx, length) =>
-        b.appendElement(typeIdx.show)
+        b.appendName(typeIdx)
         b.appendElement(Integer.toUnsignedString(length))
 
       case ARRAY_COPY(destType, srcType) =>
-        b.appendElement(destType.show)
-        b.appendElement(srcType.show)
+        b.appendName(destType)
+        b.appendName(srcType)
 
       case BR_ON_CAST(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)
@@ -472,6 +472,22 @@ object WasmTextWriter {
     def appendElement(value: String): Unit = {
       builder.append(" ")
       builder.append(value)
+    }
+
+    def appendName(name: WasmName): Unit =
+      appendElement("$" + sanitizeWatIdentifier(name.name))
+
+    /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
+    private def sanitizeWatIdentifier(name: String): String = {
+      if (name.isEmpty) "_"
+      else if (name.forall(isValidWatIdentifierChar)) name
+      else name.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
+    }
+
+    private def isValidWatIdentifierChar(c: Char): Boolean = {
+      c.isDigit || c.isLetter ||
+      "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
+      "$.@_".contains(c)
     }
 
     override def toString: String =

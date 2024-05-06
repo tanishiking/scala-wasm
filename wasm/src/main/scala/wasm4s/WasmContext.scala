@@ -276,7 +276,7 @@ class WasmContext(val module: WasmModule) extends TypeDefinableWasmContext {
     val sig = WasmFunctionSignature(params, results)
     val typeName = addFunctionType(sig)
     module.addImport(
-      WasmImport(name.namespace, name.simpleName, WasmImportDesc.Func(name, typeName))
+      WasmImport("__scalaJSHelpers", name.name, WasmImportDesc.Func(name, typeName))
     )
   }
 

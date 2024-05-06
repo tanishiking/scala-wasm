@@ -6,27 +6,11 @@ import org.scalajs.ir.{Types => IRTypes}
 import wasm.converters.WasmTextWriter
 
 object Names {
-  // private[wasm4s] because we don't wanna access it from converters
-  sealed abstract class WasmName(private[wasm4s] val name: String) {
-    def show: String =
-      s"$$${WasmName.sanitizeWatIdentifier(this.name)}"
-  }
-  object WasmName {
-
-    /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
-    def sanitizeWatIdentifier(indent: String): String =
-      if (indent.isEmpty) "_"
-      else if (indent.forall(isValidWatIdentifierChar)) indent
-      else indent.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
-
-    private def isValidWatIdentifierChar(c: Char): Boolean =
-      c.isDigit || c.isLetter ||
-        "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
-        "$.@_".contains(c)
+  sealed abstract class WasmName {
+    val name: String
   }
 
-  final case class WasmLocalName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmLocalName private (name: String) extends WasmName
   object WasmLocalName {
     def fromIR(name: IRNames.LocalName) = new WasmLocalName(name.nameString)
     def fromStr(str: String) = new WasmLocalName(str)
@@ -36,14 +20,12 @@ object Names {
     val receiver = new WasmLocalName("___<this>")
   }
 
-  final case class WasmLabelName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmLabelName private (name: String) extends WasmName
   object WasmLabelName {
     def synthetic(id: Int): WasmLabelName = new WasmLabelName(id.toString())
   }
 
-  final case class WasmGlobalName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmGlobalName private (name: String) extends WasmName
   object WasmGlobalName {
     def forImportedModule(moduleName: String): WasmGlobalName =
       new WasmGlobalName(s"imported.$moduleName")
@@ -87,10 +69,10 @@ object Names {
       new WasmGlobalName("idHashCodeMap")
   }
 
-  case class WasmFunctionName private (
-      val namespace: String,
-      val simpleName: String
-  ) extends WasmName(namespace + "#" + simpleName)
+  final case class WasmFunctionName private (name: String) extends WasmName {
+    def this(namespace: String, simpleName: String) =
+      this(namespace + "#" + simpleName)
+  }
 
   object WasmFunctionName {
     def apply(
@@ -157,7 +139,7 @@ object Names {
     val start = new WasmFunctionName("start", "start")
 
     private def helper(name: String): WasmFunctionName =
-      new WasmFunctionName("__scalaJSHelpers", name)
+      new WasmFunctionName(name)
 
     // JS helpers
 
@@ -287,8 +269,7 @@ object Names {
     val searchReflectiveProxy = helper("searchReflectiveProxy")
   }
 
-  final case class WasmFieldName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmFieldName private (name: String) extends WasmName
   object WasmFieldName {
     def forClassInstanceField(name: IRNames.FieldName): WasmFieldName =
       new WasmFieldName(name.nameString)
@@ -441,8 +422,7 @@ object Names {
   }
 
   // GC types ====
-  final case class WasmTypeName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmTypeName private (name: String) extends WasmName
   object WasmTypeName {
     object WasmStructTypeName {
       def forClass(name: IRNames.ClassName): WasmTypeName =
@@ -533,20 +513,17 @@ object Names {
 
   }
 
-  final case class WasmTagName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmTagName private (name: String) extends WasmName
   object WasmTagName {
     def fromStr(str: String): WasmTagName = new WasmTagName(str)
   }
 
-  final case class WasmDataName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmDataName private (name: String) extends WasmName
   object WasmDataName {
     val string = WasmDataName("string")
   }
 
-  final case class WasmExportName private (override private[wasm4s] val name: String)
-      extends WasmName(name)
+  final case class WasmExportName private (name: String) extends WasmName
   object WasmExportName {
     def fromStr(str: String) = new WasmExportName(str)
   }

@@ -95,10 +95,7 @@ class WasmFunctionContext private (
     addLocal(genSyntheticLocalName(), typ)
 
   def genInnerFuncName(): WasmFunctionName = {
-    val innerName = WasmFunctionName(
-      functionName.namespace,
-      functionName.simpleName + "__c" + innerFuncIdx
-    )
+    val innerName = WasmFunctionName(functionName.name + "__c" + innerFuncIdx)
     innerFuncIdx += 1
     innerName
   }
