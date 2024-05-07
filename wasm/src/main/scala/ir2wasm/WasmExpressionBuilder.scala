@@ -695,7 +695,7 @@ private class WasmExpressionBuilder private (
       )
       instrs += STRUCT_GET(
         genTypeName.forVTable(receiverClassName),
-        WasmFieldIdx(WasmStructType.typeDataFieldCount(ctx) + methodIdx)
+        genFieldIdx.typeData.vtableMethodIdx(methodIdx)
       )
       instrs += CALL_REF(ctx.tableFunctionType(methodName))
     }

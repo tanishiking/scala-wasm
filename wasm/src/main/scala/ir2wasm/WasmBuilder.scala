@@ -117,6 +117,11 @@ class WasmBuilder(coreSpec: CoreSpec) {
       WasmRefType(vtableTypeName),
       isMutable = false
     )
+    val itablesField = WasmStructField(
+      genFieldName.objStruct.itables,
+      WasmRefType.nullable(genTypeName.itables),
+      isMutable = false
+    )
 
     val objectRef = IRTypes.ClassRef(IRNames.ObjectClass)
 
@@ -142,7 +147,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
       val superType = genTypeName.forClass(IRNames.ObjectClass)
       val structType = WasmStructType(
-        List(vtableField, WasmStructField.itables, underlyingArrayField)
+        List(vtableField, itablesField, underlyingArrayField)
       )
       val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
       ctx.mainRecType.addSubType(subType)
@@ -433,11 +438,16 @@ class WasmBuilder(coreSpec: CoreSpec) {
       WasmRefType(vtableTypeName),
       isMutable = false
     )
+    val itablesField = WasmStructField(
+      genFieldName.objStruct.itables,
+      WasmRefType.nullable(genTypeName.itables),
+      isMutable = false
+    )
     val fields = classInfo.allFieldDefs.map(transformField)
     val structTypeName = genTypeName.forClass(clazz.name.name)
     val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
     val structType = WasmStructType(
-      vtableField +: WasmStructField.itables +: fields
+      vtableField +: itablesField +: fields
     )
     val subType = WasmSubType(structTypeName, isFinal = false, superType, structType)
     ctx.mainRecType.addSubType(subType)
@@ -461,9 +471,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case None    => genTypeName.typeData
       case Some(s) => genTypeName.forVTable(s)
     }
-    val structType = WasmStructType(
-      WasmStructType.typeData.fields ::: vtableFields
-    )
+    val structType = WasmStructType(ctx.typeDataStructFields ::: vtableFields)
     val subType = WasmSubType(typeName, isFinal = false, Some(superType), structType)
     ctx.mainRecType.addSubType(subType)
     typeName

@@ -294,13 +294,13 @@ final class WasmContext extends TypeDefinableWasmContext {
   }
 
   locally {
-    moduleBuilder.addRecType(genTypeName.i8Array, WasmArrayType.i8Array)
-    moduleBuilder.addRecType(genTypeName.i16Array, WasmArrayType.i16Array)
-    moduleBuilder.addRecType(genTypeName.i32Array, WasmArrayType.i32Array)
-    moduleBuilder.addRecType(genTypeName.i64Array, WasmArrayType.i64Array)
-    moduleBuilder.addRecType(genTypeName.f32Array, WasmArrayType.f32Array)
-    moduleBuilder.addRecType(genTypeName.f64Array, WasmArrayType.f64Array)
-    moduleBuilder.addRecType(genTypeName.anyArray, WasmArrayType.anyArray)
+    moduleBuilder.addRecType(genTypeName.i8Array, WasmArrayType(WasmFieldType(WasmInt8, true)))
+    moduleBuilder.addRecType(genTypeName.i16Array, WasmArrayType(WasmFieldType(WasmInt16, true)))
+    moduleBuilder.addRecType(genTypeName.i32Array, WasmArrayType(WasmFieldType(WasmInt32, true)))
+    moduleBuilder.addRecType(genTypeName.i64Array, WasmArrayType(WasmFieldType(WasmInt64, true)))
+    moduleBuilder.addRecType(genTypeName.f32Array, WasmArrayType(WasmFieldType(WasmFloat32, true)))
+    moduleBuilder.addRecType(genTypeName.f64Array, WasmArrayType(WasmFieldType(WasmFloat64, true)))
+    moduleBuilder.addRecType(genTypeName.anyArray, WasmArrayType(WasmFieldType(anyref, true)))
 
     moduleBuilder.addRecTypeBuilder(mainRecType)
   }
@@ -316,15 +316,72 @@ final class WasmContext extends TypeDefinableWasmContext {
   val isJSClassInstanceFuncTypeName: WasmTypeName =
     addFunctionTypeInMainRecType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
 
+  /** Run-time type data of a `TypeRef`.
+    *
+    * Support for `j.l.Class` methods and other reflective operations.
+    *
+    * @see
+    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
+    */
+  val typeDataStructFields: List[WasmStructField] = {
+    import genFieldName.typeData._
+    import WasmRefType.nullable
+    List(
+      WasmStructField(nameOffset, WasmInt32, isMutable = false),
+      WasmStructField(nameSize, WasmInt32, isMutable = false),
+      WasmStructField(nameStringIndex, WasmInt32, isMutable = false),
+      WasmStructField(kind, WasmInt32, isMutable = false),
+      WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
+      WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
+      WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
+      WasmStructField(name, anyref, isMutable = true),
+      WasmStructField(classOfValue, nullable(WasmHeapType.ClassType), isMutable = true),
+      WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
+      WasmStructField(cloneFunction, nullable(cloneFunctionTypeName), isMutable = false),
+      WasmStructField(
+        isJSClassInstance,
+        nullable(isJSClassInstanceFuncTypeName),
+        isMutable = false
+      ),
+      WasmStructField(
+        reflectiveProxies,
+        WasmRefType(genTypeName.reflectiveProxies),
+        isMutable = false
+      )
+    )
+  }
+
   locally {
-    mainRecType.addSubType(genTypeName.typeDataArray, WasmArrayType.typeDataArray)
-    mainRecType.addSubType(genTypeName.itables, WasmArrayType.itables)
-    mainRecType.addSubType(genTypeName.reflectiveProxies, WasmArrayType.reflectiveProxies)
+    mainRecType.addSubType(
+      genTypeName.typeDataArray,
+      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.typeData), isMutable = false))
+    )
+    mainRecType.addSubType(
+      genTypeName.itables,
+      WasmArrayType(WasmFieldType(WasmRefType.nullable(WasmHeapType.Struct), isMutable = true))
+    )
+    mainRecType.addSubType(
+      genTypeName.reflectiveProxies,
+      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.reflectiveProxy), isMutable = false))
+    )
 
     mainRecType.addSubType(
-      WasmSubType(genTypeName.typeData, isFinal = false, None, WasmStructType.typeData(this))
+      WasmSubType(genTypeName.typeData, isFinal = false, None, WasmStructType(typeDataStructFields))
     )
-    mainRecType.addSubType(genTypeName.reflectiveProxy, WasmStructType.reflectiveProxy)
+
+    mainRecType.addSubType(
+      genTypeName.reflectiveProxy,
+      WasmStructType(
+        List(
+          WasmStructField(genFieldName.reflectiveProxy.func_name, WasmInt32, isMutable = false),
+          WasmStructField(
+            genFieldName.reflectiveProxy.func_ref,
+            WasmRefType(WasmHeapType.Func),
+            isMutable = false
+          )
+        )
+      )
+    )
   }
 
   locally {

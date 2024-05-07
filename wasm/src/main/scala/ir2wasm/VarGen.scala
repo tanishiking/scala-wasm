@@ -388,6 +388,9 @@ object VarGen {
       val cloneFunctionIdx = WasmFieldIdx(10)
       val isJSClassInstanceIdx = WasmFieldIdx(11)
       val reflectiveProxiesIdx = WasmFieldIdx(12)
+
+      /** Index of a method in the actual vtable. */
+      def vtableMethodIdx(methodIdx: Int): WasmFieldIdx = WasmFieldIdx(13 + methodIdx)
     }
 
     object reflectiveProxy {
