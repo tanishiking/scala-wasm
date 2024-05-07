@@ -308,8 +308,8 @@ final class WasmContext extends TypeDefinableWasmContext {
   val cloneFunctionTypeName: WasmTypeName =
     addFunctionTypeInMainRecType(
       WasmFunctionSignature(
-        List(WasmRefType(WasmHeapType.ObjectType)),
-        List(WasmRefType(WasmHeapType.ObjectType))
+        List(WasmRefType(genTypeName.ObjectStruct)),
+        List(WasmRefType(genTypeName.ObjectStruct))
       )
     )
 
@@ -335,7 +335,7 @@ final class WasmContext extends TypeDefinableWasmContext {
       WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
       WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
       WasmStructField(name, anyref, isMutable = true),
-      WasmStructField(classOfValue, nullable(WasmHeapType.ClassType), isMutable = true),
+      WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
       WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
       WasmStructField(cloneFunction, nullable(cloneFunctionTypeName), isMutable = false),
       WasmStructField(

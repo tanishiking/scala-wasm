@@ -360,7 +360,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         // name - initially `null`; filled in by the `typeDataName` helper
         REF_NULL(WasmHeapType.Any),
         // the classOf instance - initially `null`; filled in by the `createClassOf` helper
-        REF_NULL(WasmHeapType.ClassType),
+        REF_NULL(WasmHeapType(genTypeName.ClassStruct)),
         // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
         REF_NULL(WasmHeapType(genTypeName.ObjectVTable)),
         // clonefFunction - will be invoked from `clone()` method invokaion on the class

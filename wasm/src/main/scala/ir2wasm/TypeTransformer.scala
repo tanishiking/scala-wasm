@@ -57,7 +57,7 @@ object TypeTransformer {
     if (info.isAncestorOfHijackedClass)
       Types.WasmRefType.anyref
     else if (info.isInterface)
-      Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
+      Types.WasmRefType.nullable(genTypeName.ObjectStruct)
     else
       Types.WasmRefType.nullable(genTypeName.forClass(className))
   }

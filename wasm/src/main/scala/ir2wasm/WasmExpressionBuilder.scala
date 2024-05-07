@@ -388,7 +388,7 @@ private class WasmExpressionBuilder private (
         instrs += BR_ON_CAST_FAIL(
           labelNotOurObject,
           Types.WasmRefType.any,
-          Types.WasmRefType(Types.WasmHeapType.ObjectType)
+          Types.WasmRefType(genTypeName.ObjectStruct)
         )
         instrs += STRUCT_GET(
           genTypeName.forClass(IRNames.ObjectClass),
@@ -430,16 +430,15 @@ private class WasmExpressionBuilder private (
      * This is used in the code paths where we have already ruled out `null`
      * values and primitive values (that implement hijacked classes).
      */
-    val heapTypeForDispatch: Types.WasmHeapType = {
+    val refTypeForDispatch: Types.WasmRefType = {
       if (receiverClassInfo.isInterface)
-        Types.WasmHeapType.ObjectType
+        Types.WasmRefType(genTypeName.ObjectStruct)
       else
-        Types.WasmHeapType(genTypeName.forClass(receiverClassName))
+        Types.WasmRefType(genTypeName.forClass(receiverClassName))
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
-    val receiverLocalForDispatch =
-      fctx.addSyntheticLocal(Types.WasmRefType(heapTypeForDispatch))
+    val receiverLocalForDispatch = fctx.addSyntheticLocal(refTypeForDispatch)
 
     /* Gen loading of the receiver and check that it is non-null.
      * After this codegen, the non-null receiver is on the stack.
@@ -535,11 +534,7 @@ private class WasmExpressionBuilder private (
             argsLocals
           }
 
-          instrs += BR_ON_CAST_FAIL(
-            labelNotOurObject,
-            Types.WasmRefType.any,
-            Types.WasmRefType(heapTypeForDispatch)
-          )
+          instrs += BR_ON_CAST_FAIL(labelNotOurObject, Types.WasmRefType.any, refTypeForDispatch)
           instrs += LOCAL_TEE(receiverLocalForDispatch)
           pushArgs(argsLocals)
           genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
@@ -835,7 +830,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
-    instrs.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
+    instrs.block(Types.WasmRefType(genTypeName.ClassStruct)) { nonNullLabel =>
       // fast path first
       instrs += loadTypeDataInstr
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -1249,7 +1244,7 @@ private class WasmExpressionBuilder private (
 
         // A local for a copy of the receiver that we will use to resolve dispatch
         val receiverLocalForDispatch =
-          fctx.addSyntheticLocal(Types.WasmRefType(Types.WasmHeapType.ObjectType))
+          fctx.addSyntheticLocal(Types.WasmRefType(genTypeName.ObjectStruct))
 
         val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
 
@@ -1309,7 +1304,7 @@ private class WasmExpressionBuilder private (
               instrs += BR_ON_CAST_FAIL(
                 labelNotOurObject,
                 Types.WasmRefType.anyref,
-                Types.WasmRefType(Types.WasmHeapType.ObjectType)
+                Types.WasmRefType(genTypeName.ObjectStruct)
               )
               instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
@@ -1569,7 +1564,7 @@ private class WasmExpressionBuilder private (
               Types.WasmRefType.nullable(genTypeName.forClass(targetClassName))
             )
           } else if (info.isInterface) {
-            instrs += REF_CAST(Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType))
+            instrs += REF_CAST(Types.WasmRefType.nullable(genTypeName.ObjectStruct))
           }
 
         case IRTypes.ArrayType(arrayTypeRef) =>
@@ -1971,7 +1966,7 @@ private class WasmExpressionBuilder private (
 
   private def genWrapAsThrowable(tree: IRTrees.WrapAsThrowable): IRTypes.Type = {
     val throwableClassType = IRTypes.ClassType(IRNames.ThrowableClass)
-    val nonNullThrowableTyp = Types.WasmRefType(Types.WasmHeapType.ThrowableType)
+    val nonNullThrowableTyp = Types.WasmRefType(genTypeName.ThrowableStruct)
 
     val jsExceptionTyp =
       TypeTransformer.transformClassType(SpecialNames.JSExceptionClass)(ctx).toNonNullable
@@ -2021,8 +2016,8 @@ private class WasmExpressionBuilder private (
       // if !expr.isInstanceOf[js.JavaScriptException], then br $done
       instrs += BR_ON_CAST_FAIL(
         doneLabel,
-        Types.WasmRefType(Types.WasmHeapType.ThrowableType),
-        Types.WasmRefType(Types.WasmHeapType.JSExceptionType)
+        Types.WasmRefType(genTypeName.ThrowableStruct),
+        Types.WasmRefType(genTypeName.JSExceptionStruct)
       )
 
       // otherwise, unwrap the JavaScriptException by reading its field
@@ -2486,7 +2481,7 @@ private class WasmExpressionBuilder private (
 
     fctx.markPosition(t)
 
-    instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType.ObjectType))
+    instrs += REF_CAST(Types.WasmRefType(genTypeName.ObjectStruct))
     instrs += LOCAL_TEE(expr)
     instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
 

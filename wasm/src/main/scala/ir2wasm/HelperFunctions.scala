@@ -295,14 +295,14 @@ object HelperFunctions {
     val fctx = WasmFunctionContext(
       genFunctionName.createClassOf,
       List("typeData" -> typeDataType),
-      List(WasmRefType(WasmHeapType.ClassType))
+      List(WasmRefType(genTypeName.ClassStruct))
     )
 
     val List(typeDataParam) = fctx.paramIndices
 
     import fctx.instrs
 
-    val classInstanceLocal = fctx.addLocal("classInstance", WasmRefType(WasmHeapType.ClassType))
+    val classInstanceLocal = fctx.addLocal("classInstance", WasmRefType(genTypeName.ClassStruct))
 
     // classInstance := newDefault$java.lang.Class()
     // leave it on the stack for the constructor call
@@ -413,14 +413,14 @@ object HelperFunctions {
     val fctx = WasmFunctionContext(
       genFunctionName.getClassOf,
       List("typeData" -> typeDataType),
-      List(WasmRefType(WasmHeapType.ClassType))
+      List(WasmRefType(genTypeName.ClassStruct))
     )
 
     val List(typeDataParam) = fctx.paramIndices
 
     import fctx.instrs
 
-    instrs.block(WasmRefType(WasmHeapType.ClassType)) { alreadyInitializedLabel =>
+    instrs.block(WasmRefType(genTypeName.ClassStruct)) { alreadyInitializedLabel =>
       // fast path
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -976,7 +976,7 @@ object HelperFunctions {
     val fctx = WasmFunctionContext(
       genFunctionName.getComponentType,
       List("typeData" -> typeDataType),
-      List(WasmRefType.nullable(WasmHeapType.ClassType))
+      List(WasmRefType.nullable(genTypeName.ClassStruct))
     )
 
     val List(typeDataParam) = fctx.paramIndices
@@ -997,7 +997,7 @@ object HelperFunctions {
       instrs += CALL(genFunctionName.getClassOf)
       instrs += RETURN
     } // end block nullResultLabel
-    instrs += REF_NULL(WasmHeapType.ClassType)
+    instrs += REF_NULL(WasmHeapType(genTypeName.ClassStruct))
 
     fctx.buildAndAddToContext()
   }
@@ -1013,7 +1013,7 @@ object HelperFunctions {
     val fctx = WasmFunctionContext(
       genFunctionName.newArrayOfThisClass,
       List("typeData" -> typeDataType, "lengths" -> WasmRefType.anyref),
-      List(WasmRefType(WasmHeapType.ObjectType))
+      List(WasmRefType(genTypeName.ObjectStruct))
     )
 
     val List(typeDataParam, lengthsParam) = fctx.paramIndices
@@ -1090,7 +1090,7 @@ object HelperFunctions {
     val fctx = WasmFunctionContext(
       genFunctionName.anyGetClass,
       List("value" -> WasmRefType.any),
-      List(WasmRefType.nullable(WasmHeapType.ClassType))
+      List(WasmRefType.nullable(genTypeName.ClassStruct))
     )
 
     val List(valueParam) = fctx.paramIndices
@@ -1100,20 +1100,20 @@ object HelperFunctions {
     val typeDataLocal = fctx.addLocal("typeData", typeDataType)
     val doubleValueLocal = fctx.addLocal("doubleValue", WasmFloat64)
     val intValueLocal = fctx.addLocal("intValue", WasmInt32)
-    val ourObjectLocal = fctx.addLocal("ourObject", WasmRefType(WasmHeapType.ObjectType))
+    val ourObjectLocal = fctx.addLocal("ourObject", WasmRefType(genTypeName.ObjectStruct))
 
     def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
       GLOBAL_GET(genGlobalName.forVTable(className))
 
-    instrs.block(WasmRefType.nullable(WasmHeapType.ClassType)) { nonNullClassOfLabel =>
+    instrs.block(WasmRefType.nullable(genTypeName.ClassStruct)) { nonNullClassOfLabel =>
       instrs.block(typeDataType) { gotTypeDataLabel =>
-        instrs.block(WasmRefType(WasmHeapType.ObjectType)) { ourObjectLabel =>
+        instrs.block(WasmRefType(genTypeName.ObjectStruct)) { ourObjectLabel =>
           // if value is our object, jump to $ourObject
           instrs += LOCAL_GET(valueParam)
           instrs += BR_ON_CAST(
             ourObjectLabel,
             WasmRefType.any,
-            WasmRefType(WasmHeapType.ObjectType)
+            WasmRefType(genTypeName.ObjectStruct)
           )
 
           // switch(jsValueType(value)) { ... }
@@ -1209,7 +1209,7 @@ object HelperFunctions {
             }
           ) { () =>
             // case _ (JSValueTypeOther) => return null
-            instrs += REF_NULL(WasmHeapType.ClassType)
+            instrs += REF_NULL(WasmHeapType(genTypeName.ClassStruct))
             instrs += RETURN
           }
 
@@ -1263,7 +1263,7 @@ object HelperFunctions {
     val objectVTableType = WasmRefType(genTypeName.ObjectVTable)
     val arrayTypeDataType = objectVTableType
     val itablesType = WasmRefType.nullable(genTypeName.itables)
-    val nonNullObjectType = WasmRefType(WasmHeapType.ObjectType)
+    val nonNullObjectType = WasmRefType(genTypeName.ObjectStruct)
     val anyArrayType = WasmRefType(genTypeName.anyArray)
 
     val fctx = WasmFunctionContext(
@@ -1478,7 +1478,7 @@ object HelperFunctions {
     instrs += LOCAL_TEE(objNonNullLocal)
 
     // If `obj` is one of our objects, skip all the jsValueType tests
-    instrs += REF_TEST(WasmRefType(WasmHeapType.ObjectType))
+    instrs += REF_TEST(WasmRefType(genTypeName.ObjectStruct))
     instrs += I32_EQZ
     instrs.ifThen() {
       instrs.switch() { () =>
@@ -1690,11 +1690,11 @@ object HelperFunctions {
       instrs += BR_ON_CAST_FAIL(
         testFail,
         WasmRefType.anyref,
-        WasmRefType(Types.WasmHeapType.ObjectType)
+        WasmRefType(genTypeName.ObjectStruct)
       )
 
       // get itables and store
-      instrs += STRUCT_GET(Types.WasmHeapType.ObjectType.typ, genFieldIdx.objStruct.itables)
+      instrs += STRUCT_GET(genTypeName.ObjectStruct, genFieldIdx.objStruct.itables)
       instrs += LOCAL_SET(itables)
 
       // Dummy return value from the block
@@ -1767,8 +1767,8 @@ object HelperFunctions {
         WasmHeapType(genTypeName.forClass(clazz.name.name))
       val fctx = WasmFunctionContext(
         genFunctionName.clone(clazz.name.name),
-        List("from" -> WasmRefType(WasmHeapType.ObjectType)),
-        List(WasmRefType(WasmHeapType.ObjectType))
+        List("from" -> WasmRefType(genTypeName.ObjectStruct)),
+        List(WasmRefType(genTypeName.ObjectStruct))
       )
       val List(fromParam) = fctx.paramIndices
       import fctx.instrs
@@ -1811,8 +1811,8 @@ object HelperFunctions {
 
     val fctx = WasmFunctionContext(
       genFunctionName.clone(arrayTypeRef.base),
-      List("from" -> WasmRefType(WasmHeapType.ObjectType)),
-      List(WasmRefType(WasmHeapType.ObjectType))
+      List("from" -> WasmRefType(genTypeName.ObjectStruct)),
+      List(WasmRefType(genTypeName.ObjectStruct))
     )
     val List(fromParam) = fctx.paramIndices
     import fctx.instrs

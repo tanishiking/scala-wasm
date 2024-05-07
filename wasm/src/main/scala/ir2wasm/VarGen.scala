@@ -403,6 +403,11 @@ object VarGen {
     def forClass(name: ClassName): WasmTypeName =
       WasmTypeName(s"c.L${name.nameString}")
 
+    val ObjectStruct = forClass(ObjectClass)
+    val ClassStruct = forClass(ClassClass)
+    val ThrowableStruct = forClass(ThrowableClass)
+    val JSExceptionStruct = forClass(SpecialNames.JSExceptionClass)
+
     def captureData(index: Int): WasmTypeName =
       WasmTypeName(s"captureData.$index")
 
