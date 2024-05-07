@@ -18,15 +18,15 @@ class WasmTextWriter {
   private def writeModule(module: WasmModule)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "module", {
-        module.recTypes.foreach(writeRecType)
+        module.types.foreach(writeRecType)
         module.imports.foreach(writeImport)
-        module.definedFunctions.foreach(writeFunction)
+        module.funcs.foreach(writeFunction)
         module.tags.foreach(writeTag)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
-        module.startFunction.foreach(writeStart)
-        module.elements.foreach(writeElement)
-        module.data.foreach(writeData)
+        module.start.foreach(writeStart)
+        module.elems.foreach(writeElement)
+        module.datas.foreach(writeData)
       }
     )
   }

@@ -375,8 +375,8 @@ private class WasmExpressionBuilder private (
     val proxyId = ctx.getReflectiveProxyId(t.method.name)
     val funcTypeName = ctx.tableFunctionType(t.method.name)
 
-    fctx.block(Types.WasmRefType.anyref) { done =>
-      fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
+    instrs.block(Types.WasmRefType.anyref) { done =>
+      instrs.block(Types.WasmRefType.any) { labelNotOurObject =>
         // arguments
         genTree(t.receiver, IRTypes.AnyType)
         instrs += REF_AS_NOT_NULL
@@ -505,12 +505,12 @@ private class WasmExpressionBuilder private (
 
       val resultTyp = TypeTransformer.transformResultType(t.tpe)(ctx)
 
-      fctx.block(resultTyp) { labelDone =>
+      instrs.block(resultTyp) { labelDone =>
         def pushArgs(argsLocals: List[WasmLocalName]): Unit =
           argsLocals.foreach(argLocal => instrs += LOCAL_GET(argLocal))
 
         // First try the case where the value is one of our objects
-        val argsLocals = fctx.block(Types.WasmRefType.any) { labelNotOurObject =>
+        val argsLocals = instrs.block(Types.WasmRefType.any) { labelNotOurObject =>
           // Load receiver and arguments and store them in temporary variables
           genReceiverNotNull()
           val argsLocals = if (t.args.isEmpty) {
@@ -588,7 +588,7 @@ private class WasmExpressionBuilder private (
           instrs += LOCAL_TEE(jsValueTypeLocal)
 
           import wasm.wasm4s.{WasmFunctionSignature => Sig}
-          fctx.switch(Sig(List(Types.WasmInt32), Nil), Sig(Nil, List(Types.WasmInt32))) { () =>
+          instrs.switch(Sig(List(Types.WasmInt32), Nil), Sig(Nil, List(Types.WasmInt32))) { () =>
             // scrutinee is already on the stack
           }(
             // case JSValueTypeFalse | JSValueTypeTrue =>
@@ -835,7 +835,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
-    fctx.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
+    instrs.block(Types.WasmRefType(Types.WasmHeapType.ClassType)) { nonNullLabel =>
       // fast path first
       instrs += loadTypeDataInstr
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -1044,7 +1044,7 @@ private class WasmExpressionBuilder private (
       fctx.markPosition(binary)
 
       instrs += eqz
-      fctx.ifThen() {
+      instrs.ifThen() {
         genThrowArithmeticException()
       }
       if (isDiv) {
@@ -1052,7 +1052,7 @@ private class WasmExpressionBuilder private (
         instrs += LOCAL_GET(rhsLocal)
         instrs += const(num.fromInt(-1))
         instrs += eq
-        fctx.ifThenElse(wasmTyp) {
+        instrs.ifThenElse(wasmTyp) {
           // 0 - lhs
           instrs += const(num.zero)
           instrs += LOCAL_GET(lhsLocal)
@@ -1269,8 +1269,8 @@ private class WasmExpressionBuilder private (
            * end $done
            */
 
-          fctx.block(Types.WasmRefType.any) { labelDone =>
-            fctx.block() { labelIsNull =>
+          instrs.block(Types.WasmRefType.any) { labelDone =>
+            instrs.block() { labelIsNull =>
               genTreeAuto(tree)
               fctx.markPosition(binary)
               instrs += BR_ON_NULL(labelIsNull)
@@ -1298,9 +1298,9 @@ private class WasmExpressionBuilder private (
            * end $done
            */
 
-          fctx.block(Types.WasmRefType.any) { labelDone =>
+          instrs.block(Types.WasmRefType.any) { labelDone =>
             // First try the case where the value is one of our objects
-            fctx.block(Types.WasmRefType.anyref) { labelNotOurObject =>
+            instrs.block(Types.WasmRefType.anyref) { labelNotOurObject =>
               // Load receiver
               genTreeAuto(tree)
 
@@ -1439,7 +1439,7 @@ private class WasmExpressionBuilder private (
         val tempLocal = fctx.addSyntheticLocal(Types.WasmRefType.anyref)
         instrs += LOCAL_TEE(tempLocal)
         instrs += REF_TEST(Types.WasmRefType(genTypeName.forClass(JLNumberClass)))
-        fctx.ifThenElse(Types.WasmInt32) {
+        instrs.ifThenElse(Types.WasmInt32) {
           instrs += I32_CONST(1)
         } {
           instrs += LOCAL_GET(tempLocal)
@@ -1476,8 +1476,8 @@ private class WasmExpressionBuilder private (
             import wasm.wasm4s.{WasmFunctionSignature => Sig}
             import wasm.wasm4s.Types.WasmRefType.anyref
 
-            fctx.block(Sig(List(anyref), List(Types.WasmInt32))) { doneLabel =>
-              fctx.block(Sig(List(anyref), List(anyref))) { notARefArrayLabel =>
+            instrs.block(Sig(List(anyref), List(Types.WasmInt32))) { doneLabel =>
+              instrs.block(Sig(List(anyref), List(anyref))) { notARefArrayLabel =>
                 // Try and cast to the generic representation first
                 val refArrayStructTypeName = genTypeName.forArrayClass(arrayTypeRef)
                 instrs += BR_ON_CAST_FAIL(
@@ -1609,8 +1609,8 @@ private class WasmExpressionBuilder private (
               else SpecialNames.LongBoxClass
             val resultType = TypeTransformer.transformType(targetTpe)(ctx)
 
-            fctx.block(Sig(List(Types.WasmRefType.anyref), List(resultType))) { doneLabel =>
-              fctx.block(Sig(List(Types.WasmRefType.anyref), Nil)) { isNullLabel =>
+            instrs.block(Sig(List(Types.WasmRefType.anyref), List(resultType))) { doneLabel =>
+              instrs.block(Sig(List(Types.WasmRefType.anyref), Nil)) { isNullLabel =>
                 instrs += BR_ON_NULL(isNullLabel)
                 val structTypeName = genTypeName.forClass(boxClass)
                 instrs += REF_CAST(Types.WasmRefType(structTypeName))
@@ -1720,11 +1720,11 @@ private class WasmExpressionBuilder private (
     t.elsep match {
       case IRTrees.Skip() =>
         assert(expectedType == IRTypes.NoType)
-        fctx.ifThen() {
+        instrs.ifThen() {
           genTree(t.thenp, expectedType)
         }
       case _ =>
-        fctx.ifThenElse(ty) {
+        instrs.ifThenElse(ty) {
           genTree(t.thenp, expectedType)
         } {
           genTree(t.elsep, expectedType)
@@ -1747,7 +1747,7 @@ private class WasmExpressionBuilder private (
         // end
         // unreachable
         fctx.markPosition(t)
-        fctx.loop() { label =>
+        instrs.loop() { label =>
           genTree(t.body, IRTypes.NoType)
           fctx.markPosition(t)
           instrs += BR(label)
@@ -1764,10 +1764,10 @@ private class WasmExpressionBuilder private (
         //   end
         // end
         fctx.markPosition(t)
-        fctx.loop() { label =>
+        instrs.loop() { label =>
           genTree(t.cond, IRTypes.BooleanType)
           fctx.markPosition(t)
-          fctx.ifThen() {
+          instrs.ifThen() {
             genTree(t.body, IRTypes.NoType)
             fctx.markPosition(t)
             instrs += BR(label)
@@ -1814,7 +1814,7 @@ private class WasmExpressionBuilder private (
 
     if (UseLegacyExceptionsForTryCatch) {
       fctx.markPosition(t)
-      instrs += TRY(fctx.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
+      instrs += TRY(instrs.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
       genTree(t.block, expectedType)
       fctx.markPosition(t)
       instrs += CATCH(genTagName.exceptionTagName)
@@ -1826,15 +1826,15 @@ private class WasmExpressionBuilder private (
       instrs += END
     } else {
       fctx.markPosition(t)
-      fctx.block(resultType) { doneLabel =>
-        fctx.block(Types.WasmRefType.externref) { catchLabel =>
+      instrs.block(resultType) { doneLabel =>
+        instrs.block(Types.WasmRefType.externref) { catchLabel =>
           /* We used to have `resultType` as result of the try_table, with the
            * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
            * V8 cannot handle try_table with a result type that is `(ref ...)`.
            * The current encoding with `externref` as result type (to match the
            * enclosing block) and the `br` *inside* the `try_table` works.
            */
-          fctx.tryTable(Types.WasmRefType.externref)(
+          instrs.tryTable(Types.WasmRefType.externref)(
             List(CatchClause.Catch(genTagName.exceptionTagName, catchLabel))
           ) {
             genTree(t.block, expectedType)
@@ -1976,7 +1976,7 @@ private class WasmExpressionBuilder private (
     val jsExceptionTyp =
       TypeTransformer.transformClassType(SpecialNames.JSExceptionClass)(ctx).toNonNullable
 
-    fctx.block(nonNullThrowableTyp) { doneLabel =>
+    instrs.block(nonNullThrowableTyp) { doneLabel =>
       genTree(tree.expr, IRTypes.AnyType)
 
       fctx.markPosition(tree)
@@ -2011,7 +2011,7 @@ private class WasmExpressionBuilder private (
   }
 
   private def genUnwrapFromThrowable(tree: IRTrees.UnwrapFromThrowable): IRTypes.Type = {
-    fctx.block(Types.WasmRefType.anyref) { doneLabel =>
+    instrs.block(Types.WasmRefType.anyref) { doneLabel =>
       genTree(tree.expr, IRTypes.ClassType(IRNames.ThrowableClass))
 
       fctx.markPosition(tree)
@@ -2525,9 +2525,9 @@ private class WasmExpressionBuilder private (
 
     instrs += LOCAL_SET(selectorLocal)
 
-    fctx.block(TypeTransformer.transformResultType(expectedType)(ctx)) { doneLabel =>
-      fctx.block() { defaultLabel =>
-        val caseLabels = cases.map(c => c._1 -> fctx.genLabel())
+    instrs.block(TypeTransformer.transformResultType(expectedType)(ctx)) { doneLabel =>
+      instrs.block() { defaultLabel =>
+        val caseLabels = cases.map(c => c._1 -> instrs.genLabel())
         for (caseLabel <- caseLabels)
           instrs += BLOCK(BlockType.ValueType(), Some(caseLabel._2))
 
@@ -2869,7 +2869,7 @@ private class WasmExpressionBuilder private (
 
       def requireCrossInfo(): (WasmLocalName, WasmLabelName) = {
         _crossInfo.getOrElse {
-          val info = (fctx.addSyntheticLocal(Types.WasmInt32), fctx.genLabel())
+          val info = (fctx.addSyntheticLocal(Types.WasmInt32), instrs.genLabel())
           _crossInfo = Some(info)
           info
         }
@@ -2886,7 +2886,7 @@ private class WasmExpressionBuilder private (
       /** The regular label for this `Labeled` block, used for `Return`s that do not cross a
         * `TryFinally`.
         */
-      val regularWasmLabel: WasmLabelName = fctx.genLabel()
+      val regularWasmLabel: WasmLabelName = instrs.genLabel()
 
       /** The destination tag allocated to this label, used by the `finally` blocks to keep
         * propagating to the right destination.
@@ -2911,7 +2911,7 @@ private class WasmExpressionBuilder private (
           destinationTag = allocateDestinationTag()
           val resultTypes = TypeTransformer.transformResultType(expectedType)(ctx)
           resultLocals = resultTypes.map(fctx.addSyntheticLocal(_))
-          crossLabel = fctx.genLabel()
+          crossLabel = instrs.genLabel()
         }
 
         (destinationTag, resultLocals, crossLabel)
@@ -2927,14 +2927,14 @@ private class WasmExpressionBuilder private (
 
       // Manual BLOCK here because we have a specific `label`
       instrs += BLOCK(
-        fctx.sigToBlockType(WasmFunctionSignature(Nil, ty)),
+        instrs.sigToBlockType(WasmFunctionSignature(Nil, ty)),
         Some(entry.regularWasmLabel)
       )
 
       /* Remember the position in the instruction stream, in case we need to
        * come back and insert the BLOCK for the cross handling.
        */
-      val instrsBlockBeginIndex = instrs.size
+      val instrsBlockBeginIndex = instrs.markCurrentInstructionIndex()
 
       // Emit the body
       enterLabeled(entry) {
@@ -3001,14 +3001,14 @@ private class WasmExpressionBuilder private (
 
       fctx.markPosition(t)
 
-      fctx.block() { doneLabel =>
-        fctx.block(Types.WasmRefType.exnref) { catchLabel =>
+      instrs.block() { doneLabel =>
+        instrs.block(Types.WasmRefType.exnref) { catchLabel =>
           /* Remember the position in the instruction stream, in case we need
            * to come back and insert the BLOCK for the cross handling.
            */
-          val instrsBlockBeginIndex = instrs.size
+          val instrsBlockBeginIndex = instrs.markCurrentInstructionIndex()
 
-          fctx.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
+          instrs.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
             // try block
             enterTryFinally(entry) {
               genTree(t.block, expectedType)
@@ -3068,7 +3068,7 @@ private class WasmExpressionBuilder private (
           /* If the `exnref` is non-null, rethrow it.
            * Otherwise, stay within the `$done` block.
            */
-          fctx.block(WasmFunctionSignature(List(Types.WasmRefType.exnref), Nil)) {
+          instrs.block(WasmFunctionSignature(List(Types.WasmRefType.exnref), Nil)) {
             exnrefIsNullLabel =>
               instrs += BR_ON_NULL(exnrefIsNullLabel)
               instrs += THROW_REF

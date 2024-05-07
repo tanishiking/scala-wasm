@@ -2,12 +2,10 @@ package wasm
 package ir2wasm
 
 import wasm4s._
-import wasm4s.WasmContext._
 import wasm4s.Names._
 import wasm4s.Names.WasmTypeName._
 import wasm4s.Types._
 import wasm4s.WasmInstr._
-import TypeTransformer._
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
@@ -21,6 +19,8 @@ import collection.mutable
 
 import EmbeddedConstants._
 import VarGen._
+import TypeTransformer._
+import WasmContext._
 
 class WasmBuilder(coreSpec: CoreSpec) {
   // val module = new WasmModule()
@@ -497,7 +497,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     import fctx.instrs
 
-    fctx.block(resultTyp) { nonNullLabel =>
+    instrs.block(resultTyp) { nonNullLabel =>
       // load global, return if not null
       instrs += GLOBAL_GET(globalInstanceName)
       instrs += BR_ON_NON_NULL(nonNullLabel)
@@ -959,7 +959,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     import fctx.instrs
 
-    fctx.block(WasmRefType.any) { doneLabel =>
+    instrs.block(WasmRefType.any) { doneLabel =>
       // Load cached JS class, return if non-null
       instrs += GLOBAL_GET(cachedJSClassGlobal.name)
       instrs += BR_ON_NON_NULL(doneLabel)
@@ -993,7 +993,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
 
     import fctx.instrs
 
-    fctx.block(WasmRefType.anyref) { doneLabel =>
+    instrs.block(WasmRefType.anyref) { doneLabel =>
       // Load cached instance; return if non-null
       instrs += GLOBAL_GET(cacheGlobalName)
       instrs += BR_ON_NON_NULL(doneLabel)

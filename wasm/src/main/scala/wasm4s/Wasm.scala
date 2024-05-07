@@ -72,26 +72,13 @@ case class WasmGlobal(
     val isMutable: Boolean
 )
 
-final class WasmRecType {
-  private val _subTypes = mutable.ListBuffer.empty[WasmSubType]
-
-  def addSubType(subType: WasmSubType): Unit =
-    _subTypes += subType
-
-  def addSubType(name: WasmTypeName, compositeType: WasmCompositeType): Unit =
-    addSubType(WasmSubType(name, compositeType))
-
-  def subTypes: List[WasmSubType] = _subTypes.toList
-}
+final case class WasmRecType(subTypes: List[WasmSubType])
 
 object WasmRecType {
 
   /** Builds a `rectype` with a single `subtype`. */
-  def apply(singleSubType: WasmSubType): WasmRecType = {
-    val recType = new WasmRecType
-    recType.addSubType(singleSubType)
-    recType
-  }
+  def apply(singleSubType: WasmSubType): WasmRecType =
+    WasmRecType(singleSubType :: Nil)
 }
 
 final case class WasmSubType(
@@ -137,7 +124,7 @@ object WasmStructType {
     * @see
     *   [[Names.genFieldName.typeData]], which contains documentation of what is in each field.
     */
-  def typeData(implicit ctx: ReadOnlyWasmContext): WasmStructType = WasmStructType(
+  def typeData(implicit ctx: wasm.ir2wasm.ReadOnlyWasmContext): WasmStructType = WasmStructType(
     List(
       WasmStructField(
         genFieldName.typeData.nameOffset,
@@ -208,7 +195,8 @@ object WasmStructType {
   )
 
   // The number of fields of typeData, after which we find the vtable entries
-  def typeDataFieldCount(implicit ctx: ReadOnlyWasmContext) = typeData.fields.size
+  def typeDataFieldCount(implicit ctx: wasm.ir2wasm.ReadOnlyWasmContext): Int =
+    typeData.fields.size
 
   val reflectiveProxy: WasmStructType = WasmStructType(
     List(
@@ -304,39 +292,14 @@ object WasmElement {
 /** @see
   *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
   */
-class WasmModule {
-  private val _recTypes: mutable.ListBuffer[WasmRecType] = new mutable.ListBuffer()
-  private val _imports: mutable.ListBuffer[WasmImport] = new mutable.ListBuffer()
-  private val _definedFunctions: mutable.ListBuffer[WasmFunction] = new mutable.ListBuffer()
-  private val _tags: mutable.ListBuffer[WasmTag] = new mutable.ListBuffer()
-  private val _data: mutable.ListBuffer[WasmData] = new mutable.ListBuffer()
-  private val _globals: mutable.ListBuffer[WasmGlobal] = new mutable.ListBuffer()
-  private val _exports: mutable.ListBuffer[WasmExport] = new mutable.ListBuffer()
-  private var _startFunction: Option[WasmFunctionName] = None
-  private val _elements: mutable.ListBuffer[WasmElement] = new mutable.ListBuffer()
-
-  def addRecType(typ: WasmRecType): Unit = _recTypes += typ
-  def addRecType(typ: WasmSubType): Unit = addRecType(WasmRecType(typ))
-
-  def addRecType(name: WasmTypeName, compositeType: WasmCompositeType): Unit =
-    addRecType(WasmSubType(name, compositeType))
-
-  def addImport(imprt: WasmImport): Unit = _imports += imprt
-  def addFunction(function: WasmFunction): Unit = _definedFunctions += function
-  def addTag(tag: WasmTag): Unit = _tags += tag
-  def addData(data: WasmData): Unit = _data += data
-  def addGlobal(typ: WasmGlobal): Unit = _globals += typ
-  def addExport(exprt: WasmExport): Unit = _exports += exprt
-  def setStartFunction(startFunction: WasmFunctionName): Unit = _startFunction = Some(startFunction)
-  def addElement(element: WasmElement): Unit = _elements += element
-
-  def recTypes = _recTypes.toList
-  def imports = _imports.toList
-  def definedFunctions = _definedFunctions.toList
-  def tags: List[WasmTag] = _tags.toList
-  def data: List[WasmData] = _data.toList
-  def globals = _globals.toList
-  def exports = _exports.toList
-  def startFunction: Option[WasmFunctionName] = _startFunction
-  def elements: List[WasmElement] = _elements.toList
-}
+final class WasmModule(
+    val types: List[WasmRecType],
+    val imports: List[WasmImport],
+    val funcs: List[WasmFunction],
+    val tags: List[WasmTag],
+    val globals: List[WasmGlobal],
+    val exports: List[WasmExport],
+    val start: Option[WasmFunctionName],
+    val elems: List[WasmElement],
+    val datas: List[WasmData]
+)

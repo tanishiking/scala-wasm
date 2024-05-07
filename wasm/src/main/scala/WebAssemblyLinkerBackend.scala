@@ -63,9 +63,8 @@ final class WebAssemblyLinkerBackend(
       ec: ExecutionContext
   ): Future[Report] = {
 
-    val wasmModule = new WasmModule
     val builder = new WasmBuilder(coreSpec)
-    implicit val context: WasmContext = new WasmContext(wasmModule)
+    implicit val context: WasmContext = new WasmContext()
 
     val onlyModule = moduleSet.modules match {
       case onlyModule :: Nil =>
@@ -109,6 +108,8 @@ final class WebAssemblyLinkerBackend(
       classesWithStaticInit,
       onlyModule.topLevelExports
     )
+
+    val wasmModule = context.moduleBuilder.build()
 
     val outputImpl = OutputDirectoryImpl.fromOutputDirectory(output)
 

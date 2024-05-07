@@ -18,16 +18,16 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
 
   private val typeIdxValues: Map[WasmTypeName, Int] =
-    module.recTypes.flatMap(_.subTypes).map(_.name).zipWithIndex.toMap
+    module.types.flatMap(_.subTypes).map(_.name).zipWithIndex.toMap
 
   private val dataIdxValues: Map[WasmDataName, Int] =
-    module.data.map(_.name).zipWithIndex.toMap
+    module.datas.map(_.name).zipWithIndex.toMap
 
   private val allFunctionNames: List[WasmFunctionName] = {
     val importedFunctionNames = module.imports.collect {
       case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
     }
-    importedFunctionNames ::: module.definedFunctions.map(_.name)
+    importedFunctionNames ::: module.funcs.map(_.name)
   }
 
   private val funcIdxValues: Map[WasmFunctionName, Int] =
@@ -85,10 +85,10 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     writeSection(fullOutput, SectionTag)(writeTagSection(_))
     writeSection(fullOutput, SectionGlobal)(writeGlobalSection(_))
     writeSection(fullOutput, SectionExport)(writeExportSection(_))
-    if (module.startFunction.isDefined)
+    if (module.start.isDefined)
       writeSection(fullOutput, SectionStart)(writeStartSection(_))
     writeSection(fullOutput, SectionElement)(writeElementSection(_))
-    if (module.data.nonEmpty)
+    if (module.datas.nonEmpty)
       writeSection(fullOutput, SectionDataCount)(writeDataCountSection(_))
     writeSection(fullOutput, SectionCode)(writeCodeSection(_))
     writeSection(fullOutput, SectionData)(writeDataSection(_))
@@ -116,7 +116,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeTypeSection(buf: Buffer): Unit = {
-    buf.vec(module.recTypes) { recType =>
+    buf.vec(module.types) { recType =>
       recType.subTypes match {
         case singleSubType :: Nil =>
           writeSubType(buf, singleSubType)
@@ -180,7 +180,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeFunctionSection(buf: Buffer): Unit = {
-    buf.vec(module.definedFunctions) { fun =>
+    buf.vec(module.funcs) { fun =>
       writeTypeIdx(buf, fun.typeName)
     }
   }
@@ -215,11 +215,11 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeStartSection(buf: Buffer): Unit = {
-    writeFuncIdx(buf, module.startFunction.get)
+    writeFuncIdx(buf, module.start.get)
   }
 
   private def writeElementSection(buf: Buffer): Unit = {
-    buf.vec(module.elements) { element =>
+    buf.vec(module.elems) { element =>
       element.mode match {
         case WasmElement.Mode.Passive     => buf.byte(5)
         case WasmElement.Mode.Declarative => buf.byte(7)
@@ -234,7 +234,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   /** https://webassembly.github.io/spec/core/binary/modules.html#data-section
     */
   private def writeDataSection(buf: Buffer): Unit = {
-    buf.vec(module.data) { data =>
+    buf.vec(module.datas) { data =>
       data.mode match {
         case WasmData.Mode.Passive => buf.byte(1)
       }
@@ -243,10 +243,10 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeDataCountSection(buf: Buffer): Unit =
-    buf.u32(module.data.size)
+    buf.u32(module.datas.size)
 
   private def writeCodeSection(buf: Buffer): Unit = {
-    buf.vec(module.definedFunctions) { func =>
+    buf.vec(module.funcs) { func =>
       buf.byteLengthSubSection(writeFunc(_, func))
     }
   }

@@ -7,7 +7,6 @@ import org.scalajs.ir.{ClassKind, Position}
 import org.scalajs.linker.standard.LinkedClass
 
 import wasm.wasm4s._
-import wasm.wasm4s.WasmContext._
 import wasm.wasm4s.Names._
 import wasm.wasm4s.Names.WasmTypeName._
 import wasm.wasm4s.Types._
@@ -50,7 +49,7 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    fctx.block(WasmRefType.any) { cacheHit =>
+    instrs.block(WasmRefType.any) { cacheHit =>
       instrs += GLOBAL_GET(genGlobalName.stringLiteralCache)
       instrs += LOCAL_GET(stringIndexParam)
       instrs += ARRAY_GET(genTypeName.anyArray)
@@ -105,12 +104,12 @@ object HelperFunctions {
     instrs += CALL(genFunctionName.emptyString)
     instrs += LOCAL_SET(resultLocal)
 
-    fctx.loop() { labelLoop =>
+    instrs.loop() { labelLoop =>
       // if i == len
       instrs += LOCAL_GET(iLocal)
       instrs += LOCAL_GET(lenLocal)
       instrs += I32_EQ
-      fctx.ifThen() {
+      instrs.ifThen() {
         // then return result
         instrs += LOCAL_GET(resultLocal)
         instrs += RETURN
@@ -169,7 +168,7 @@ object HelperFunctions {
     val firstCharLocal = fctx.addLocal("firstChar", WasmInt32)
     val nameLocal = fctx.addLocal("name", WasmRefType.any)
 
-    fctx.block(WasmRefType.any) { alreadyInitializedLabel =>
+    instrs.block(WasmRefType.any) { alreadyInitializedLabel =>
       // br_on_non_null $alreadyInitialized typeData.name
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.nameIdx)
@@ -183,7 +182,7 @@ object HelperFunctions {
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
       instrs += I32_CONST(KindArray)
       instrs += I32_EQ
-      fctx.ifThenElse(WasmRefType.any) {
+      instrs.ifThenElse(WasmRefType.any) {
         // it is an array; compute its name from the component type name
 
         // <top of stack> := "[", for the CALL to stringConcat near the end
@@ -201,7 +200,7 @@ object HelperFunctions {
 
         // switch (componentTypeData.kind)
         // the result of this switch is the string that must come after "["
-        fctx.switch(WasmRefType.any) { () =>
+        instrs.switch(WasmRefType.any) { () =>
           // scrutinee
           instrs += LOCAL_GET(componentTypeDataLocal)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
@@ -421,7 +420,7 @@ object HelperFunctions {
 
     import fctx.instrs
 
-    fctx.block(WasmRefType(WasmHeapType.ClassType)) { alreadyInitializedLabel =>
+    instrs.block(WasmRefType(WasmHeapType.ClassType)) { alreadyInitializedLabel =>
       // fast path
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -463,8 +462,8 @@ object HelperFunctions {
 
     val arrayTypeDataLocal = fctx.addLocal("arrayTypeData", objectVTableType)
 
-    fctx.loop() { loopLabel =>
-      fctx.block(objectVTableType) { arrayOfIsNonNullLabel =>
+    instrs.loop() { loopLabel =>
+      instrs.block(objectVTableType) { arrayOfIsNonNullLabel =>
         // br_on_non_null $arrayOfIsNonNull typeData.arrayOf
         instrs += LOCAL_GET(typeDataParam)
         instrs += STRUCT_GET(
@@ -497,7 +496,7 @@ object HelperFunctions {
         instrs += REF_NULL(WasmHeapType.None) // arrayOf
 
         // clone
-        fctx.switch(WasmRefType(ctx.cloneFunctionTypeName)) { () =>
+        instrs.switch(WasmRefType(ctx.cloneFunctionTypeName)) { () =>
           instrs += LOCAL_GET(typeDataParam)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
         }(
@@ -563,7 +562,7 @@ object HelperFunctions {
       // if dims == 0 then
       //   return typeData.arrayOf (which is on the stack)
       instrs += I32_EQZ
-      fctx.ifThen(WasmFunctionSignature(List(objectVTableType), List(objectVTableType))) {
+      instrs.ifThen(WasmFunctionSignature(List(objectVTableType), List(objectVTableType))) {
         instrs += RETURN
       }
 
@@ -603,7 +602,7 @@ object HelperFunctions {
     val specialInstanceTypesLocal = fctx.addLocal("specialInstanceTypes", WasmInt32)
 
     // switch (typeData.kind)
-    fctx.switch(WasmInt32) { () =>
+    instrs.switch(WasmInt32) { () =>
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, kindIdx)
     }(
@@ -662,7 +661,7 @@ object HelperFunctions {
       },
       // case KindJSType => call typeData.isJSClassInstance(value) or throw if it is null
       List(KindJSType) -> { () =>
-        fctx.block(WasmRefType.anyref) { isJSClassInstanceIsNull =>
+        instrs.block(WasmRefType.anyref) { isJSClassInstanceIsNull =>
           // Load value as the argument to the function
           instrs += LOCAL_GET(valueParam)
 
@@ -693,7 +692,7 @@ object HelperFunctions {
       // case _ =>
 
       // valueNonNull := as_non_null value; return false if null
-      fctx.block(WasmRefType.any) { nonNullLabel =>
+      instrs.block(WasmRefType.any) { nonNullLabel =>
         instrs += LOCAL_GET(valueParam)
         instrs += BR_ON_NON_NULL(nonNullLabel)
         instrs += I32_CONST(0)
@@ -727,7 +726,7 @@ object HelperFunctions {
       instrs += LOCAL_TEE(specialInstanceTypesLocal)
       instrs += I32_CONST(0)
       instrs += I32_NE
-      fctx.ifThen() {
+      instrs.ifThen() {
         // Load (1 << jsValueType(valueNonNull))
         instrs += I32_CONST(1)
         instrs += LOCAL_GET(valueNonNullLocal)
@@ -739,7 +738,7 @@ object HelperFunctions {
         instrs += I32_AND
         instrs += I32_CONST(0)
         instrs += I32_NE
-        fctx.ifThen() {
+        instrs.ifThen() {
           // then return true
           instrs += I32_CONST(1)
           instrs += RETURN
@@ -752,7 +751,7 @@ object HelperFunctions {
       instrs += LOCAL_GET(typeDataParam)
 
       // Load the vtable; return false if it is not one of our object
-      fctx.block(objectRefType) { ourObjectLabel =>
+      instrs.block(objectRefType) { ourObjectLabel =>
         // Try cast to jl.Object
         instrs += LOCAL_GET(valueNonNullLocal)
         instrs += BR_ON_CAST(
@@ -839,16 +838,16 @@ object HelperFunctions {
     instrs += LOCAL_GET(fromTypeDataParam)
     instrs += LOCAL_GET(typeDataParam)
     instrs += REF_EQ
-    fctx.ifThen() {
+    instrs.ifThen() {
       // then return true
       instrs += I32_CONST(1)
       instrs += RETURN
     }
 
     // "Tail call" loop for diving into array component types
-    fctx.loop(WasmInt32) { loopForArrayLabel =>
+    instrs.loop(WasmInt32) { loopForArrayLabel =>
       // switch (typeData.kind)
-      fctx.switch(WasmInt32) { () =>
+      instrs.switch(WasmInt32) { () =>
         // typeData.kind
         instrs += LOCAL_GET(typeDataParam)
         instrs += STRUCT_GET(genTypeName.typeData, kindIdx)
@@ -859,7 +858,7 @@ object HelperFunctions {
         },
         // case KindArray => check that from is an array, recurse into component types
         List(KindArray) -> { () =>
-          fctx.block() { fromComponentTypeIsNullLabel =>
+          instrs.block() { fromComponentTypeIsNullLabel =>
             // fromTypeData := fromTypeData.componentType; jump out if null
             instrs += LOCAL_GET(fromTypeDataParam)
             instrs += STRUCT_GET(genTypeName.typeData, componentTypeIdx)
@@ -889,7 +888,7 @@ object HelperFunctions {
       ) { () =>
         // All other cases: test whether `fromTypeData.strictAncestors` contains `typeData`
 
-        fctx.block() { fromAncestorsIsNullLabel =>
+        instrs.block() { fromAncestorsIsNullLabel =>
           // fromAncestors := fromTypeData.strictAncestors; go to fromAncestorsIsNull if null
           instrs += LOCAL_GET(fromTypeDataParam)
           instrs += STRUCT_GET(genTypeName.typeData, strictAncestorsIdx)
@@ -907,7 +906,7 @@ object HelperFunctions {
           instrs += LOCAL_SET(iLocal)
 
           // while (i != len)
-          fctx.whileLoop() {
+          instrs.whileLoop() {
             instrs += LOCAL_GET(iLocal)
             instrs += LOCAL_GET(lenLocal)
             instrs += I32_NE
@@ -918,7 +917,7 @@ object HelperFunctions {
             instrs += ARRAY_GET(genTypeName.typeDataArray)
             instrs += LOCAL_GET(typeDataParam)
             instrs += REF_EQ
-            fctx.ifThen() {
+            instrs.ifThen() {
               // then return true
               instrs += I32_CONST(1)
               instrs += RETURN
@@ -986,7 +985,7 @@ object HelperFunctions {
 
     val componentTypeDataLocal = fctx.addLocal("componentTypeData", typeDataType)
 
-    fctx.block() { nullResultLabel =>
+    instrs.block() { nullResultLabel =>
       // Try and extract non-null component type data
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(
@@ -1041,7 +1040,7 @@ object HelperFunctions {
     instrs += LOCAL_SET(iLocal)
 
     // while (i != lengthsLen)
-    fctx.whileLoop() {
+    instrs.whileLoop() {
       instrs += LOCAL_GET(iLocal)
       instrs += LOCAL_GET(lengthsLenLocal)
       instrs += I32_NE
@@ -1106,9 +1105,9 @@ object HelperFunctions {
     def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
       GLOBAL_GET(genGlobalName.forVTable(className))
 
-    fctx.block(WasmRefType.nullable(WasmHeapType.ClassType)) { nonNullClassOfLabel =>
-      fctx.block(typeDataType) { gotTypeDataLabel =>
-        fctx.block(WasmRefType(WasmHeapType.ObjectType)) { ourObjectLabel =>
+    instrs.block(WasmRefType.nullable(WasmHeapType.ClassType)) { nonNullClassOfLabel =>
+      instrs.block(typeDataType) { gotTypeDataLabel =>
+        instrs.block(WasmRefType(WasmHeapType.ObjectType)) { ourObjectLabel =>
           // if value is our object, jump to $ourObject
           instrs += LOCAL_GET(valueParam)
           instrs += BR_ON_CAST(
@@ -1118,7 +1117,7 @@ object HelperFunctions {
           )
 
           // switch(jsValueType(value)) { ... }
-          fctx.switch(typeDataType) { () =>
+          instrs.switch(typeDataType) { () =>
             // scrutinee
             instrs += LOCAL_GET(valueParam)
             instrs += CALL(genFunctionName.jsValueType)
@@ -1152,7 +1151,7 @@ object HelperFunctions {
               instrs += LOCAL_GET(doubleValueLocal)
               instrs += I64_REINTERPRET_F64
               instrs += I64_EQ
-              fctx.ifThenElse(typeDataType) {
+              instrs.ifThenElse(typeDataType) {
                 // then it is a Byte, a Short, or an Integer
 
                 // if intValue.toByte.toInt == intValue
@@ -1160,7 +1159,7 @@ object HelperFunctions {
                 instrs += I32_EXTEND8_S
                 instrs += LOCAL_GET(intValueLocal)
                 instrs += I32_EQ
-                fctx.ifThenElse(typeDataType) {
+                instrs.ifThenElse(typeDataType) {
                   // then it is a Byte
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedByteClass)
                 } {
@@ -1169,7 +1168,7 @@ object HelperFunctions {
                   instrs += I32_EXTEND16_S
                   instrs += LOCAL_GET(intValueLocal)
                   instrs += I32_EQ
-                  fctx.ifThenElse(typeDataType) {
+                  instrs.ifThenElse(typeDataType) {
                     // then it is a Short
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedShortClass)
                   } {
@@ -1186,7 +1185,7 @@ object HelperFunctions {
                 instrs += F64_PROMOTE_F32
                 instrs += LOCAL_GET(doubleValueLocal)
                 instrs += F64_EQ
-                fctx.ifThenElse(typeDataType) {
+                instrs.ifThenElse(typeDataType) {
                   // then it is a Float
                   instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
                 } {
@@ -1194,7 +1193,7 @@ object HelperFunctions {
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += LOCAL_GET(doubleValueLocal)
                   instrs += F64_NE
-                  fctx.ifThenElse(typeDataType) {
+                  instrs.ifThenElse(typeDataType) {
                     // then it is a Float
                     instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
                   } {
@@ -1224,12 +1223,12 @@ object HelperFunctions {
          */
         instrs += LOCAL_TEE(ourObjectLocal)
         instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.CharBoxClass)))
-        fctx.ifThenElse(typeDataType) {
+        instrs.ifThenElse(typeDataType) {
           instrs += getHijackedClassTypeDataInstr(IRNames.BoxedCharacterClass)
         } {
           instrs += LOCAL_GET(ourObjectLocal)
           instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.LongBoxClass)))
-          fctx.ifThenElse(typeDataType) {
+          instrs.ifThenElse(typeDataType) {
             instrs += getHijackedClassTypeDataInstr(IRNames.BoxedLongClass)
           } {
             instrs += LOCAL_GET(ourObjectLocal)
@@ -1338,7 +1337,7 @@ object HelperFunctions {
       List(arrayTypeDataType, itablesType, WasmInt32),
       List(nonNullObjectType)
     )
-    fctx.switch(switchClauseSig) { () =>
+    instrs.switch(switchClauseSig) { () =>
       // scrutinee
       instrs += LOCAL_GET(arrayTypeDataParam)
       instrs += STRUCT_GET(
@@ -1381,7 +1380,7 @@ object HelperFunctions {
       instrs += LOCAL_GET(lengthsParam)
       instrs += ARRAY_LEN
       instrs += I32_NE
-      fctx.ifThen() {
+      instrs.ifThen() {
         // then, recursively initialize all the elements
 
         // arrayComponentTypeData := ref_cast<arrayTypeDataType> arrayTypeData.componentTypeData
@@ -1398,7 +1397,7 @@ object HelperFunctions {
         instrs += LOCAL_SET(iLocal)
 
         // while (i != len)
-        fctx.whileLoop() {
+        instrs.whileLoop() {
           instrs += LOCAL_GET(iLocal)
           instrs += LOCAL_GET(lenLocal)
           instrs += I32_NE
@@ -1470,7 +1469,7 @@ object HelperFunctions {
     val resultLocal = fctx.addLocal("result", WasmInt32)
 
     // If `obj` is `null`, return 0 (by spec)
-    fctx.block(WasmRefType.any) { nonNullLabel =>
+    instrs.block(WasmRefType.any) { nonNullLabel =>
       instrs += LOCAL_GET(objParam)
       instrs += BR_ON_NON_NULL(nonNullLabel)
       instrs += I32_CONST(0)
@@ -1481,8 +1480,8 @@ object HelperFunctions {
     // If `obj` is one of our objects, skip all the jsValueType tests
     instrs += REF_TEST(WasmRefType(WasmHeapType.ObjectType))
     instrs += I32_EQZ
-    fctx.ifThen() {
-      fctx.switch() { () =>
+    instrs.ifThen() {
+      instrs.switch() { () =>
         instrs += LOCAL_GET(objNonNullLocal)
         instrs += CALL(genFunctionName.jsValueType)
       }(
@@ -1519,7 +1518,7 @@ object HelperFunctions {
           instrs += RETURN
         },
         List(JSValueTypeSymbol) -> { () =>
-          fctx.block() { descriptionIsNullLabel =>
+          instrs.block() { descriptionIsNullLabel =>
             instrs += LOCAL_GET(objNonNullLocal)
             instrs += CALL(genFunctionName.symbolDescription)
             instrs += BR_ON_NULL(descriptionIsNullLabel)
@@ -1547,7 +1546,7 @@ object HelperFunctions {
 
     // If it is 0, there was no recorded idHashCode yet; allocate a new one
     instrs += I32_EQZ
-    fctx.ifThen() {
+    instrs.ifThen() {
       // Allocate a new idHashCode
       instrs += GLOBAL_GET(genGlobalName.lastIDHashCode)
       instrs += I32_CONST(1)
@@ -1607,7 +1606,7 @@ object HelperFunctions {
     instrs += I32_CONST(0)
     instrs += LOCAL_SET(i)
 
-    fctx.whileLoop() {
+    instrs.whileLoop() {
       instrs += LOCAL_GET(i)
       instrs += LOCAL_GET(size)
       instrs += I32_NE
@@ -1623,7 +1622,7 @@ object HelperFunctions {
       instrs += LOCAL_GET(methodIdParam)
       instrs += I32_EQ
 
-      fctx.ifThen() {
+      instrs.ifThen() {
         instrs += LOCAL_GET(reflectiveProxies)
         instrs += LOCAL_GET(i)
         instrs += ARRAY_GET(genTypeName.reflectiveProxies)
@@ -1685,7 +1684,7 @@ object HelperFunctions {
     val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
 
     val itableIdx = ctx.getItableIdx(classInfo)
-    fctx.block(WasmRefType.anyref) { testFail =>
+    instrs.block(WasmRefType.anyref) { testFail =>
       // if expr is not an instance of Object, return false
       instrs += LOCAL_GET(exprParam)
       instrs += BR_ON_CAST_FAIL(
@@ -1728,7 +1727,7 @@ object HelperFunctions {
       val anyRefToVoidSig =
         WasmFunctionSignature(List(WasmRefType.anyref), Nil)
 
-      fctx.block(anyRefToVoidSig) { isNullLabel =>
+      instrs.block(anyRefToVoidSig) { isNullLabel =>
         // exprNonNull := expr; branch to isNullLabel if it is null
         instrs += BR_ON_NULL(isNullLabel)
         instrs += LOCAL_SET(exprNonNullLocal)
