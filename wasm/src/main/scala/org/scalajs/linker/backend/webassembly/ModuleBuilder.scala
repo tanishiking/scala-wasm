@@ -1,8 +1,8 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
-import wasm.wasm4s.Names._
+import Names._
 
 final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionSignatureProvider) {
   import ModuleBuilder._

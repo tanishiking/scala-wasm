@@ -1,6 +1,4 @@
-package wasm.wasm4s
-
-import scala.collection.mutable
+package org.scalajs.linker.backend.webassembly
 
 import org.scalajs.ir.Position
 

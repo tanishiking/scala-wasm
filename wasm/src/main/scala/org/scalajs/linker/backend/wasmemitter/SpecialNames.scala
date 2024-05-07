@@ -1,4 +1,4 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.Names._
 import org.scalajs.ir.Types._

@@ -1,16 +1,17 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{ClassKind, Position}
+
 import org.scalajs.linker.standard.LinkedClass
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Names.WasmTypeName._
-import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmInstr._
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Names.WasmTypeName._
+import org.scalajs.linker.backend.webassembly.Types._
+import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 import EmbeddedConstants._
 import VarGen._

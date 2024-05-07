@@ -7,10 +7,9 @@ import scala.scalajs.js.annotation._
 
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 
-import wasm.WebAssemblyLinkerImpl
-
 import org.scalajs.linker._
 import org.scalajs.linker.interface._
+import org.scalajs.linker.standard.WebAssemblyLinkerImpl
 
 import org.scalajs.logging._
 

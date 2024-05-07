@@ -1,4 +1,4 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 object EmbeddedConstants {
   /* Values returned by the `jsValueType` helper.

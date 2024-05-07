@@ -1,11 +1,6 @@
-package wasm
-package ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
-import wasm4s._
-import wasm4s.Names._
-import wasm4s.Names.WasmTypeName._
-import wasm4s.Types._
-import wasm4s.WasmInstr._
+import scala.collection.mutable
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
@@ -15,7 +10,11 @@ import org.scalajs.ir.{ClassKind, Position}
 import org.scalajs.linker.interface.unstable.RuntimeClassNameMapperImpl
 import org.scalajs.linker.standard.{CoreSpec, LinkedClass, LinkedTopLevelExport}
 
-import collection.mutable
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Names.WasmTypeName._
+import org.scalajs.linker.backend.webassembly.Types._
+import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 import EmbeddedConstants._
 import VarGen._

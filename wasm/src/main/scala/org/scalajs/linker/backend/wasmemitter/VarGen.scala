@@ -1,10 +1,10 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.Names._
 import org.scalajs.ir.Trees.{JSUnaryOp, JSBinaryOp, MemberNamespace}
 import org.scalajs.ir.Types._
 
-import wasm.wasm4s.Names._
+import org.scalajs.linker.backend.webassembly.Names._
 
 /** Manages name generation for non-local, generated variable names. */
 object VarGen {

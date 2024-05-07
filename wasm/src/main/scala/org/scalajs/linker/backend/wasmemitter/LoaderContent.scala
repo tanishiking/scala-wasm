@@ -1,4 +1,4 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import java.nio.charset.StandardCharsets
 

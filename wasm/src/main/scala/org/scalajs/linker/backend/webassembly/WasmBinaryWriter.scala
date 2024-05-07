@@ -1,18 +1,13 @@
-package wasm
-package converters
+package org.scalajs.linker.backend.webassembly
 
 import scala.annotation.tailrec
-
-import java.io.OutputStream
-import java.io.ByteArrayOutputStream
 
 import org.scalajs.ir.Position
 import org.scalajs.linker.backend.javascript.SourceMapWriter
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmInstr.{BlockType, END}
+import Names._
+import Types._
+import WasmInstr.{BlockType, END}
 
 class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._

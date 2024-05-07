@@ -1,21 +1,20 @@
-package wasm
-package ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import scala.annotation.switch
 
 import scala.collection.mutable
 
+import org.scalajs.ir.Types.ClassType
+import org.scalajs.ir.ClassKind
+import org.scalajs.ir.Position
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 
-import wasm4s._
-import wasm4s.Names._
-import wasm4s.Names.WasmTypeName._
-import wasm4s.WasmInstr._
-import org.scalajs.ir.Types.ClassType
-import org.scalajs.ir.ClassKind
-import org.scalajs.ir.Position
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.WasmInstr._
+import org.scalajs.linker.backend.webassembly.{WasmFunctionSignature => Sig}
 
 import EmbeddedConstants._
 import VarGen._
@@ -582,7 +581,6 @@ private class WasmExpressionBuilder private (
           instrs += CALL(genFunctionName.jsValueType)
           instrs += LOCAL_TEE(jsValueTypeLocal)
 
-          import wasm.wasm4s.{WasmFunctionSignature => Sig}
           instrs.switch(Sig(List(Types.WasmInt32), Nil), Sig(Nil, List(Types.WasmInt32))) { () =>
             // scrutinee is already on the stack
           }(
@@ -1468,8 +1466,7 @@ private class WasmExpressionBuilder private (
             /* Non-Object reference arra types need a sophisticated type test
              * based on assignability of component types.
              */
-            import wasm.wasm4s.{WasmFunctionSignature => Sig}
-            import wasm.wasm4s.Types.WasmRefType.anyref
+            import Types.WasmRefType.anyref
 
             instrs.block(Sig(List(anyref), List(Types.WasmInt32))) { doneLabel =>
               instrs.block(Sig(List(anyref), List(anyref))) { notARefArrayLabel =>
@@ -1597,7 +1594,6 @@ private class WasmExpressionBuilder private (
         targetTpe match {
           case IRTypes.CharType | IRTypes.LongType =>
             // Extract the `value` field (the only field) out of the box class.
-            import wasm.wasm4s.{WasmFunctionSignature => Sig}
 
             val boxClass =
               if (targetTpe == IRTypes.CharType) SpecialNames.CharBoxClass

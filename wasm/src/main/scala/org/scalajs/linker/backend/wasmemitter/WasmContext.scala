@@ -1,26 +1,25 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import scala.annotation.tailrec
 
 import scala.collection.mutable
 import scala.collection.mutable.LinkedHashMap
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Names.WasmTypeName._
-import wasm.wasm4s.Types._
-
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{ClassKind, Position}
 
-import VarGen._
-
 import org.scalajs.linker.interface.ModuleInitializer
 import org.scalajs.linker.interface.unstable.ModuleInitializerImpl
 import org.scalajs.linker.standard.LinkedTopLevelExport
 import org.scalajs.linker.standard.LinkedClass
+
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Types._
+
+import VarGen._
 
 abstract class ReadOnlyWasmContext {
   import WasmContext._

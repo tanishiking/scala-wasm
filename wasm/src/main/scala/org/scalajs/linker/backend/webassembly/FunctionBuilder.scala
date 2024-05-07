@@ -1,13 +1,13 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.Position
 
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmInstr._
+import Names._
+import Types.WasmType
+import WasmInstr._
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,

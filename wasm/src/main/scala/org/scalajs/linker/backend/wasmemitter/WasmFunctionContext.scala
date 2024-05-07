@@ -1,4 +1,4 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import scala.collection.mutable
 
@@ -7,10 +7,10 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.Position
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Types.WasmType
-import wasm.wasm4s.WasmInstr._
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Types.WasmType
+import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 class WasmFunctionContext private (
     ctx: TypeDefinableWasmContext,

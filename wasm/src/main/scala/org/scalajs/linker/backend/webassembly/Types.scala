@@ -1,6 +1,5 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 
-import org.scalajs.ir.{Names => IRNames}
 import Names._
 import Names.WasmTypeName._
 

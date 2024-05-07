@@ -1,4 +1,4 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 
 object Names {
   sealed abstract class WasmName {

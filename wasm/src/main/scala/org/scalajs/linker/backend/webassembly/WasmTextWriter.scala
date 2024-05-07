@@ -1,10 +1,8 @@
-package wasm
-package converters
+package org.scalajs.linker.backend.webassembly
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmInstr._
+import Names._
+import Types._
+import WasmInstr._
 
 class WasmTextWriter {
   import WasmTextWriter._

@@ -1,4 +1,4 @@
-package wasm
+package org.scalajs.linker.backend
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -10,16 +10,14 @@ import org.scalajs.ir.Names._
 import org.scalajs.logging.Logger
 
 import org.scalajs.linker._
-import org.scalajs.linker.backend.javascript.SourceMapWriter
 import org.scalajs.linker.interface._
 import org.scalajs.linker.interface.unstable._
 import org.scalajs.linker.standard._
 
-import org.scalajs.linker.backend.webassembly.SourceMapWriterAccess
+import org.scalajs.linker.backend.webassembly._
 
-import wasm.ir2wasm._
-import wasm.ir2wasm.SpecialNames._
-import wasm.wasm4s._
+import org.scalajs.linker.backend.wasmemitter._
+import org.scalajs.linker.backend.wasmemitter.SpecialNames._
 
 final class WebAssemblyLinkerBackend(
     linkerConfig: StandardConfig,
@@ -133,7 +131,7 @@ final class WebAssemblyLinkerBackend(
 
     def maybeWriteWatFile(): Future[Unit] = {
       if (linkerConfig.prettyPrint) {
-        val textOutput = new converters.WasmTextWriter().write(wasmModule)
+        val textOutput = new WasmTextWriter().write(wasmModule)
         val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
         outputImpl.writeFull(watFileName, ByteBuffer.wrap(textOutputBytes))
       } else {
@@ -152,7 +150,7 @@ final class WebAssemblyLinkerBackend(
 
         val smWriter =
           sourceMapWriter.createSourceMapWriter(wasmFileURI, linkerConfig.relativizeSourceMapBase)
-        val binaryOutput = new converters.WasmBinaryWriter.WithSourceMap(
+        val binaryOutput = new WasmBinaryWriter.WithSourceMap(
           wasmModule,
           emitDebugInfo,
           smWriter,
@@ -164,7 +162,7 @@ final class WebAssemblyLinkerBackend(
           outputImpl.writeFull(sourceMapFileName, sourceMapWriter.toByteBuffer())
         }
       } else {
-        val binaryOutput = new converters.WasmBinaryWriter(wasmModule, emitDebugInfo).write()
+        val binaryOutput = new WasmBinaryWriter(wasmModule, emitDebugInfo).write()
         outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
       }
     }

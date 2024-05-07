@@ -1,8 +1,9 @@
-package wasm
+package org.scalajs.linker.standard
 
 import org.scalajs.linker._
 import org.scalajs.linker.interface._
-import org.scalajs.linker.standard._
+
+import org.scalajs.linker.backend.WebAssemblyLinkerBackend
 
 object WebAssemblyLinkerImpl {
   def linker(config: StandardConfig): Linker = {
