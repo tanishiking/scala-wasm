@@ -28,7 +28,10 @@ object Preprocessor {
 
     for (clazz <- classes) {
       ctx.getClassInfo(clazz.className).buildMethodTable()
+    }
+    ctx.assignBuckets(classes)
 
+    for (clazz <- classes) {
       if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
         HelperFunctions.genInstanceTest(clazz)
       HelperFunctions.genCloneFunction(clazz)
@@ -101,7 +104,8 @@ object Preprocessor {
         !clazz.hasDirectInstances,
         hasRuntimeTypeInfo,
         clazz.jsNativeLoadSpec,
-        clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap
+        clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap,
+        _itableIdx = -1
       )
     )
 
