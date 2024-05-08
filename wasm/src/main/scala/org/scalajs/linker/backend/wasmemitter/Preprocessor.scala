@@ -30,12 +30,6 @@ object Preprocessor {
       ctx.getClassInfo(clazz.className).buildMethodTable()
     }
     ctx.assignBuckets(classes)
-
-    for (clazz <- classes) {
-      if (clazz.kind == ClassKind.Interface && clazz.hasInstanceTests)
-        HelperFunctions.genInstanceTest(clazz)
-      HelperFunctions.genCloneFunction(clazz)
-    }
   }
 
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
