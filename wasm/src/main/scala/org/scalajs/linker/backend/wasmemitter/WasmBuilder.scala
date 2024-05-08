@@ -151,7 +151,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
       val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
       ctx.mainRecType.addSubType(subType)
 
-      HelperFunctions.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
+      CoreWasmLib.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
     }
 
     genArrayClassItable()

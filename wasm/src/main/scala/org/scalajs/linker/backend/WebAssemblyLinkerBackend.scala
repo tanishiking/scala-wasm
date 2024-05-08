@@ -87,7 +87,7 @@ final class WebAssemblyLinkerBackend(
     // sortedClasses.foreach(cls => println(utils.LinkedClassPrinters.showLinkedClass(cls)))
 
     Preprocessor.preprocess(sortedClasses, onlyModule.topLevelExports)(context)
-    HelperFunctions.genGlobalHelpers()
+    CoreWasmLib.genGlobalHelpers()
     builder.genPrimitiveTypeDataGlobals()
     sortedClasses.foreach { clazz =>
       builder.transformClassDef(clazz)

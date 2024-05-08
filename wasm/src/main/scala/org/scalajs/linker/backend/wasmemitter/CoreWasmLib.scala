@@ -17,7 +17,7 @@ import EmbeddedConstants._
 import VarGen._
 import TypeTransformer._
 
-object HelperFunctions {
+object CoreWasmLib {
   private implicit val noPos: Position = Position.NoPosition
 
   def genGlobalHelpers()(implicit ctx: WasmContext): Unit = {
