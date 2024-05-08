@@ -1,10 +1,8 @@
-package wasm
-package converters
+package org.scalajs.linker.backend.webassembly
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
-import wasm.wasm4s.Types._
-import wasm.wasm4s.WasmInstr._
+import Names._
+import Types._
+import WasmInstr._
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -18,15 +16,15 @@ class WasmTextWriter {
   private def writeModule(module: WasmModule)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "module", {
-        module.recTypes.foreach(writeRecType)
+        module.types.foreach(writeRecType)
         module.imports.foreach(writeImport)
-        module.definedFunctions.foreach(writeFunction)
+        module.funcs.foreach(writeFunction)
         module.tags.foreach(writeTag)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
-        module.startFunction.foreach(writeStart)
-        module.elements.foreach(writeElement)
-        module.data.foreach(writeData)
+        module.start.foreach(writeStart)
+        module.elems.foreach(writeElement)
+        module.datas.foreach(writeData)
       }
     )
   }
@@ -67,17 +65,21 @@ class WasmTextWriter {
   }
 
   private def writeCompositeType(t: WasmCompositeType)(implicit b: WatBuilder): Unit = {
+    def writeFieldType(fieldType: WasmFieldType): Unit = {
+      if (fieldType.isMutable)
+        b.sameLineList(
+          "mut", {
+            writeType(fieldType.typ)
+          }
+        )
+      else writeType(fieldType.typ)
+    }
+
     def writeField(field: WasmStructField): Unit = {
       b.sameLineList(
         "field", {
           b.appendName(field.name)
-          if (field.isMutable)
-            b.sameLineList(
-              "mut", {
-                writeType(field.typ)
-              }
-            )
-          else writeType(field.typ)
+          writeFieldType(field.fieldType)
         }
       )
     }
@@ -95,16 +97,10 @@ class WasmTextWriter {
           }
         )
 
-      case WasmArrayType(field) =>
+      case WasmArrayType(fieldType) =>
         b.sameLineList(
           "array", {
-            if (field.isMutable)
-              b.sameLineList(
-                "mut", {
-                  writeType(field.typ)
-                }
-              )
-            else writeType(field.typ)
+            writeFieldType(fieldType)
           }
         )
 

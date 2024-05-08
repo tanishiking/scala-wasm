@@ -1,18 +1,18 @@
-package wasm.ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import scala.concurrent.{ExecutionContext, Future}
 
 import org.scalajs.ir.ClassKind._
 import org.scalajs.ir.Names._
+import org.scalajs.ir.OriginalName
+import org.scalajs.ir.OriginalName.NoOriginalName
 import org.scalajs.ir.Position
 import org.scalajs.ir.Trees._
 import org.scalajs.ir.Types._
+import org.scalajs.ir.{EntryPointsInfo, Version}
 
 import org.scalajs.linker.interface.IRFile
 import org.scalajs.linker.interface.unstable.IRFileImpl
-
-import wasm.utils.TestIRBuilder._
-import wasm.utils.MemClassDefIRFile
 
 /** Patches that we apply to the standard library classes to make them wasm-friendly. */
 object LibraryPatches {
@@ -23,7 +23,7 @@ object LibraryPatches {
         entryPointsInfo.className match {
           case BoxedCharacterClass | BoxedLongClass =>
             irFileImpl.tree.map { classDef =>
-              Some(MemClassDefIRFile(deriveBoxClass(classDef)))
+              Some(new MemClassDefIRFile(deriveBoxClass(classDef)))
             }
           case _ =>
             Future.successful(None)
@@ -41,11 +41,44 @@ object LibraryPatches {
     }
   }
 
+  private val EAF = ApplyFlags.empty
+  private val EMF = MemberFlags.empty
+  private val EOH = OptimizerHints.empty
+  private val NON = NoOriginalName
+  private val NOV = Version.Unversioned
+
+  private def trivialCtor(enclosingClassName: ClassName)(implicit pos: Position): MethodDef = {
+    val flags = MemberFlags.empty.withNamespace(MemberNamespace.Constructor)
+    MethodDef(
+      flags,
+      MethodIdent(NoArgConstructorName),
+      NON,
+      Nil,
+      NoType,
+      Some(
+        ApplyStatically(
+          EAF.withConstructor(true),
+          This()(ClassType(enclosingClassName)),
+          ObjectClass,
+          MethodIdent(NoArgConstructorName),
+          Nil
+        )(NoType)
+      )
+    )(EOH, NOV)
+  }
+
   private val StackTraceIRFile: IRFile = {
-    val arrayOfSTERef = ArrayTypeRef(ClassRef("java.lang.StackTraceElement"), 1)
+    implicit val noPosition: Position = Position.NoPosition
+
+    val StackTraceModuleClass = ClassName("java.lang.StackTrace$")
+    val StackTraceElementClass = ClassName("java.lang.StackTraceElement")
+
+    val arrayOfSTERef = ArrayTypeRef(ClassRef(StackTraceElementClass), 1)
+
+    val O = ClassRef(ObjectClass)
 
     val classDef = ClassDef(
-      ClassIdent("java.lang.StackTrace$"),
+      ClassIdent(StackTraceModuleClass),
       NON,
       ModuleClass,
       None,
@@ -55,12 +88,14 @@ object LibraryPatches {
       None,
       Nil,
       List(
-        trivialCtor("java.lang.StackTrace$"),
+        trivialCtor(StackTraceModuleClass),
         MethodDef(
           EMF,
-          MethodIdent(m("captureJSError", List(ClassRef(ThrowableClass)), O)),
+          MethodIdent(MethodName("captureJSError", List(ClassRef(ThrowableClass)), O)),
           NON,
-          List(paramDef("throwable", ClassType(ThrowableClass))),
+          List(
+            ParamDef(LocalIdent(LocalName("th")), NON, ClassType(ThrowableClass), mutable = false)
+          ),
           AnyType,
           Some(
             JSNew(JSGlobalRef("Error"), Nil)
@@ -68,9 +103,9 @@ object LibraryPatches {
         )(EOH.withInline(true), NOV),
         MethodDef(
           EMF,
-          MethodIdent(m("extract", List(O), arrayOfSTERef)),
+          MethodIdent(MethodName("extract", List(O), arrayOfSTERef)),
           NON,
-          List(paramDef("jsError", AnyType)),
+          List(ParamDef(LocalIdent(LocalName("jsError")), NON, AnyType, mutable = false)),
           ArrayType(arrayOfSTERef),
           Some(
             ArrayValue(arrayOfSTERef, Nil)
@@ -78,7 +113,7 @@ object LibraryPatches {
         )(EOH.withInline(true), NOV),
         MethodDef(
           EMF,
-          MethodIdent(m("getCurrentStackTrace", Nil, arrayOfSTERef)),
+          MethodIdent(MethodName("getCurrentStackTrace", Nil, arrayOfSTERef)),
           NON,
           Nil,
           ArrayType(arrayOfSTERef),
@@ -93,7 +128,7 @@ object LibraryPatches {
       Nil
     )(EOH)
 
-    MemClassDefIRFile(classDef)
+    new MemClassDefIRFile(classDef)
   }
 
   /** Generates the accompanying Box class of `Character` or `Long`.
@@ -131,6 +166,8 @@ object LibraryPatches {
     * }}}
     */
   private def deriveBoxClass(classDef: ClassDef): ClassDef = {
+    implicit val pos: Position = classDef.pos
+
     val className = classDef.className
     val derivedClassName = className.withSuffix("Box")
     val primType = BoxedClassToPrimType(className).asInstanceOf[PrimTypeWithRef]
@@ -198,5 +235,19 @@ object LibraryPatches {
         Nil
       )(EOH)
     }
+  }
+
+  /** An in-memory IRFile for a ClassDef.
+    *
+    * Adapted from Scala.js upstream.
+    */
+  private final class MemClassDefIRFile(classDef: ClassDef)
+      extends IRFileImpl("mem://" + classDef.name.name + ".sjsir", Version.Unversioned) {
+
+    def tree(implicit ec: ExecutionContext): Future[ClassDef] =
+      Future(classDef)
+
+    def entryPointsInfo(implicit ec: ExecutionContext): Future[EntryPointsInfo] =
+      tree.map(EntryPointsInfo.forClassDef)
   }
 }

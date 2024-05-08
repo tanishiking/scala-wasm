@@ -1,6 +1,4 @@
-package wasm.ir2wasm
-
-import wasm.wasm4s._
+package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Types => IRTypes}
@@ -9,6 +7,8 @@ import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Traversers
 
 import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
+
+import org.scalajs.linker.backend.webassembly._
 
 import EmbeddedConstants._
 import WasmContext._

@@ -1,10 +1,7 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 
-import org.scalajs.ir.{Names => IRNames}
 import Names._
 import Names.WasmTypeName._
-
-import wasm.ir2wasm.SpecialNames
 
 object Types {
   sealed trait WasmStorageType
@@ -92,10 +89,5 @@ object Types {
 
     def apply(typ: WasmTypeName): WasmHeapType.Type =
       WasmHeapType.Type(typ)
-
-    val ObjectType = Type(WasmStructTypeName.forClass(IRNames.ObjectClass))
-    val ClassType = Type(WasmStructTypeName.forClass(IRNames.ClassClass))
-    val ThrowableType = Type(WasmStructTypeName.forClass(IRNames.ThrowableClass))
-    val JSExceptionType = Type(WasmStructTypeName.forClass(SpecialNames.JSExceptionClass))
   }
 }

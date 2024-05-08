@@ -1,4 +1,4 @@
-package wasm
+package org.scalajs.linker.standard
 
 import scala.concurrent._
 
@@ -8,9 +8,9 @@ import org.scalajs.logging.Logger
 
 import org.scalajs.linker.interface._
 import org.scalajs.linker.interface.unstable._
-import org.scalajs.linker.standard._
 
-import wasm.ir2wasm.LibraryPatches
+import org.scalajs.linker.backend.WebAssemblyLinkerBackend
+import org.scalajs.linker.backend.wasmemitter.LibraryPatches
 
 /** Standard implementation of a Scala.js WebAssembly linker.
   *

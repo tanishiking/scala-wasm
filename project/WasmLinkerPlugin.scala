@@ -19,7 +19,7 @@ object WasmLinkerPlugin extends AutoPlugin {
     private val loader = base.loader
 
     private val clearableLinkerMethod = {
-      Class.forName("wasm.WebAssemblyLinkerImpl", true, loader)
+      Class.forName("org.scalajs.linker.standard.WebAssemblyLinkerImpl", true, loader)
         .getMethod("clearableLinker", classOf[StandardConfig])
     }
 

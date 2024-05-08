@@ -1,4 +1,4 @@
-package wasm.wasm4s
+package org.scalajs.linker.backend.webassembly
 // https://webassembly.github.io/spec/core/syntax/instructions.html
 
 import org.scalajs.ir.Position

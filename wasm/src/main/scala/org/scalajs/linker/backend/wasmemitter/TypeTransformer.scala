@@ -1,13 +1,14 @@
-package wasm
-package ir2wasm
+package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.{Names => IRNames}
 
-import wasm.wasm4s._
-import wasm.wasm4s.Names._
+import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Names._
+
+import VarGen._
 
 object TypeTransformer {
 
@@ -40,9 +41,7 @@ object TypeTransformer {
       case IRTypes.AnyType => Types.WasmRefType.anyref
 
       case tpe: IRTypes.ArrayType =>
-        Types.WasmRefType.nullable(
-          Names.WasmTypeName.WasmStructTypeName.forArrayClass(tpe.arrayTypeRef)
-        )
+        Types.WasmRefType.nullable(genTypeName.forArrayClass(tpe.arrayTypeRef))
       case IRTypes.ClassType(className) => transformClassType(className)
       case IRTypes.RecordType(fields)   => ???
       case IRTypes.StringType | IRTypes.UndefType =>
@@ -57,9 +56,9 @@ object TypeTransformer {
     if (info.isAncestorOfHijackedClass)
       Types.WasmRefType.anyref
     else if (info.isInterface)
-      Types.WasmRefType.nullable(Types.WasmHeapType.ObjectType)
+      Types.WasmRefType.nullable(genTypeName.ObjectStruct)
     else
-      Types.WasmRefType.nullable(WasmTypeName.WasmStructTypeName.forClass(className))
+      Types.WasmRefType.nullable(genTypeName.forClass(className))
   }
 
   private def transformPrimType(
