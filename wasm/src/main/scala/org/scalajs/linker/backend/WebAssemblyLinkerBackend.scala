@@ -60,8 +60,6 @@ final class WebAssemblyLinkerBackend(
   def emit(moduleSet: ModuleSet, output: OutputDirectory, logger: Logger)(implicit
       ec: ExecutionContext
   ): Future[Report] = {
-
-    val builder = new WasmBuilder(coreSpec)
     implicit val context: WasmContext = new WasmContext()
 
     val onlyModule = moduleSet.modules match {
@@ -89,11 +87,12 @@ final class WebAssemblyLinkerBackend(
     Preprocessor.preprocess(sortedClasses, onlyModule.topLevelExports)(context)
 
     CoreWasmLib.genPreClasses()
+    val classEmitter = new ClassEmitter(coreSpec)
     sortedClasses.foreach { clazz =>
-      builder.transformClassDef(clazz)
+      classEmitter.transformClassDef(clazz)
     }
     onlyModule.topLevelExports.foreach { tle =>
-      builder.transformTopLevelExport(tle)
+      classEmitter.transformTopLevelExport(tle)
     }
     CoreWasmLib.genPostClasses()
 

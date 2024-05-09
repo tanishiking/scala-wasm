@@ -21,7 +21,7 @@ import VarGen._
 import TypeTransformer._
 import WasmContext._
 
-class WasmBuilder(coreSpec: CoreSpec) {
+class ClassEmitter(coreSpec: CoreSpec) {
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
