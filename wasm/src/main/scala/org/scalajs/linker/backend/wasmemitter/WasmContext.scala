@@ -211,7 +211,6 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
 
 final class WasmContext extends TypeDefinableWasmContext {
   import WasmContext._
-  import WasmRefType.anyref
 
   private val _importedModules: mutable.LinkedHashSet[String] =
     new mutable.LinkedHashSet()
@@ -248,7 +247,7 @@ final class WasmContext extends TypeDefinableWasmContext {
         WasmImport(
           "__scalaJSImports",
           moduleName,
-          WasmImportDesc.Global(name, anyref, isMutable = false)
+          WasmImportDesc.Global(name, WasmRefType.anyref, isMutable = false)
         )
       )
     }
@@ -265,44 +264,6 @@ final class WasmContext extends TypeDefinableWasmContext {
 
   def addJSPrivateFieldName(fieldName: IRNames.FieldName): Unit =
     _jsPrivateFieldNames += fieldName
-
-  private def addHelperImport(
-      name: WasmFunctionName,
-      params: List[WasmType],
-      results: List[WasmType]
-  ): Unit = {
-    val sig = WasmFunctionSignature(params, results)
-    val typeName = addFunctionType(sig)
-    moduleBuilder.addImport(
-      WasmImport("__scalaJSHelpers", name.name, WasmImportDesc.Func(name, typeName))
-    )
-  }
-
-  private def addGlobalHelperImport(
-      name: WasmGlobalName,
-      typ: WasmType,
-      isMutable: Boolean
-  ): Unit = {
-    moduleBuilder.addImport(
-      WasmImport(
-        "__scalaJSHelpers",
-        name.name,
-        WasmImportDesc.Global(name, typ, isMutable)
-      )
-    )
-  }
-
-  locally {
-    moduleBuilder.addRecType(genTypeName.i8Array, WasmArrayType(WasmFieldType(WasmInt8, true)))
-    moduleBuilder.addRecType(genTypeName.i16Array, WasmArrayType(WasmFieldType(WasmInt16, true)))
-    moduleBuilder.addRecType(genTypeName.i32Array, WasmArrayType(WasmFieldType(WasmInt32, true)))
-    moduleBuilder.addRecType(genTypeName.i64Array, WasmArrayType(WasmFieldType(WasmInt64, true)))
-    moduleBuilder.addRecType(genTypeName.f32Array, WasmArrayType(WasmFieldType(WasmFloat32, true)))
-    moduleBuilder.addRecType(genTypeName.f64Array, WasmArrayType(WasmFieldType(WasmFloat64, true)))
-    moduleBuilder.addRecType(genTypeName.anyArray, WasmArrayType(WasmFieldType(anyref, true)))
-
-    moduleBuilder.addRecTypeBuilder(mainRecType)
-  }
 
   val cloneFunctionTypeName: WasmTypeName =
     addFunctionTypeInMainRecType(
@@ -333,7 +294,7 @@ final class WasmContext extends TypeDefinableWasmContext {
       WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
       WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
       WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
-      WasmStructField(name, anyref, isMutable = true),
+      WasmStructField(name, WasmRefType.anyref, isMutable = true),
       WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
       WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
       WasmStructField(cloneFunction, nullable(cloneFunctionTypeName), isMutable = false),
@@ -349,230 +310,6 @@ final class WasmContext extends TypeDefinableWasmContext {
       )
     )
   }
-
-  locally {
-    mainRecType.addSubType(
-      genTypeName.typeDataArray,
-      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.typeData), isMutable = false))
-    )
-    mainRecType.addSubType(
-      genTypeName.itables,
-      WasmArrayType(WasmFieldType(WasmRefType.nullable(WasmHeapType.Struct), isMutable = true))
-    )
-    mainRecType.addSubType(
-      genTypeName.reflectiveProxies,
-      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.reflectiveProxy), isMutable = false))
-    )
-
-    mainRecType.addSubType(
-      WasmSubType(genTypeName.typeData, isFinal = false, None, WasmStructType(typeDataStructFields))
-    )
-
-    mainRecType.addSubType(
-      genTypeName.reflectiveProxy,
-      WasmStructType(
-        List(
-          WasmStructField(genFieldName.reflectiveProxy.func_name, WasmInt32, isMutable = false),
-          WasmStructField(
-            genFieldName.reflectiveProxy.func_ref,
-            WasmRefType(WasmHeapType.Func),
-            isMutable = false
-          )
-        )
-      )
-    )
-  }
-
-  locally {
-    val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
-    val typeName = addFunctionType(exceptionSig)
-    moduleBuilder.addImport(
-      WasmImport(
-        "__scalaJSHelpers",
-        "JSTag",
-        WasmImportDesc.Tag(genTagName.exceptionTagName, typeName)
-      )
-    )
-  }
-
-  addHelperImport(genFunctionName.is, List(anyref, anyref), List(WasmInt32))
-
-  addHelperImport(genFunctionName.undef, List(), List(WasmRefType.any))
-  addHelperImport(genFunctionName.isUndef, List(anyref), List(WasmInt32))
-
-  locally {
-    import IRTypes._
-    for (primRef <- List(BooleanRef, ByteRef, ShortRef, IntRef, FloatRef, DoubleRef)) {
-      val wasmType = primRef match {
-        case FloatRef  => WasmFloat32
-        case DoubleRef => WasmFloat64
-        case _         => WasmInt32
-      }
-      addHelperImport(genFunctionName.box(primRef), List(wasmType), List(anyref))
-      addHelperImport(genFunctionName.unbox(primRef), List(anyref), List(wasmType))
-      addHelperImport(genFunctionName.unboxOrNull(primRef), List(anyref), List(anyref))
-      addHelperImport(genFunctionName.typeTest(primRef), List(anyref), List(WasmInt32))
-    }
-  }
-
-  addHelperImport(genFunctionName.fmod, List(WasmFloat64, WasmFloat64), List(WasmFloat64))
-
-  addHelperImport(
-    genFunctionName.closure,
-    List(WasmRefType.func, anyref),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.closureThis,
-    List(WasmRefType.func, anyref),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.closureRest,
-    List(WasmRefType.func, anyref, WasmInt32),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.closureThisRest,
-    List(WasmRefType.func, anyref, WasmInt32),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.closureRestNoData,
-    List(WasmRefType.func, WasmInt32),
-    List(WasmRefType.any)
-  )
-
-  addHelperImport(genFunctionName.emptyString, List(), List(WasmRefType.any))
-  addHelperImport(genFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(genFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
-  addHelperImport(genFunctionName.jsValueToString, List(WasmRefType.any), List(WasmRefType.any))
-  addHelperImport(genFunctionName.jsValueToStringForConcat, List(anyref), List(WasmRefType.any))
-  addHelperImport(genFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(genFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(genFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
-  addHelperImport(genFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
-  addHelperImport(genFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
-  addHelperImport(
-    genFunctionName.stringConcat,
-    List(WasmRefType.any, WasmRefType.any),
-    List(WasmRefType.any)
-  )
-  addHelperImport(genFunctionName.isString, List(anyref), List(WasmInt32))
-
-  addHelperImport(genFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(genFunctionName.bigintHashCode, List(WasmRefType.any), List(WasmInt32))
-  addHelperImport(
-    genFunctionName.symbolDescription,
-    List(WasmRefType.any),
-    List(WasmRefType.anyref)
-  )
-  addHelperImport(
-    genFunctionName.idHashCodeGet,
-    List(WasmRefType.extern, WasmRefType.any),
-    List(WasmInt32)
-  )
-  addHelperImport(
-    genFunctionName.idHashCodeSet,
-    List(WasmRefType.extern, WasmRefType.any, WasmInt32),
-    Nil
-  )
-
-  addHelperImport(genFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
-  addHelperImport(genFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
-  addHelperImport(genFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
-  addHelperImport(genFunctionName.jsNewArray, Nil, List(anyref))
-  addHelperImport(genFunctionName.jsArrayPush, List(anyref, anyref), List(anyref))
-  addHelperImport(
-    genFunctionName.jsArraySpreadPush,
-    List(anyref, anyref),
-    List(anyref)
-  )
-  addHelperImport(genFunctionName.jsNewObject, Nil, List(anyref))
-  addHelperImport(
-    genFunctionName.jsObjectPush,
-    List(anyref, anyref, anyref),
-    List(anyref)
-  )
-  addHelperImport(genFunctionName.jsSelect, List(anyref, anyref), List(anyref))
-  addHelperImport(genFunctionName.jsSelectSet, List(anyref, anyref, anyref), Nil)
-  addHelperImport(genFunctionName.jsNew, List(anyref, anyref), List(anyref))
-  addHelperImport(genFunctionName.jsFunctionApply, List(anyref, anyref), List(anyref))
-  addHelperImport(
-    genFunctionName.jsMethodApply,
-    List(anyref, anyref, anyref),
-    List(anyref)
-  )
-  addHelperImport(genFunctionName.jsImportCall, List(anyref), List(anyref))
-  addHelperImport(genFunctionName.jsImportMeta, Nil, List(anyref))
-  addHelperImport(genFunctionName.jsDelete, List(anyref, anyref), Nil)
-  addHelperImport(genFunctionName.jsForInSimple, List(anyref, anyref), Nil)
-  addHelperImport(genFunctionName.jsIsTruthy, List(anyref), List(WasmInt32))
-  addHelperImport(genFunctionName.jsLinkingInfo, Nil, List(anyref))
-
-  for ((op, name) <- genFunctionName.jsUnaryOps)
-    addHelperImport(name, List(anyref), List(anyref))
-
-  for ((op, name) <- genFunctionName.jsBinaryOps) {
-    val resultType =
-      if (op == IRTrees.JSBinaryOp.=== || op == IRTrees.JSBinaryOp.!==) WasmInt32
-      else anyref
-    addHelperImport(name, List(anyref, anyref), List(resultType))
-  }
-
-  addHelperImport(genFunctionName.newSymbol, Nil, List(anyref))
-  addHelperImport(
-    genFunctionName.createJSClass,
-    List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.createJSClassRest,
-    List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
-    List(WasmRefType.any)
-  )
-  addHelperImport(
-    genFunctionName.installJSField,
-    List(anyref, anyref, anyref),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.installJSMethod,
-    List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.installJSStaticMethod,
-    List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.installJSProperty,
-    List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.installJSStaticProperty,
-    List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.jsSuperGet,
-    List(anyref, anyref, anyref),
-    List(anyref)
-  )
-  addHelperImport(
-    genFunctionName.jsSuperSet,
-    List(anyref, anyref, anyref, anyref),
-    Nil
-  )
-  addHelperImport(
-    genFunctionName.jsSuperCall,
-    List(anyref, anyref, anyref, anyref),
-    List(anyref)
-  )
-
-  addGlobalHelperImport(genGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
 
   def complete(
       moduleInitializers: List[ModuleInitializer.Initializer],

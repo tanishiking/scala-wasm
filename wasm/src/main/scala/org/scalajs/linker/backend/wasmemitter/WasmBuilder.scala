@@ -22,32 +22,6 @@ import TypeTransformer._
 import WasmContext._
 
 class WasmBuilder(coreSpec: CoreSpec) {
-  // val module = new WasmModule()
-
-  def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
-    import genFieldName.typeData._
-
-    val primRefsWithTypeData = List(
-      IRTypes.VoidRef -> KindVoid,
-      IRTypes.BooleanRef -> KindBoolean,
-      IRTypes.CharRef -> KindChar,
-      IRTypes.ByteRef -> KindByte,
-      IRTypes.ShortRef -> KindShort,
-      IRTypes.IntRef -> KindInt,
-      IRTypes.LongRef -> KindLong,
-      IRTypes.FloatRef -> KindFloat,
-      IRTypes.DoubleRef -> KindDouble
-    )
-
-    for ((primRef, kind) <- primRefsWithTypeData) {
-      val typeDataFieldValues =
-        genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, None, Nil)
-      val typeDataGlobal =
-        genTypeDataGlobal(primRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(typeDataGlobal)
-    }
-  }
-
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
@@ -106,55 +80,6 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case NoType | NothingType | StringType | UndefType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for static variable: ${tpe.show()}")
     }
-  }
-
-  def genArrayClasses()(implicit ctx: WasmContext): Unit = {
-    // The vtable type is always the same as j.l.Object
-    val vtableTypeName = genTypeName.ObjectVTable
-    val vtableField = WasmStructField(
-      genFieldName.objStruct.vtable,
-      WasmRefType(vtableTypeName),
-      isMutable = false
-    )
-    val itablesField = WasmStructField(
-      genFieldName.objStruct.itables,
-      WasmRefType.nullable(genTypeName.itables),
-      isMutable = false
-    )
-
-    val objectRef = IRTypes.ClassRef(IRNames.ObjectClass)
-
-    val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmTypeName, WasmTypeName)] =
-      List(
-        (IRTypes.BooleanRef, genTypeName.BooleanArray, genTypeName.i8Array),
-        (IRTypes.CharRef, genTypeName.CharArray, genTypeName.i16Array),
-        (IRTypes.ByteRef, genTypeName.ByteArray, genTypeName.i8Array),
-        (IRTypes.ShortRef, genTypeName.ShortArray, genTypeName.i16Array),
-        (IRTypes.IntRef, genTypeName.IntArray, genTypeName.i32Array),
-        (IRTypes.LongRef, genTypeName.LongArray, genTypeName.i64Array),
-        (IRTypes.FloatRef, genTypeName.FloatArray, genTypeName.f32Array),
-        (IRTypes.DoubleRef, genTypeName.DoubleArray, genTypeName.f64Array),
-        (objectRef, genTypeName.ObjectArray, genTypeName.anyArray)
-      )
-
-    for ((baseRef, structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
-      val underlyingArrayField = WasmStructField(
-        genFieldName.objStruct.arrayUnderlying,
-        WasmRefType(underlyingArrayTypeName),
-        isMutable = false
-      )
-
-      val superType = genTypeName.forClass(IRNames.ObjectClass)
-      val structType = WasmStructType(
-        List(vtableField, itablesField, underlyingArrayField)
-      )
-      val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
-      ctx.mainRecType.addSubType(subType)
-
-      CoreWasmLib.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
-    }
-
-    genArrayClassItable()
   }
 
   def transformTopLevelExport(

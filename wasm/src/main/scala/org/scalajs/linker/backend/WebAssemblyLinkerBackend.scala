@@ -87,16 +87,15 @@ final class WebAssemblyLinkerBackend(
     // sortedClasses.foreach(cls => println(utils.LinkedClassPrinters.showLinkedClass(cls)))
 
     Preprocessor.preprocess(sortedClasses, onlyModule.topLevelExports)(context)
-    CoreWasmLib.genGlobalHelpers()
-    builder.genPrimitiveTypeDataGlobals()
+
+    CoreWasmLib.genPreClasses()
     sortedClasses.foreach { clazz =>
       builder.transformClassDef(clazz)
     }
-    // Array classes extend j.l.Object, so they must come after transformClassDef's
-    builder.genArrayClasses()
     onlyModule.topLevelExports.foreach { tle =>
       builder.transformTopLevelExport(tle)
     }
+    CoreWasmLib.genPostClasses()
 
     val classesWithStaticInit =
       sortedClasses.filter(_.hasStaticInitializer).map(_.className)
