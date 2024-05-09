@@ -5,8 +5,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 
-import org.scalajs.ir.Names._
-
 import org.scalajs.logging.Logger
 
 import org.scalajs.linker._
@@ -16,8 +14,7 @@ import org.scalajs.linker.standard._
 
 import org.scalajs.linker.backend.webassembly._
 
-import org.scalajs.linker.backend.wasmemitter._
-import org.scalajs.linker.backend.wasmemitter.SpecialNames._
+import org.scalajs.linker.backend.wasmemitter.Emitter
 
 final class WebAssemblyLinkerBackend(
     linkerConfig: StandardConfig,
@@ -32,36 +29,18 @@ final class WebAssemblyLinkerBackend(
     "The WebAssembly backend does not support the optimizer yet."
   )
 
-  /* The symbol requirements of our back-end.
-   * The symbol requirements tell the LinkerFrontend that we need these
-   * symbols to always be reachable, even if no "user-land" IR requires them.
-   * They are roots for the reachability analysis, together with module
-   * initializers and top-level exports.
-   * If we don't do this, the linker frontend will dead-code eliminate our
-   * box classes.
-   */
-  val symbolRequirements: SymbolRequirement = {
-    val factory = SymbolRequirement.factory("wasm")
+  val loaderJSFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, "__loader")
 
-    factory.multiple(
-      factory.instantiateClass(ClassClass, ClassCtor),
-      factory.instantiateClass(CharBoxClass, CharBoxCtor),
-      factory.instantiateClass(LongBoxClass, LongBoxCtor),
+  private val emitter: Emitter =
+    new Emitter(Emitter.Config(coreSpec, loaderJSFileName))
 
-      // See genIdentityHashCode in HelperFunctions
-      factory.callMethodStatically(BoxedDoubleClass, hashCodeMethodName),
-      factory.callMethodStatically(BoxedStringClass, hashCodeMethodName)
-    )
-  }
+  val symbolRequirements: SymbolRequirement = emitter.symbolRequirements
 
-  // Our injected IR files are handled by WebAssemblyStandardLinkerImpl instead
-  def injectedIRFiles: Seq[IRFile] = Nil
+  def injectedIRFiles: Seq[IRFile] = emitter.injectedIRFiles
 
   def emit(moduleSet: ModuleSet, output: OutputDirectory, logger: Logger)(implicit
       ec: ExecutionContext
   ): Future[Report] = {
-    implicit val context: WasmContext = new WasmContext()
-
     val onlyModule = moduleSet.modules match {
       case onlyModule :: Nil =>
         onlyModule
@@ -73,39 +52,8 @@ final class WebAssemblyLinkerBackend(
     }
     val moduleID = onlyModule.id.id
 
-    /* Sort by ancestor count so that superclasses always appear before
-     * subclasses, then tie-break by name for stability.
-     */
-    val sortedClasses = onlyModule.classDefs.sortWith { (a, b) =>
-      val cmp = Integer.compare(a.ancestors.size, b.ancestors.size)
-      if (cmp != 0) cmp < 0
-      else a.className.compareTo(b.className) < 0
-    }
-
-    // sortedClasses.foreach(cls => println(utils.LinkedClassPrinters.showLinkedClass(cls)))
-
-    Preprocessor.preprocess(sortedClasses, onlyModule.topLevelExports)(context)
-
-    CoreWasmLib.genPreClasses()
-    val classEmitter = new ClassEmitter(coreSpec)
-    sortedClasses.foreach { clazz =>
-      classEmitter.transformClassDef(clazz)
-    }
-    onlyModule.topLevelExports.foreach { tle =>
-      classEmitter.transformTopLevelExport(tle)
-    }
-    CoreWasmLib.genPostClasses()
-
-    val classesWithStaticInit =
-      sortedClasses.filter(_.hasStaticInitializer).map(_.className)
-
-    context.complete(
-      onlyModule.initializers.toList,
-      classesWithStaticInit,
-      onlyModule.topLevelExports
-    )
-
-    val wasmModule = context.moduleBuilder.build()
+    val emitterResult = emitter.emit(onlyModule, logger)
+    val wasmModule = emitterResult.wasmModule
 
     val outputImpl = OutputDirectoryImpl.fromOutputDirectory(output)
 
@@ -113,7 +61,6 @@ final class WebAssemblyLinkerBackend(
     val wasmFileName = s"$moduleID.wasm"
     val sourceMapFileName = s"$wasmFileName.map"
     val jsFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, moduleID)
-    val loaderJSFileName = OutputPatternsImpl.jsFile(linkerConfig.outputPatterns, "__loader")
 
     val filesToProduce0 = Set(
       wasmFileName,
@@ -166,12 +113,10 @@ final class WebAssemblyLinkerBackend(
     }
 
     def writeLoaderFile(): Future[Unit] =
-      outputImpl.writeFull(loaderJSFileName, ByteBuffer.wrap(LoaderContent.bytesContent))
+      outputImpl.writeFull(loaderJSFileName, ByteBuffer.wrap(emitterResult.loaderContent))
 
     def writeJSFile(): Future[Unit] = {
-      val jsFileOutput =
-        buildJSFileOutput(onlyModule, loaderJSFileName, wasmFileName, context.allImportedModules)
-      val jsFileOutputBytes = jsFileOutput.getBytes(StandardCharsets.UTF_8)
+      val jsFileOutputBytes = emitterResult.jsFileContent.getBytes(StandardCharsets.UTF_8)
       outputImpl.writeFull(jsFileName, ByteBuffer.wrap(jsFileOutputBytes))
     }
 
@@ -191,42 +136,5 @@ final class WebAssemblyLinkerBackend(
       )
       new ReportImpl(List(reportModule))
     }
-  }
-
-  private def buildJSFileOutput(
-      module: ModuleSet.Module,
-      loaderJSFileName: String,
-      wasmFileName: String,
-      importedModules: List[String]
-  ): String = {
-    val (moduleImports, importedModulesItems) = (for {
-      (moduleName, idx) <- importedModules.zipWithIndex
-    } yield {
-      val identName = s"imported$idx"
-      val escapedModuleName = "\"" + moduleName + "\""
-      val moduleImport = s"import * as $identName from $escapedModuleName"
-      val item = s"  $escapedModuleName: $identName,"
-      (moduleImport, item)
-    }).unzip
-
-    /* TODO This is not correct for exported *vars*, since they won't receive
-     * updates from mutations after loading.
-     */
-    val reExportStats = for {
-      exportName <- module.topLevelExports.map(_.exportName)
-    } yield {
-      s"export let $exportName = __exports.$exportName;"
-    }
-
-    s"""
-      |${moduleImports.mkString("\n")}
-      |
-      |import { load as __load } from './${loaderJSFileName}';
-      |const __exports = await __load('./${wasmFileName}', {
-      |${importedModulesItems.mkString("\n")}
-      |});
-      |
-      |${reExportStats.mkString("\n")}
-    """.stripMargin.trim() + "\n"
   }
 }
