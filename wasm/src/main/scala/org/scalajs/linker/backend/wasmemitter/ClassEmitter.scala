@@ -68,27 +68,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
   }
 
-  private def genZeroOf(tpe: IRTypes.Type)(implicit ctx: WasmContext): WasmInstr = {
-    import IRTypes._
-
-    tpe match {
-      case BooleanType | CharType | ByteType | ShortType | IntType =>
-        I32_CONST(0)
-
-      case LongType   => I64_CONST(0L)
-      case FloatType  => F32_CONST(0.0f)
-      case DoubleType => F64_CONST(0.0)
-      case StringType => GLOBAL_GET(genGlobalName.emptyString)
-      case UndefType  => GLOBAL_GET(genGlobalName.undef)
-
-      case AnyType | ClassType(_) | ArrayType(_) | NullType =>
-        REF_NULL(WasmHeapType.None)
-
-      case NoType | NothingType | _: RecordType =>
-        throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
-    }
-  }
-
   def transformTopLevelExport(
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {

@@ -2,6 +2,7 @@ package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.Names._
 import org.scalajs.ir.Trees.JSNativeLoadSpec
+import org.scalajs.ir.Types._
 
 import org.scalajs.linker.backend.webassembly._
 import org.scalajs.linker.backend.webassembly.WasmInstr._
@@ -10,6 +11,25 @@ import VarGen._
 
 /** Scala.js-specific Wasm generators that are used across the board. */
 object SWasmGen {
+
+  def genZeroOf(tpe: Type)(implicit ctx: WasmContext): WasmInstr = {
+    tpe match {
+      case BooleanType | CharType | ByteType | ShortType | IntType =>
+        I32_CONST(0)
+
+      case LongType   => I64_CONST(0L)
+      case FloatType  => F32_CONST(0.0f)
+      case DoubleType => F64_CONST(0.0)
+      case StringType => GLOBAL_GET(genGlobalName.emptyString)
+      case UndefType  => GLOBAL_GET(genGlobalName.undef)
+
+      case AnyType | ClassType(_) | ArrayType(_) | NullType =>
+        REF_NULL(Types.WasmHeapType.None)
+
+      case NoType | NothingType | _: RecordType =>
+        throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
+    }
+  }
 
   def genLoadJSConstructor(fb: FunctionBuilder, className: ClassName)(implicit
       ctx: TypeDefinableWasmContext
