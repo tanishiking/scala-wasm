@@ -755,7 +755,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val postSuperStatsFunctionName = genFunctionName.postSuperStats(clazz.className)
     val ctor = clazz.jsConstructorDef.get
 
-    WasmExpressionBuilder.emitJSConstructorFunctions(
+    FunctionEmitter.emitJSConstructorFunctions(
       preSuperStatsFunctionName,
       superArgsFunctionName,
       postSuperStatsFunctionName,
@@ -825,7 +825,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
           case _ =>
             // For everything else, put the tree in its own function and call it
             val closureFuncName = genInnerFuncName()
-            WasmExpressionBuilder.emitFunction(
+            FunctionEmitter.emitFunction(
               closureFuncName,
               enclosingClassName = None,
               Some(jsClassCaptures),
@@ -906,7 +906,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
             genLoadIsolatedTree(nameTree)
 
             val closureFuncName = genInnerFuncName()
-            WasmExpressionBuilder.emitFunction(
+            FunctionEmitter.emitFunction(
               closureFuncName,
               Some(clazz.className),
               Some(jsClassCaptures),
@@ -933,7 +933,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
               case Some(getterBody) =>
                 val closureFuncName = genInnerFuncName()
-                WasmExpressionBuilder.emitFunction(
+                FunctionEmitter.emitFunction(
                   closureFuncName,
                   Some(clazz.className),
                   Some(jsClassCaptures),
@@ -952,7 +952,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
               case Some((setterParamDef, setterBody)) =>
                 val closureFuncName = genInnerFuncName()
-                WasmExpressionBuilder.emitFunction(
+                FunctionEmitter.emitFunction(
                   closureFuncName,
                   Some(clazz.className),
                   Some(jsClassCaptures),
@@ -1095,7 +1095,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val exportedName = exportDef.topLevelExportName
     val functionName = genFunctionName.forExport(exportedName)
 
-    WasmExpressionBuilder.emitFunction(
+    FunctionEmitter.emitFunction(
       functionName,
       enclosingClassName = None,
       captureParamDefs = None,
@@ -1177,7 +1177,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
 
     // Emit the function
-    WasmExpressionBuilder.emitFunction(
+    FunctionEmitter.emitFunction(
       functionName,
       Some(className),
       captureParamDefs = None,
