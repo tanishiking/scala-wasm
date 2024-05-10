@@ -42,6 +42,18 @@ object VarGen {
     val undef: WasmGlobalName =
       WasmGlobalName("undef")
 
+    val bFalse: WasmGlobalName =
+      WasmGlobalName("bFalse")
+
+    val bZero: WasmGlobalName =
+      WasmGlobalName("bZero")
+
+    val bZeroChar: WasmGlobalName =
+      WasmGlobalName("bZeroChar")
+
+    val bZeroLong: WasmGlobalName =
+      WasmGlobalName("bZeroLong")
+
     val emptyString: WasmGlobalName =
       WasmGlobalName("emptyString")
 

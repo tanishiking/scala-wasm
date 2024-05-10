@@ -837,7 +837,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         }
 
         // Generate boxed representation of the zero of the field
-        WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
+        instrs += genBoxedZeroOf(fieldDef.ftpe)
 
         instrs += CALL(genFunctionName.installJSField)
       }
@@ -1013,7 +1013,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         }
 
         // Generate boxed representation of the zero of the field
-        WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(fieldDef.ftpe), IRTypes.AnyType)
+        instrs += genBoxedZeroOf(fieldDef.ftpe)
 
         instrs += CALL(genFunctionName.installJSField)
       }

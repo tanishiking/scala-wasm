@@ -31,6 +31,24 @@ object SWasmGen {
     }
   }
 
+  def genBoxedZeroOf(tpe: Type)(implicit ctx: WasmContext): WasmInstr = {
+    tpe match {
+      case BooleanType =>
+        GLOBAL_GET(genGlobalName.bFalse)
+      case CharType =>
+        GLOBAL_GET(genGlobalName.bZeroChar)
+      case ByteType | ShortType | IntType | FloatType | DoubleType =>
+        GLOBAL_GET(genGlobalName.bZero)
+      case LongType =>
+        GLOBAL_GET(genGlobalName.bZeroLong)
+      case AnyType | ClassType(_) | ArrayType(_) | StringType | UndefType | NullType =>
+        REF_NULL(Types.WasmHeapType.None)
+
+      case NoType | NothingType | _: RecordType =>
+        throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
+    }
+  }
+
   def genLoadJSConstructor(fb: FunctionBuilder, className: ClassName)(implicit
       ctx: TypeDefinableWasmContext
   ): Unit = {
