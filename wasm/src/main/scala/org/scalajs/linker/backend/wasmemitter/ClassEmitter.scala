@@ -853,6 +853,38 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += STRUCT_NEW(dataStructTypeName)
       instrs += LOCAL_TEE(dataStructLocal)
 
+      def genLoadIsolatedTree(tree: IRTrees.Tree): Unit = {
+        tree match {
+          case IRTrees.StringLiteral(value) =>
+            // Common shape for all the `nameTree` expressions
+            instrs ++= ctx.getConstantStringInstr(value)
+
+          case IRTrees.VarRef(IRTrees.LocalIdent(localName))
+              if jsClassCaptures
+                .exists(p => p.name.name == localName && p.ptpe == IRTypes.AnyType) =>
+            // Common shape for the `jsSuperClass` value
+            instrs += LOCAL_GET(fctx.lookupLocalAssertLocalStorage(localName))
+
+          case _ =>
+            // For everything else, put the tree in its own function and call it
+            val closureFuncName = fctx.genInnerFuncName()
+            locally {
+              implicit val fctx: WasmFunctionContext = WasmFunctionContext(
+                enclosingClassName = None,
+                closureFuncName,
+                Some(jsClassCaptures),
+                receiverTyp = None,
+                paramDefs = Nil,
+                List(WasmRefType.anyref)
+              )
+              WasmExpressionBuilder.generateIRBody(tree, IRTypes.AnyType)
+              fctx.buildAndAddToContext()
+            }
+            instrs += LOCAL_GET(dataStructLocal)
+            instrs += CALL(closureFuncName)
+        }
+      }
+
       /* Load super constructor; specified by
        * https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-classdef-runtime-semantics-evaluation
        * - if `jsSuperClass` is defined, evaluate it;
@@ -863,7 +895,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         case None =>
           genLoadJSConstructor(instrs, clazz.superClass.get.name)
         case Some(jsSuperClassTree) =>
-          WasmExpressionBuilder.generateIRBody(jsSuperClassTree, IRTypes.AnyType)
+          genLoadIsolatedTree(jsSuperClassTree)
       }
 
       // Load the references to the 3 functions that make up the constructor
@@ -879,7 +911,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
           case IRTrees.FieldDef(_, name, _, _) =>
             instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(name.name))
           case IRTrees.JSFieldDef(_, nameTree, _) =>
-            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+            genLoadIsolatedTree(nameTree)
         }
         instrs += CALL(genFunctionName.jsArrayPush)
 
@@ -917,7 +949,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
         methodOrProp match {
           case IRTrees.JSMethodDef(flags, nameTree, params, restParam, body) =>
-            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+            genLoadIsolatedTree(nameTree)
 
             val closureFuncName = fctx.genInnerFuncName()
             locally {
@@ -941,7 +973,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
               instrs += CALL(genFunctionName.installJSMethod)
 
           case IRTrees.JSPropertyDef(flags, nameTree, optGetter, optSetter) =>
-            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+            genLoadIsolatedTree(nameTree)
 
             optGetter match {
               case None =>
@@ -1005,7 +1037,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
                 + s"in JS class ${clazz.className.nameString}"
             )
           case IRTrees.JSFieldDef(_, nameTree, _) =>
-            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+            genLoadIsolatedTree(nameTree)
         }
 
         // Generate boxed representation of the zero of the field
