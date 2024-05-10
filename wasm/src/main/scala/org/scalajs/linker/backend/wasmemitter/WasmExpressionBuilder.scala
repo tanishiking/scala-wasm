@@ -17,6 +17,7 @@ import org.scalajs.linker.backend.webassembly.WasmInstr._
 import org.scalajs.linker.backend.webassembly.{WasmFunctionSignature => Sig}
 
 import EmbeddedConstants._
+import SWasmGen._
 import VarGen._
 
 object WasmExpressionBuilder {
@@ -51,33 +52,6 @@ object WasmExpressionBuilder {
   ): A = {
     val builder = new WasmExpressionBuilder(ctx, fctx)
     builder.genBlockStats(stats)(inner)
-  }
-
-  def genLoadJSNativeLoadSpec(instrs: FunctionBuilder, loadSpec: IRTrees.JSNativeLoadSpec)(implicit
-      ctx: TypeDefinableWasmContext
-  ): IRTypes.Type = {
-    import IRTrees.JSNativeLoadSpec._
-
-    def genFollowPath(path: List[String]): Unit = {
-      for (prop <- path) {
-        instrs ++= ctx.getConstantStringInstr(prop)
-        instrs += CALL(genFunctionName.jsSelect)
-      }
-    }
-
-    loadSpec match {
-      case Global(globalRef, path) =>
-        instrs ++= ctx.getConstantStringInstr(globalRef)
-        instrs += CALL(genFunctionName.jsGlobalRefGet)
-        genFollowPath(path)
-        IRTypes.AnyType
-      case Import(module, path) =>
-        instrs += GLOBAL_GET(ctx.getImportedModuleGlobal(module))
-        genFollowPath(path)
-        IRTypes.AnyType
-      case ImportWithGlobalFallback(importSpec, globalSpec) =>
-        genLoadJSNativeLoadSpec(instrs, importSpec)
-    }
   }
 
   private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
@@ -2073,25 +2047,8 @@ private class WasmExpressionBuilder private (
 
   private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
     fctx.markPosition(tree)
-
-    val info = ctx.getClassInfo(tree.className)
-
-    info.kind match {
-      case ClassKind.NativeJSClass =>
-        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
-        }
-        genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
-
-      case ClassKind.JSClass =>
-        instrs += CALL(genFunctionName.loadJSClass(tree.className))
-        IRTypes.AnyType
-
-      case _ =>
-        throw new AssertionError(
-          s"Invalid LoadJSConstructor for class ${tree.className.nameString} of kind ${info.kind}"
-        )
-    }
+    SWasmGen.genLoadJSConstructor(instrs, tree.className)(ctx)
+    IRTypes.AnyType
   }
 
   private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
@@ -2104,7 +2061,8 @@ private class WasmExpressionBuilder private (
         val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
           throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
         }
-        genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
+        genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
+        IRTypes.AnyType
 
       case ClassKind.JSModuleClass =>
         instrs += CALL(genFunctionName.loadModule(tree.className))
@@ -2124,7 +2082,8 @@ private class WasmExpressionBuilder private (
         throw new AssertionError(s"Found $tree for non-existing JS native member at ${tree.pos}")
       }
     )
-    genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
+    genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
+    IRTypes.AnyType
   }
 
   private def genJSDelete(tree: IRTrees.JSDelete): IRTypes.Type = {

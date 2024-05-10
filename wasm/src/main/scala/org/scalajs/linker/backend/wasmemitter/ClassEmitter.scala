@@ -17,6 +17,7 @@ import org.scalajs.linker.backend.webassembly.Types._
 import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 import EmbeddedConstants._
+import SWasmGen._
 import VarGen._
 import TypeTransformer._
 import WasmContext._
@@ -149,7 +150,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     implicit val noPos: Position = Position.NoPosition
 
-    def build(loadJSClass: (FunctionBuilder) => Unit): WasmFunctionName = {
+    val hasIsJSClassInstance = clazz.kind match {
+      case ClassKind.NativeJSClass => clazz.jsNativeLoadSpec.isDefined
+      case ClassKind.JSClass       => clazz.jsClassCaptures.isEmpty
+      case _                       => false
+    }
+
+    if (hasIsJSClassInstance) {
       val fb = new FunctionBuilder(
         ctx.moduleBuilder,
         genFunctionName.isJSClassInstance(clazz.className),
@@ -168,35 +175,15 @@ class ClassEmitter(coreSpec: CoreSpec) {
         instrs += I32_CONST(0) // false
       } else {
         instrs += LOCAL_GET(xParam)
-        loadJSClass(fb)
+        genLoadJSConstructor(instrs, clazz.className)
         instrs += CALL(genFunctionName.jsBinaryOps(IRTrees.JSBinaryOp.instanceof))
         instrs += CALL(genFunctionName.unbox(IRTypes.BooleanRef))
       }
 
       val func = fb.buildAndAddToModule()
-      func.name
-    }
-
-    clazz.kind match {
-      case ClassKind.NativeJSClass =>
-        clazz.jsNativeLoadSpec.map { jsNativeLoadSpec =>
-          build { fb =>
-            WasmExpressionBuilder.genLoadJSNativeLoadSpec(fb, jsNativeLoadSpec)
-          }
-        }
-
-      case ClassKind.JSClass =>
-        if (clazz.jsClassCaptures.isEmpty) {
-          val funcName = build { fb =>
-            fb += CALL(genFunctionName.loadJSClass(clazz.className))
-          }
-          Some(funcName)
-        } else {
-          None
-        }
-
-      case _ =>
-        None
+      Some(func.name)
+    } else {
+      None
     }
   }
 
@@ -911,12 +898,15 @@ class ClassEmitter(coreSpec: CoreSpec) {
       /* Load super constructor; specified by
        * https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-classdef-runtime-semantics-evaluation
        * - if `jsSuperClass` is defined, evaluate it;
-       * - otherwise evaluate `LoadJSConstructor` of the declared superClass.
+       * - otherwise load the JS constructor of the declared superClass,
+       *   as if by `LoadJSConstructor`.
        */
-      val jsSuperClassTree = clazz.jsSuperClass.getOrElse {
-        IRTrees.LoadJSConstructor(clazz.superClass.get.name)
+      clazz.jsSuperClass match {
+        case None =>
+          genLoadJSConstructor(instrs, clazz.superClass.get.name)
+        case Some(jsSuperClassTree) =>
+          WasmExpressionBuilder.generateIRBody(jsSuperClassTree, IRTypes.AnyType)
       }
-      WasmExpressionBuilder.generateIRBody(jsSuperClassTree, IRTypes.AnyType)
 
       // Load the references to the 3 functions that make up the constructor
       instrs += ctx.refFuncWithDeclaration(preSuperStatsFun.name)
