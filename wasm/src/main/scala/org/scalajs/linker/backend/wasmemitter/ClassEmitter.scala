@@ -750,84 +750,19 @@ class ClassEmitter(coreSpec: CoreSpec) {
      * are still used by `superArgs` and/or `postSuperArgs`.
      */
 
+    val preSuperStatsFunctionName = genFunctionName.preSuperStats(clazz.className)
+    val superArgsFunctionName = genFunctionName.superArgs(clazz.className)
+    val postSuperStatsFunctionName = genFunctionName.postSuperStats(clazz.className)
     val ctor = clazz.jsConstructorDef.get
-    val allCtorParams = ctor.args ::: ctor.restParam.toList
-    val ctorBody = ctor.body
 
-    // Compute the pre-super environment
-    val preSuperDecls = ctorBody.beforeSuper.collect { case varDef: IRTrees.VarDef =>
-      varDef
-    }
-
-    // Build the `preSuperStats` function
-    val preSuperStatsFun = {
-      val preSuperEnvStructTypeName = ctx.getClosureDataStructType(preSuperDecls.map(_.vtpe))
-      val preSuperEnvTyp = WasmRefType(preSuperEnvStructTypeName)
-
-      implicit val fctx = WasmFunctionContext(
-        Some(clazz.className),
-        genFunctionName.preSuperStats(clazz.className),
-        Some(jsClassCaptures),
-        preSuperVarDefs = None,
-        hasNewTarget = true,
-        receiverTyp = None,
-        allCtorParams,
-        List(preSuperEnvTyp)
-      )
-
-      import fctx.instrs
-
-      WasmExpressionBuilder.generateBlockStats(ctorBody.beforeSuper) {
-        // Build and return the preSuperEnv struct
-        for (varDef <- preSuperDecls)
-          instrs += LOCAL_GET(fctx.lookupLocalAssertLocalStorage(varDef.name.name))
-        instrs += STRUCT_NEW(preSuperEnvStructTypeName)
-      }
-
-      fctx.buildAndAddToContext()
-    }
-
-    // Build the `superArgs` function
-    val superArgsFun = {
-      implicit val fctx = WasmFunctionContext(
-        Some(clazz.className),
-        genFunctionName.superArgs(clazz.className),
-        Some(jsClassCaptures),
-        Some(preSuperDecls),
-        hasNewTarget = true,
-        receiverTyp = None,
-        allCtorParams,
-        List(WasmRefType.anyref) // a js.Array
-      )
-
-      WasmExpressionBuilder.generateIRBody(
-        IRTrees.JSArrayConstr(ctorBody.superCall.args),
-        IRTypes.AnyType
-      )
-
-      fctx.buildAndAddToContext()
-    }
-
-    // Build the `postSuperStats` function
-    val postSuperStatsFun = {
-      implicit val fctx = WasmFunctionContext(
-        Some(clazz.className),
-        genFunctionName.postSuperStats(clazz.className),
-        Some(jsClassCaptures),
-        Some(preSuperDecls),
-        hasNewTarget = true,
-        receiverTyp = Some(WasmRefType.anyref),
-        allCtorParams,
-        List(WasmRefType.anyref)
-      )
-
-      WasmExpressionBuilder.generateIRBody(
-        IRTrees.Block(ctorBody.afterSuper),
-        IRTypes.AnyType
-      )
-
-      fctx.buildAndAddToContext()
-    }
+    WasmExpressionBuilder.emitJSConstructorFunctions(
+      preSuperStatsFunctionName,
+      superArgsFunctionName,
+      postSuperStatsFunctionName,
+      clazz.className,
+      jsClassCaptures,
+      ctor
+    )
 
     // Build the actual `createJSClass` function
     val createJSClassFun = {
@@ -890,18 +825,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
           case _ =>
             // For everything else, put the tree in its own function and call it
             val closureFuncName = genInnerFuncName()
-            locally {
-              implicit val fctx: WasmFunctionContext = WasmFunctionContext(
-                enclosingClassName = None,
-                closureFuncName,
-                Some(jsClassCaptures),
-                receiverTyp = None,
-                paramDefs = Nil,
-                List(WasmRefType.anyref)
-              )
-              WasmExpressionBuilder.generateIRBody(tree, IRTypes.AnyType)
-              fctx.buildAndAddToContext()
-            }
+            WasmExpressionBuilder.emitFunction(
+              closureFuncName,
+              enclosingClassName = None,
+              Some(jsClassCaptures),
+              receiverTyp = None,
+              paramDefs = Nil,
+              restParam = None,
+              tree,
+              IRTypes.AnyType
+            )
             instrs += LOCAL_GET(dataStructLocal)
             instrs += CALL(closureFuncName)
         }
@@ -921,9 +854,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
 
       // Load the references to the 3 functions that make up the constructor
-      instrs += ctx.refFuncWithDeclaration(preSuperStatsFun.name)
-      instrs += ctx.refFuncWithDeclaration(superArgsFun.name)
-      instrs += ctx.refFuncWithDeclaration(postSuperStatsFun.name)
+      instrs += ctx.refFuncWithDeclaration(preSuperStatsFunctionName)
+      instrs += ctx.refFuncWithDeclaration(superArgsFunctionName)
+      instrs += ctx.refFuncWithDeclaration(postSuperStatsFunctionName)
 
       // Load the array of field names and initial values
       instrs += CALL(genFunctionName.jsNewArray)
@@ -973,18 +906,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
             genLoadIsolatedTree(nameTree)
 
             val closureFuncName = genInnerFuncName()
-            locally {
-              implicit val fctx: WasmFunctionContext = WasmFunctionContext(
-                Some(clazz.className),
-                closureFuncName,
-                Some(jsClassCaptures),
-                receiverTyp,
-                params ::: restParam.toList,
-                List(WasmRefType.anyref)
-              )
-              WasmExpressionBuilder.generateIRBody(body, IRTypes.AnyType)
-              fctx.buildAndAddToContext()
-            }
+            WasmExpressionBuilder.emitFunction(
+              closureFuncName,
+              Some(clazz.className),
+              Some(jsClassCaptures),
+              receiverTyp,
+              params,
+              restParam,
+              body,
+              IRTypes.AnyType
+            )
             instrs += ctx.refFuncWithDeclaration(closureFuncName)
 
             instrs += I32_CONST(if (restParam.isDefined) params.size else -1)
@@ -1002,18 +933,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
               case Some(getterBody) =>
                 val closureFuncName = genInnerFuncName()
-                locally {
-                  implicit val fctx: WasmFunctionContext = WasmFunctionContext(
-                    Some(clazz.className),
-                    closureFuncName,
-                    Some(jsClassCaptures),
-                    receiverTyp,
-                    Nil,
-                    List(WasmRefType.anyref)
-                  )
-                  WasmExpressionBuilder.generateIRBody(getterBody, IRTypes.AnyType)
-                  fctx.buildAndAddToContext()
-                }
+                WasmExpressionBuilder.emitFunction(
+                  closureFuncName,
+                  Some(clazz.className),
+                  Some(jsClassCaptures),
+                  receiverTyp,
+                  paramDefs = Nil,
+                  restParam = None,
+                  getterBody,
+                  resultType = IRTypes.AnyType
+                )
                 instrs += ctx.refFuncWithDeclaration(closureFuncName)
             }
 
@@ -1023,18 +952,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
               case Some((setterParamDef, setterBody)) =>
                 val closureFuncName = genInnerFuncName()
-                locally {
-                  implicit val fctx: WasmFunctionContext = WasmFunctionContext(
-                    Some(clazz.className),
-                    closureFuncName,
-                    Some(jsClassCaptures),
-                    receiverTyp,
-                    setterParamDef :: Nil,
-                    Nil
-                  )
-                  WasmExpressionBuilder.generateIRBody(setterBody, IRTypes.NoType)
-                  fctx.buildAndAddToContext()
-                }
+                WasmExpressionBuilder.emitFunction(
+                  closureFuncName,
+                  Some(clazz.className),
+                  Some(jsClassCaptures),
+                  receiverTyp,
+                  setterParamDef :: Nil,
+                  restParam = None,
+                  setterBody,
+                  resultType = IRTypes.NoType
+                )
                 instrs += ctx.refFuncWithDeclaration(closureFuncName)
             }
 
@@ -1166,21 +1093,21 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val method = exportDef.methodDef
     val exportedName = exportDef.topLevelExportName
+    val functionName = genFunctionName.forExport(exportedName)
 
-    implicit val fctx = WasmFunctionContext(
+    WasmExpressionBuilder.emitFunction(
+      functionName,
       enclosingClassName = None,
-      genFunctionName.forExport(exportedName),
+      captureParamDefs = None,
       receiverTyp = None,
-      method.args ::: method.restParam.toList,
-      IRTypes.AnyType
+      method.args,
+      method.restParam,
+      method.body,
+      resultType = IRTypes.AnyType
     )
 
-    WasmExpressionBuilder.generateIRBody(method.body, IRTypes.AnyType)
-
-    val func = fctx.buildAndAddToContext()
-
     if (method.restParam.isEmpty) {
-      ctx.addExport(WasmExport.Function(exportedName, func.name))
+      ctx.addExport(WasmExport.Function(exportedName, functionName))
     } else {
       /* We cannot directly export the function. We will create a closure
        * wrapper in the start function and export that instead.
@@ -1247,20 +1174,19 @@ class ClassEmitter(coreSpec: CoreSpec) {
       else
         Some(transformClassType(className).toNonNullable)
 
-    // Prepare for function context, set receiver and parameters
-    implicit val fctx = WasmFunctionContext(
-      Some(className),
+    val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
+
+    // Emit the function
+    WasmExpressionBuilder.emitFunction(
       functionName,
+      Some(className),
+      captureParamDefs = None,
       receiverTyp,
       method.args,
+      restParam = None,
+      body,
       method.resultType
     )
-
-    // build function body
-    val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
-    WasmExpressionBuilder.generateIRBody(body, method.resultType)
-
-    fctx.buildAndAddToContext()
 
     if (namespace == IRTrees.MemberNamespace.Public && !isHijackedClass) {
       /* Also generate the bridge that is stored in the table entries. In table

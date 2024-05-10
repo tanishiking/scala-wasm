@@ -198,43 +198,6 @@ object WasmFunctionContext {
     )
   }
 
-  def apply(
-      enclosingClassName: Option[IRNames.ClassName],
-      name: WasmFunctionName,
-      captureParamDefs: Option[List[IRTrees.ParamDef]],
-      receiverTyp: Option[WasmType],
-      paramDefs: List[IRTrees.ParamDef],
-      resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
-    apply(
-      enclosingClassName,
-      name,
-      captureParamDefs,
-      None,
-      hasNewTarget = false,
-      receiverTyp,
-      paramDefs,
-      resultTypes
-    )
-  }
-
-  def apply(
-      enclosingClassName: Option[IRNames.ClassName],
-      name: WasmFunctionName,
-      receiverTyp: Option[WasmType],
-      paramDefs: List[IRTrees.ParamDef],
-      resultType: IRTypes.Type
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
-    apply(
-      enclosingClassName,
-      name,
-      captureParamDefs = None,
-      receiverTyp,
-      paramDefs,
-      TypeTransformer.transformResultType(resultType)
-    )
-  }
-
   private def paramDefsToWasmParams(
       paramDefs: List[IRTrees.ParamDef]
   )(implicit ctx: TypeDefinableWasmContext, pos: Position): List[WasmLocal] = {

@@ -38,7 +38,110 @@ object WasmExpressionBuilder {
     */
   private final val UseLegacyExceptionsForTryCatch = true
 
-  def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
+  def emitFunction(
+      functionName: WasmFunctionName,
+      enclosingClassName: Option[IRNames.ClassName],
+      captureParamDefs: Option[List[IRTrees.ParamDef]],
+      receiverTyp: Option[Types.WasmType],
+      paramDefs: List[IRTrees.ParamDef],
+      restParam: Option[IRTrees.ParamDef],
+      body: IRTrees.Tree,
+      resultType: IRTypes.Type
+  )(implicit ctx: TypeDefinableWasmContext, pos: Position): Unit = {
+    val fctx = WasmFunctionContext(
+      enclosingClassName,
+      functionName,
+      captureParamDefs,
+      preSuperVarDefs = None,
+      hasNewTarget = false,
+      receiverTyp,
+      paramDefs ::: restParam.toList,
+      TypeTransformer.transformResultType(resultType)
+    )
+    generateIRBody(body, resultType)(ctx, fctx)
+    fctx.buildAndAddToContext()
+  }
+
+  def emitJSConstructorFunctions(
+      preSuperStatsFunctionName: WasmFunctionName,
+      superArgsFunctionName: WasmFunctionName,
+      postSuperStatsFunctionName: WasmFunctionName,
+      enclosingClassName: IRNames.ClassName,
+      jsClassCaptures: List[IRTrees.ParamDef],
+      ctor: IRTrees.JSConstructorDef
+  )(implicit ctx: TypeDefinableWasmContext): Unit = {
+    implicit val pos = ctor.pos
+
+    val allCtorParams = ctor.args ::: ctor.restParam.toList
+    val ctorBody = ctor.body
+
+    // Compute the pre-super environment
+    val preSuperDecls = ctorBody.beforeSuper.collect { case varDef: IRTrees.VarDef =>
+      varDef
+    }
+
+    // Build the `preSuperStats` function
+    locally {
+      val preSuperEnvStructTypeName = ctx.getClosureDataStructType(preSuperDecls.map(_.vtpe))
+      val preSuperEnvTyp = Types.WasmRefType(preSuperEnvStructTypeName)
+
+      implicit val fctx = WasmFunctionContext(
+        Some(enclosingClassName),
+        preSuperStatsFunctionName,
+        Some(jsClassCaptures),
+        preSuperVarDefs = None,
+        hasNewTarget = true,
+        receiverTyp = None,
+        allCtorParams,
+        List(preSuperEnvTyp)
+      )
+
+      import fctx.instrs
+
+      generateBlockStats(ctorBody.beforeSuper) {
+        // Build and return the preSuperEnv struct
+        for (varDef <- preSuperDecls)
+          instrs += LOCAL_GET(fctx.lookupLocalAssertLocalStorage(varDef.name.name))
+        instrs += STRUCT_NEW(preSuperEnvStructTypeName)
+      }
+
+      fctx.buildAndAddToContext()
+    }
+
+    // Build the `superArgs` function
+    locally {
+      implicit val fctx = WasmFunctionContext(
+        Some(enclosingClassName),
+        superArgsFunctionName,
+        Some(jsClassCaptures),
+        Some(preSuperDecls),
+        hasNewTarget = true,
+        receiverTyp = None,
+        allCtorParams,
+        List(Types.WasmRefType.anyref) // a js.Array
+      )
+      generateIRBody(IRTrees.JSArrayConstr(ctorBody.superCall.args), IRTypes.AnyType)
+      fctx.buildAndAddToContext()
+    }
+
+    // Build the `postSuperStats` function
+    locally {
+      implicit val fctx = WasmFunctionContext(
+        Some(enclosingClassName),
+        postSuperStatsFunctionName,
+        Some(jsClassCaptures),
+        Some(preSuperDecls),
+        hasNewTarget = true,
+        receiverTyp = Some(Types.WasmRefType.anyref),
+        allCtorParams,
+        List(Types.WasmRefType.anyref)
+      )
+      generateIRBody(IRTrees.Block(ctorBody.afterSuper), IRTypes.AnyType)
+      fctx.buildAndAddToContext()
+    }
+  }
+
+  private def generateIRBody(tree: IRTrees.Tree, resultType: IRTypes.Type)(implicit
       ctx: TypeDefinableWasmContext,
       fctx: WasmFunctionContext
   ): Unit = {
@@ -46,7 +149,7 @@ object WasmExpressionBuilder {
     builder.genBody(tree, resultType)
   }
 
-  def generateBlockStats[A](stats: List[IRTrees.Tree])(inner: => A)(implicit
+  private def generateBlockStats[A](stats: List[IRTrees.Tree])(inner: => A)(implicit
       ctx: TypeDefinableWasmContext,
       fctx: WasmFunctionContext
   ): A = {
@@ -2376,27 +2479,16 @@ private class WasmExpressionBuilder private (
 
     // Define the function where captures are reified as a `__captureData` argument.
     val closureFuncName = fctx.genInnerFuncName()
-    locally {
-      val receiverTyp =
-        if (!hasThis) None
-        else Some(Types.WasmRefType.anyref)
-
-      val resultTyps = TypeTransformer.transformResultType(IRTypes.AnyType)
-
-      implicit val fctx = WasmFunctionContext(
-        enclosingClassName = None,
-        closureFuncName,
-        Some(tree.captureParams),
-        receiverTyp,
-        tree.params ::: tree.restParam.toList,
-        resultTyps
-      )
-
-      // Transform the body - use AnyType as result type to box potential primitives
-      WasmExpressionBuilder.generateIRBody(tree.body, IRTypes.AnyType)
-
-      fctx.buildAndAddToContext()
-    }
+    emitFunction(
+      closureFuncName,
+      enclosingClassName = None,
+      Some(tree.captureParams),
+      receiverTyp = if (!hasThis) None else Some(Types.WasmRefType.anyref),
+      tree.params,
+      tree.restParam,
+      tree.body,
+      resultType = IRTypes.AnyType
+    )
 
     fctx.markPosition(tree)
 
