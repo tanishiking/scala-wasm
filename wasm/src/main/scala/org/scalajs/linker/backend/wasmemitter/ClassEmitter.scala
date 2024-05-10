@@ -21,33 +21,7 @@ import VarGen._
 import TypeTransformer._
 import WasmContext._
 
-class WasmBuilder(coreSpec: CoreSpec) {
-  // val module = new WasmModule()
-
-  def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
-    import genFieldName.typeData._
-
-    val primRefsWithTypeData = List(
-      IRTypes.VoidRef -> KindVoid,
-      IRTypes.BooleanRef -> KindBoolean,
-      IRTypes.CharRef -> KindChar,
-      IRTypes.ByteRef -> KindByte,
-      IRTypes.ShortRef -> KindShort,
-      IRTypes.IntRef -> KindInt,
-      IRTypes.LongRef -> KindLong,
-      IRTypes.FloatRef -> KindFloat,
-      IRTypes.DoubleRef -> KindDouble
-    )
-
-    for ((primRef, kind) <- primRefsWithTypeData) {
-      val typeDataFieldValues =
-        genTypeDataFieldValues(kind, specialInstanceTypes = 0, primRef, None, Nil)
-      val typeDataGlobal =
-        genTypeDataGlobal(primRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(typeDataGlobal)
-    }
-  }
-
+class ClassEmitter(coreSpec: CoreSpec) {
   def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
@@ -106,55 +80,6 @@ class WasmBuilder(coreSpec: CoreSpec) {
       case NoType | NothingType | StringType | UndefType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for static variable: ${tpe.show()}")
     }
-  }
-
-  def genArrayClasses()(implicit ctx: WasmContext): Unit = {
-    // The vtable type is always the same as j.l.Object
-    val vtableTypeName = genTypeName.ObjectVTable
-    val vtableField = WasmStructField(
-      genFieldName.objStruct.vtable,
-      WasmRefType(vtableTypeName),
-      isMutable = false
-    )
-    val itablesField = WasmStructField(
-      genFieldName.objStruct.itables,
-      WasmRefType.nullable(genTypeName.itables),
-      isMutable = false
-    )
-
-    val objectRef = IRTypes.ClassRef(IRNames.ObjectClass)
-
-    val typeRefsWithArrays: List[(IRTypes.NonArrayTypeRef, WasmTypeName, WasmTypeName)] =
-      List(
-        (IRTypes.BooleanRef, genTypeName.BooleanArray, genTypeName.i8Array),
-        (IRTypes.CharRef, genTypeName.CharArray, genTypeName.i16Array),
-        (IRTypes.ByteRef, genTypeName.ByteArray, genTypeName.i8Array),
-        (IRTypes.ShortRef, genTypeName.ShortArray, genTypeName.i16Array),
-        (IRTypes.IntRef, genTypeName.IntArray, genTypeName.i32Array),
-        (IRTypes.LongRef, genTypeName.LongArray, genTypeName.i64Array),
-        (IRTypes.FloatRef, genTypeName.FloatArray, genTypeName.f32Array),
-        (IRTypes.DoubleRef, genTypeName.DoubleArray, genTypeName.f64Array),
-        (objectRef, genTypeName.ObjectArray, genTypeName.anyArray)
-      )
-
-    for ((baseRef, structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
-      val underlyingArrayField = WasmStructField(
-        genFieldName.objStruct.arrayUnderlying,
-        WasmRefType(underlyingArrayTypeName),
-        isMutable = false
-      )
-
-      val superType = genTypeName.forClass(IRNames.ObjectClass)
-      val structType = WasmStructType(
-        List(vtableField, itablesField, underlyingArrayField)
-      )
-      val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
-      ctx.mainRecType.addSubType(subType)
-
-      HelperFunctions.genArrayCloneFunction(IRTypes.ArrayTypeRef(baseRef, 1))
-    }
-
-    genArrayClassItable()
   }
 
   def transformTopLevelExport(
@@ -319,7 +244,7 @@ class WasmBuilder(coreSpec: CoreSpec) {
         case IRTypes.ClassRef(className) =>
           val classInfo = ctx.getClassInfo(className)
           // If the class is concrete and implements the `java.lang.Cloneable`,
-          // `HelperFunctions.genCloneFunction` should've generated the clone function
+          // `genCloneFunction` should've generated the clone function
           if (!classInfo.isAbstract && classInfo.ancestors.contains(IRNames.CloneableClass))
             REF_FUNC(genFunctionName.clone(className))
           else nullref
@@ -451,8 +376,13 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val subType = WasmSubType(structTypeName, isFinal = false, superType, structType)
     ctx.mainRecType.addSubType(subType)
 
-    // Define the `new` function, unless the class is abstract
-    if (!isAbstractClass) HelperFunctions.genNewDefault(clazz)
+    // Define the `new` function and possibly the `clone` function, unless the class is abstract
+    if (!isAbstractClass) {
+      genNewDefaultFunc(clazz)
+      if (clazz.ancestors.contains(IRNames.CloneableClass))
+        genCloneFunction(clazz)
+    }
+
     structType
   }
 
@@ -474,6 +404,184 @@ class WasmBuilder(coreSpec: CoreSpec) {
     val subType = WasmSubType(typeName, isFinal = false, Some(superType), structType)
     ctx.mainRecType.addSubType(subType)
     typeName
+  }
+
+  /** Generate type inclusion test for interfaces.
+    *
+    * The expression `isInstanceOf[<interface>]` will be compiled to a CALL to the function
+    * generated by this method.
+    *
+    * TODO: Efficient type inclusion test. The current implementation generates a sparse array of
+    * itables, which, although O(1), may not be optimal for large interfaces. More compressed data
+    * structures could potentially improve performance in such cases.
+    *
+    * See https://github.com/tanishiking/scala-wasm/issues/27#issuecomment-2008252049
+    */
+  private def genInterfaceInstanceTest(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
+    assert(clazz.kind == ClassKind.Interface)
+
+    val classInfo = ctx.getClassInfo(clazz.className)
+
+    val fctx = WasmFunctionContext(
+      genFunctionName.instanceTest(clazz.name.name),
+      List("expr" -> WasmRefType.anyref),
+      List(WasmInt32)
+    )
+    val List(exprParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val itables = fctx.addLocal("itables", WasmRefType.nullable(genTypeName.itables))
+    val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
+
+    val itableIdx = ctx.getItableIdx(classInfo)
+    instrs.block(WasmRefType.anyref) { testFail =>
+      // if expr is not an instance of Object, return false
+      instrs += LOCAL_GET(exprParam)
+      instrs += BR_ON_CAST_FAIL(
+        testFail,
+        WasmRefType.anyref,
+        WasmRefType(genTypeName.ObjectStruct)
+      )
+
+      // get itables and store
+      instrs += STRUCT_GET(genTypeName.ObjectStruct, genFieldIdx.objStruct.itables)
+      instrs += LOCAL_SET(itables)
+
+      // Dummy return value from the block
+      instrs += REF_NULL(WasmHeapType.Any)
+
+      // if the itables is null (no interfaces are implemented)
+      instrs += LOCAL_GET(itables)
+      instrs += BR_ON_NULL(testFail)
+
+      instrs += LOCAL_GET(itables)
+      instrs += I32_CONST(itableIdx)
+      instrs += ARRAY_GET(genTypeName.itables)
+      instrs += REF_TEST(WasmRefType(genTypeName.forITable(clazz.name.name)))
+      instrs += RETURN
+    } // test fail
+
+    if (classInfo.isAncestorOfHijackedClass) {
+      /* It could be a hijacked class instance that implements this interface.
+       * Test whether `jsValueType(expr)` is in the `specialInstanceTypes` bitset.
+       * In other words, return `((1 << jsValueType(expr)) & specialInstanceTypes) != 0`.
+       *
+       * For example, if this class is `Comparable`,
+       * `specialInstanceTypes == 0b00001111`, since `jl.Boolean`, `jl.String`
+       * and `jl.Double` implement `Comparable`, but `jl.Void` does not.
+       * If `expr` is a `number`, `jsValueType(expr) == 3`. We then test whether
+       * `(1 << 3) & 0b00001111 != 0`, which is true because `(1 << 3) == 0b00001000`.
+       * If `expr` is `undefined`, it would be `(1 << 4) == 0b00010000`, which
+       * would give `false`.
+       */
+      val anyRefToVoidSig =
+        WasmFunctionSignature(List(WasmRefType.anyref), Nil)
+
+      instrs.block(anyRefToVoidSig) { isNullLabel =>
+        // exprNonNull := expr; branch to isNullLabel if it is null
+        instrs += BR_ON_NULL(isNullLabel)
+        instrs += LOCAL_SET(exprNonNullLocal)
+
+        // Load 1 << jsValueType(expr)
+        instrs += I32_CONST(1)
+        instrs += LOCAL_GET(exprNonNullLocal)
+        instrs += CALL(genFunctionName.jsValueType)
+        instrs += I32_SHL
+
+        // return (... & specialInstanceTypes) != 0
+        instrs += I32_CONST(classInfo.specialInstanceTypes)
+        instrs += I32_AND
+        instrs += I32_CONST(0)
+        instrs += I32_NE
+        instrs += RETURN
+      }
+
+      instrs += I32_CONST(0) // false
+    } else {
+      instrs += DROP
+      instrs += I32_CONST(0) // false
+    }
+
+    fctx.buildAndAddToContext()
+  }
+
+  private def genNewDefaultFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
+    val className = clazz.name.name
+    val classInfo = ctx.getClassInfo(className)
+    assert(clazz.hasDirectInstances)
+
+    val structName = genTypeName.forClass(className)
+    implicit val fctx = WasmFunctionContext(
+      genFunctionName.newDefault(className),
+      Nil,
+      List(WasmRefType(structName))
+    )
+
+    import fctx.instrs
+
+    instrs += GLOBAL_GET(genGlobalName.forVTable(className))
+
+    val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
+    if (!interfaces.isEmpty)
+      instrs += GLOBAL_GET(genGlobalName.forITable(className))
+    else
+      instrs += REF_NULL(WasmHeapType(genTypeName.itables))
+
+    classInfo.allFieldDefs.foreach { f =>
+      WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(f.ftpe)(clazz.pos), f.ftpe)
+    }
+    instrs += STRUCT_NEW(structName)
+
+    fctx.buildAndAddToContext()
+  }
+
+  /** Generate clone function for the given class, if it is concrete and implements the Cloneable
+    * interface. The generated clone function will be registered in the typeData of the class (which
+    * resides in the vtable of the class), and will be invoked when the `super.clone()` method is
+    * called on the class instance.
+    */
+  private def genCloneFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+    implicit val pos = clazz.pos
+
+    val className = clazz.className
+    val info = ctx.getClassInfo(className)
+
+    val fctx = WasmFunctionContext(
+      genFunctionName.clone(className),
+      List("from" -> WasmRefType(genTypeName.ObjectStruct)),
+      List(WasmRefType(genTypeName.ObjectStruct))
+    )
+    val List(fromParam) = fctx.paramIndices
+
+    import fctx.instrs
+
+    val heapType = WasmHeapType(genTypeName.forClass(className))
+
+    val from = fctx.addSyntheticLocal(WasmRefType.nullable(heapType))
+    val result = fctx.addSyntheticLocal(WasmRefType.nullable(heapType))
+
+    instrs += LOCAL_GET(fromParam)
+    instrs += REF_CAST(WasmRefType(heapType))
+    instrs += LOCAL_SET(from)
+
+    instrs += CALL(genFunctionName.newDefault(className))
+    instrs += LOCAL_SET(result)
+    info.allFieldDefs.foreach { field =>
+      val fieldIdx = info.getFieldIdx(field.name.name)
+      instrs += LOCAL_GET(result)
+      instrs += LOCAL_GET(from)
+      instrs += STRUCT_GET(genTypeName.forClass(className), fieldIdx)
+      instrs += STRUCT_SET(genTypeName.forClass(className), fieldIdx)
+    }
+    instrs += LOCAL_GET(result)
+    instrs += REF_AS_NOT_NULL
+
+    fctx.buildAndAddToContext(ctx.cloneFunctionTypeName)
   }
 
   private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -581,6 +689,9 @@ class WasmBuilder(coreSpec: CoreSpec) {
       }
     )
     ctx.mainRecType.addSubType(itableTypeName, itableType)
+
+    if (clazz.hasInstanceTests)
+      genInterfaceInstanceTest(clazz)
   }
 
   private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
