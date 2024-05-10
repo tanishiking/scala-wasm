@@ -416,12 +416,12 @@ object CoreWasmLib {
     addHelperImport(genFunctionName.newSymbol, Nil, List(anyref))
     addHelperImport(
       genFunctionName.createJSClass,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func),
+      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref),
       List(WasmRefType.any)
     )
     addHelperImport(
       genFunctionName.createJSClassRest,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
+      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref, WasmInt32),
       List(WasmRefType.any)
     )
     addHelperImport(

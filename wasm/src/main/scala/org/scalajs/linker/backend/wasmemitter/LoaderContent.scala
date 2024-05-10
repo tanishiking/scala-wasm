@@ -214,22 +214,40 @@ const scalaJSHelpers = {
 
   // Non-native JS class support
   newSymbol: Symbol,
-  createJSClass: (data, superClass, preSuperStats, superArgs, postSuperStats) => {
+  createJSClass: (data, superClass, preSuperStats, superArgs, postSuperStats, fields) => {
+    // fields is an array where even indices are field names and odd indices are initial values
     return class extends superClass {
       constructor(...args) {
         var preSuperEnv = preSuperStats(data, new.target, ...args);
         super(...superArgs(data, preSuperEnv, new.target, ...args));
+        for (var i = 0; i != fields.length; i = (i + 2) | 0) {
+          Object.defineProperty(this, fields[i], {
+            value: fields[(i + 1) | 0],
+            configurable: true,
+            enumerable: true,
+            writable: true,
+          });
+        }
         postSuperStats(data, preSuperEnv, new.target, this, ...args);
       }
     };
   },
-  createJSClassRest: (data, superClass, preSuperStats, superArgs, postSuperStats, n) => {
+  createJSClassRest: (data, superClass, preSuperStats, superArgs, postSuperStats, fields, n) => {
+    // fields is an array where even indices are field names and odd indices are initial values
     return class extends superClass {
       constructor(...args) {
         var fixedArgs = args.slice(0, n);
         var restArg = args.slice(n);
         var preSuperEnv = preSuperStats(data, new.target, ...fixedArgs, restArg);
         super(...superArgs(data, preSuperEnv, new.target, ...fixedArgs, restArg));
+        for (var i = 0; i != fields.length; i = (i + 2) | 0) {
+          Object.defineProperty(this, fields[i], {
+            value: fields[(i + 1) | 0],
+            configurable: true,
+            enumerable: true,
+            writable: true,
+          });
+        }
         postSuperStats(data, preSuperEnv, new.target, this, ...fixedArgs, restArg);
       }
     };

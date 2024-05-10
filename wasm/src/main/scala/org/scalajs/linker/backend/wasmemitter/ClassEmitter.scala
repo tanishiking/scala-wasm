@@ -821,27 +821,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
         List(WasmRefType.anyref)
       )
 
-      import fctx.instrs
-
-      // Create fields
-      for (fieldDef <- clazz.fields if !fieldDef.flags.namespace.isStatic) {
-        // Load instance
-        instrs += LOCAL_GET(fctx.receiverStorage.idx)
-
-        // Load name
-        fieldDef match {
-          case IRTrees.FieldDef(_, name, _, _) =>
-            instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(name.name))
-          case IRTrees.JSFieldDef(_, nameTree, _) =>
-            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
-        }
-
-        // Generate boxed representation of the zero of the field
-        instrs += genBoxedZeroOf(fieldDef.ftpe)
-
-        instrs += CALL(genFunctionName.installJSField)
-      }
-
       WasmExpressionBuilder.generateIRBody(
         IRTrees.Block(ctorBody.afterSuper),
         IRTypes.AnyType
@@ -891,6 +870,23 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += ctx.refFuncWithDeclaration(preSuperStatsFun.name)
       instrs += ctx.refFuncWithDeclaration(superArgsFun.name)
       instrs += ctx.refFuncWithDeclaration(postSuperStatsFun.name)
+
+      // Load the array of field names and initial values
+      instrs += CALL(genFunctionName.jsNewArray)
+      for (fieldDef <- clazz.fields if !fieldDef.flags.namespace.isStatic) {
+        // Append the name
+        fieldDef match {
+          case IRTrees.FieldDef(_, name, _, _) =>
+            instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(name.name))
+          case IRTrees.JSFieldDef(_, nameTree, _) =>
+            WasmExpressionBuilder.generateIRBody(nameTree, IRTypes.AnyType)
+        }
+        instrs += CALL(genFunctionName.jsArrayPush)
+
+        // Append the boxed representation of the zero of the field
+        instrs += genBoxedZeroOf(fieldDef.ftpe)
+        instrs += CALL(genFunctionName.jsArrayPush)
+      }
 
       // Call the createJSClass helper to bundle everything
       if (ctor.restParam.isDefined) {
