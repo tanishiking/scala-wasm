@@ -46,9 +46,6 @@ class WasmFunctionContext private (
   private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName =
     fb.addLocal(name, typ)
 
-  def addLocal(name: String, typ: WasmType): WasmLocalName =
-    fb.addLocal(name, typ)
-
   private def addLocal(name: IRNames.LocalName, typ: WasmType): WasmLocalName =
     addLocal(localNameFromIR(name), typ)
 
