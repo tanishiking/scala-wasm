@@ -792,7 +792,7 @@ private class WasmExpressionBuilder private (
         case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(v)
 
         case v: IRTrees.Undefined =>
-          instrs += CALL(genFunctionName.undef)
+          instrs += GLOBAL_GET(genGlobalName.undef)
         case v: IRTrees.Null =>
           instrs += WasmInstr.REF_NULL(Types.WasmHeapType.None)
 
@@ -1586,7 +1586,7 @@ private class WasmExpressionBuilder private (
     targetTpe match {
       case IRTypes.UndefType =>
         instrs += DROP
-        instrs += CALL(genFunctionName.undef)
+        instrs += GLOBAL_GET(genGlobalName.undef)
       case IRTypes.StringType =>
         instrs += REF_AS_NOT_NULL
 

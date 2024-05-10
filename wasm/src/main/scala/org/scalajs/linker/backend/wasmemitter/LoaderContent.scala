@@ -72,7 +72,7 @@ const scalaJSHelpers = {
   is: Object.is,
 
   // undefined
-  undef: () => void 0,
+  undef: void 0,
   isUndef: (x) => x === (void 0),
 
   // Boxes (upcast) -- most are identity at the JS level but with different types in Wasm
@@ -118,7 +118,7 @@ const scalaJSHelpers = {
   closureRestNoData: (f, n) => ((...args) => f(...args.slice(0, n), args.slice(n))),
 
   // Strings
-  emptyString: () => "",
+  emptyString: "",
   stringLength: (s) => s.length,
   stringCharAt: (s, i) => s.charCodeAt(i),
   jsValueToString: (x) => (x === void 0) ? "undefined" : x.toString(),

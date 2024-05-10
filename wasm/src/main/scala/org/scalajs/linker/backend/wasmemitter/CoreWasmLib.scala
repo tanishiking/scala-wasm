@@ -168,6 +168,8 @@ object CoreWasmLib {
       )
     }
 
+    addGlobalHelperImport(genGlobalName.undef, WasmRefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.emptyString, WasmRefType.any, isMutable = false)
     addGlobalHelperImport(genGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
   }
 
@@ -264,7 +266,6 @@ object CoreWasmLib {
 
     addHelperImport(genFunctionName.is, List(anyref, anyref), List(WasmInt32))
 
-    addHelperImport(genFunctionName.undef, List(), List(WasmRefType.any))
     addHelperImport(genFunctionName.isUndef, List(anyref), List(WasmInt32))
 
     for (primRef <- List(BooleanRef, ByteRef, ShortRef, IntRef, FloatRef, DoubleRef)) {
@@ -307,7 +308,6 @@ object CoreWasmLib {
       List(WasmRefType.any)
     )
 
-    addHelperImport(genFunctionName.emptyString, List(), List(WasmRefType.any))
     addHelperImport(genFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
     addHelperImport(genFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
     addHelperImport(genFunctionName.jsValueToString, List(WasmRefType.any), List(WasmRefType.any))
@@ -521,7 +521,7 @@ object CoreWasmLib {
     instrs += LOCAL_SET(iLocal)
 
     // result := ""
-    instrs += CALL(genFunctionName.emptyString)
+    instrs += GLOBAL_GET(genGlobalName.emptyString)
     instrs += LOCAL_SET(resultLocal)
 
     instrs.loop() { labelLoop =>

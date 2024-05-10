@@ -39,6 +39,12 @@ object VarGen {
     def forJSPrivateField(fieldName: FieldName): WasmGlobalName =
       WasmGlobalName(s"jspfield.${fieldName.nameString}")
 
+    val undef: WasmGlobalName =
+      WasmGlobalName("undef")
+
+    val emptyString: WasmGlobalName =
+      WasmGlobalName("emptyString")
+
     val stringLiteralCache: WasmGlobalName =
       WasmGlobalName("string_literal")
 
@@ -122,7 +128,6 @@ object VarGen {
 
     val is = make("is")
 
-    val undef = make("undef")
     val isUndef = make("isUndef")
 
     def box(primRef: PrimRef): WasmFunctionName = make("b" + primRef.charCode)
@@ -138,7 +143,6 @@ object VarGen {
     val closureThisRest = make("closureThisRest")
     val closureRestNoData = make("closureRestNoData")
 
-    val emptyString = make("emptyString")
     val stringLength = make("stringLength")
     val stringCharAt = make("stringCharAt")
     val jsValueToString = make("jsValueToString") // for actual toString() call
