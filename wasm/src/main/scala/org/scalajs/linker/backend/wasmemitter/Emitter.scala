@@ -117,9 +117,8 @@ final class Emitter(config: Emitter.Config) {
 
     implicit val pos = Position.NoPosition
 
-    implicit val fctx = WasmFunctionContext(genFunctionName.start, Nil, Nil)
-
-    import fctx.instrs
+    val fb = new FunctionBuilder(ctx.moduleBuilder, genFunctionName.start, pos)
+    val instrs: fb.type = fb
 
     // Initialize itables
     for (className <- ctx.getAllClassesWithITableGlobal()) {
@@ -238,7 +237,7 @@ final class Emitter(config: Emitter.Config) {
 
     // Finish the start function
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
     ctx.moduleBuilder.setStart(genFunctionName.start)
   }
 

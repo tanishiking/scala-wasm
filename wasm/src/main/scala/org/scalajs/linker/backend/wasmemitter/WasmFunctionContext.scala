@@ -33,6 +33,7 @@ class WasmFunctionContext private (
   /** Alias for `fb` because we have been using `fctx.instrs` everywhere. */
   val instrs: fb.type = fb
 
+  private var nextSyntheticLocalIndex = 0
   private var innerFuncIdx = 0
   private var currentEnv: Env = _paramsEnv
 
@@ -42,9 +43,7 @@ class WasmFunctionContext private (
   def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
-  def paramIndices: List[WasmLocalName] = _params.map(_.name)
-
-  def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName =
+  private def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName =
     fb.addLocal(name, typ)
 
   def addLocal(name: String, typ: WasmType): WasmLocalName =
@@ -75,8 +74,11 @@ class WasmFunctionContext private (
     }
   }
 
-  def addSyntheticLocal(typ: WasmType): WasmLocalName =
-    fb.addSyntheticLocal(typ)
+  def addSyntheticLocal(typ: WasmType): WasmLocalName = {
+    val name = WasmLocalName(s"local___$nextSyntheticLocalIndex")
+    nextSyntheticLocalIndex += 1
+    addLocal(name, typ)
+  }
 
   def genInnerFuncName(): WasmFunctionName = {
     val innerName = WasmFunctionName(functionName.name + "__c" + innerFuncIdx)
@@ -92,21 +94,7 @@ class WasmFunctionContext private (
   // Final result
 
   def buildAndAddToContext(): WasmFunction =
-    buildAndAddToContext(useFunctionTypeInMainRecType = false)
-
-  def buildAndAddToContext(useFunctionTypeInMainRecType: Boolean): WasmFunction = {
-    if (useFunctionTypeInMainRecType) {
-      val sig = WasmFunctionSignature(_params.map(_.typ), _resultTypes)
-      fb.setFunctionType(ctx.addFunctionTypeInMainRecType(sig))
-    }
-
     fb.buildAndAddToModule()
-  }
-
-  def buildAndAddToContext(functionTypeName: WasmTypeName): WasmFunction = {
-    fb.setFunctionType(functionTypeName)
-    fb.buildAndAddToModule()
-  }
 }
 
 object WasmFunctionContext {
@@ -238,7 +226,7 @@ object WasmFunctionContext {
       name: WasmFunctionName,
       receiverTyp: Option[WasmType],
       paramDefs: List[IRTrees.ParamDef],
-      resultTypes: List[WasmType]
+      resultType: IRTypes.Type
   )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
     apply(
       enclosingClassName,
@@ -246,38 +234,11 @@ object WasmFunctionContext {
       captureParamDefs = None,
       receiverTyp,
       paramDefs,
-      resultTypes
-    )
-  }
-
-  def apply(
-      enclosingClassName: Option[IRNames.ClassName],
-      name: WasmFunctionName,
-      receiverTyp: Option[WasmType],
-      paramDefs: List[IRTrees.ParamDef],
-      resultType: IRTypes.Type
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
-    apply(
-      enclosingClassName,
-      name,
-      receiverTyp,
-      paramDefs,
       TypeTransformer.transformResultType(resultType)
     )
   }
 
-  def apply(
-      name: WasmFunctionName,
-      params: List[(String, WasmType)],
-      resultTypes: List[WasmType]
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): WasmFunctionContext = {
-    val paramLocals = params.map { param =>
-      WasmLocal(WasmLocalName(param._1), param._2, isParameter = true)
-    }
-    new WasmFunctionContext(ctx, None, name, paramLocals, None, None, Map.empty, resultTypes, pos)
-  }
-
-  def paramDefsToWasmParams(
+  private def paramDefsToWasmParams(
       paramDefs: List[IRTrees.ParamDef]
   )(implicit ctx: TypeDefinableWasmContext, pos: Position): List[WasmLocal] = {
     paramDefs.map { paramDef =>

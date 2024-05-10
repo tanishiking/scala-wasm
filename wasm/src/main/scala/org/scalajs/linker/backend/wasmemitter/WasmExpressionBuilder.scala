@@ -53,12 +53,10 @@ object WasmExpressionBuilder {
     builder.genBlockStats(stats)(inner)
   }
 
-  def genLoadJSNativeLoadSpec(fctx: WasmFunctionContext, loadSpec: IRTrees.JSNativeLoadSpec)(
-      implicit ctx: TypeDefinableWasmContext
+  def genLoadJSNativeLoadSpec(instrs: FunctionBuilder, loadSpec: IRTrees.JSNativeLoadSpec)(implicit
+      ctx: TypeDefinableWasmContext
   ): IRTypes.Type = {
     import IRTrees.JSNativeLoadSpec._
-
-    import fctx.instrs
 
     def genFollowPath(path: List[String]): Unit = {
       for (prop <- path) {
@@ -78,7 +76,7 @@ object WasmExpressionBuilder {
         genFollowPath(path)
         IRTypes.AnyType
       case ImportWithGlobalFallback(importSpec, globalSpec) =>
-        genLoadJSNativeLoadSpec(fctx, importSpec)
+        genLoadJSNativeLoadSpec(instrs, importSpec)
     }
   }
 
@@ -2083,7 +2081,7 @@ private class WasmExpressionBuilder private (
         val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
           throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
         }
-        genLoadJSNativeLoadSpec(fctx, jsNativeLoadSpec)(ctx)
+        genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
 
       case ClassKind.JSClass =>
         instrs += CALL(genFunctionName.loadJSClass(tree.className))
@@ -2106,7 +2104,7 @@ private class WasmExpressionBuilder private (
         val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
           throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
         }
-        genLoadJSNativeLoadSpec(fctx, jsNativeLoadSpec)(ctx)
+        genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
 
       case ClassKind.JSModuleClass =>
         instrs += CALL(genFunctionName.loadModule(tree.className))
@@ -2126,7 +2124,7 @@ private class WasmExpressionBuilder private (
         throw new AssertionError(s"Found $tree for non-existing JS native member at ${tree.pos}")
       }
     )
-    genLoadJSNativeLoadSpec(fctx, jsNativeLoadSpec)(ctx)
+    genLoadJSNativeLoadSpec(instrs, jsNativeLoadSpec)(ctx)
   }
 
   private def genJSDelete(tree: IRTrees.JSDelete): IRTypes.Type = {
