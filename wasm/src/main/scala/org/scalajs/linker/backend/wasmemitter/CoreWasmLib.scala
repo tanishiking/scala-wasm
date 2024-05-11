@@ -161,7 +161,7 @@ object CoreWasmLib {
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
     val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
-    val typeName = ctx.addFunctionType(exceptionSig)
+    val typeName = ctx.moduleBuilder.signatureToTypeName(exceptionSig)
     ctx.moduleBuilder.addImport(
       WasmImport(
         "__scalaJSHelpers",
@@ -300,7 +300,7 @@ object CoreWasmLib {
         results: List[WasmType]
     ): Unit = {
       val sig = WasmFunctionSignature(params, results)
-      val typeName = ctx.addFunctionType(sig)
+      val typeName = ctx.moduleBuilder.signatureToTypeName(sig)
       ctx.moduleBuilder.addImport(
         WasmImport("__scalaJSHelpers", name.name, WasmImportDesc.Func(name, typeName))
       )

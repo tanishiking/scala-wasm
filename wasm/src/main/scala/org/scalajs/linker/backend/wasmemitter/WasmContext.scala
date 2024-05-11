@@ -72,8 +72,15 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionSignatureProvider {
-      def signatureToTypeName(sig: WasmFunctionSignature): WasmTypeName =
-        addFunctionType(sig)
+      def signatureToTypeName(sig: WasmFunctionSignature): WasmTypeName = {
+        functionTypes.getOrElseUpdate(
+          sig, {
+            val typeName = genTypeName.forFunction(functionTypes.size)
+            moduleBuilder.addRecType(typeName, WasmFunctionType(sig))
+            typeName
+          }
+        )
+      }
     })
   }
 
@@ -98,17 +105,6 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
         idx
       }
     )
-
-  /** Adds or reuses a function type for the given signature. */
-  def addFunctionType(sig: WasmFunctionSignature): WasmTypeName = {
-    functionTypes.getOrElseUpdate(
-      sig, {
-        val typeName = genTypeName.forFunction(functionTypes.size)
-        moduleBuilder.addRecType(typeName, WasmFunctionType(sig))
-        typeName
-      }
-    )
-  }
 
   /** Adds or reuses a function type for a table function.
     *
