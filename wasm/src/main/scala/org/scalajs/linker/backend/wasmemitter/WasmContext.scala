@@ -263,41 +263,6 @@ final class WasmContext extends TypeDefinableWasmContext {
   def addJSPrivateFieldName(fieldName: IRNames.FieldName): Unit =
     _jsPrivateFieldNames += fieldName
 
-  /** Run-time type data of a `TypeRef`.
-    *
-    * Support for `j.l.Class` methods and other reflective operations.
-    *
-    * @see
-    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
-    */
-  val typeDataStructFields: List[WasmStructField] = {
-    import genFieldName.typeData._
-    import WasmRefType.nullable
-    List(
-      WasmStructField(nameOffset, WasmInt32, isMutable = false),
-      WasmStructField(nameSize, WasmInt32, isMutable = false),
-      WasmStructField(nameStringIndex, WasmInt32, isMutable = false),
-      WasmStructField(kind, WasmInt32, isMutable = false),
-      WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
-      WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
-      WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
-      WasmStructField(name, WasmRefType.anyref, isMutable = true),
-      WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
-      WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
-      WasmStructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
-      WasmStructField(
-        isJSClassInstance,
-        nullable(genTypeName.isJSClassInstanceFuncType),
-        isMutable = false
-      ),
-      WasmStructField(
-        reflectiveProxies,
-        WasmRefType(genTypeName.reflectiveProxies),
-        isMutable = false
-      )
-    )
-  }
-
   def getFinalStringPool(): (Array[Byte], Int) =
     (stringPool.toArray, nextConstantStringIndex)
 

@@ -22,6 +22,42 @@ object CoreWasmLib {
 
   private implicit val noPos: Position = Position.NoPosition
 
+  /** Fields of the `typeData` struct definition.
+    *
+    * They are accessible as a public list because they must be repeated in every vtable type
+    * definition.
+    *
+    * @see
+    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
+    */
+  val typeDataStructFields: List[WasmStructField] = {
+    import genFieldName.typeData._
+    import WasmRefType.nullable
+    List(
+      WasmStructField(nameOffset, WasmInt32, isMutable = false),
+      WasmStructField(nameSize, WasmInt32, isMutable = false),
+      WasmStructField(nameStringIndex, WasmInt32, isMutable = false),
+      WasmStructField(kind, WasmInt32, isMutable = false),
+      WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
+      WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
+      WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
+      WasmStructField(name, WasmRefType.anyref, isMutable = true),
+      WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
+      WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
+      WasmStructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
+      WasmStructField(
+        isJSClassInstance,
+        nullable(genTypeName.isJSClassInstanceFuncType),
+        isMutable = false
+      ),
+      WasmStructField(
+        reflectiveProxies,
+        WasmRefType(genTypeName.reflectiveProxies),
+        isMutable = false
+      )
+    )
+  }
+
   /** Generates definitions that must come *before* the code generated for regular classes.
     *
     * This notably includes the `typeData` definitions, since the vtable of `jl.Object` is a subtype
@@ -97,7 +133,7 @@ object CoreWasmLib {
         genTypeName.typeData,
         isFinal = false,
         None,
-        WasmStructType(ctx.typeDataStructFields)
+        WasmStructType(typeDataStructFields)
       )
     )
 

@@ -373,7 +373,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       case None    => genTypeName.typeData
       case Some(s) => genTypeName.forVTable(s)
     }
-    val structType = WasmStructType(ctx.typeDataStructFields ::: vtableFields)
+    val structType = WasmStructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
     val subType = WasmSubType(typeName, isFinal = false, Some(superType), structType)
     ctx.mainRecType.addSubType(subType)
     typeName
