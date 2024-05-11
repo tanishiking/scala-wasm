@@ -2668,7 +2668,7 @@ private class FunctionEmitter private (
       genFieldIdx.typeData.cloneFunctionIdx
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
-    instrs += CALL_REF(ctx.cloneFunctionTypeName)
+    instrs += CALL_REF(genTypeName.cloneFunctionType)
 
     t.tpe match {
       case ClassType(className) =>

@@ -67,6 +67,19 @@ object CoreWasmLib {
 
   private def genCoreTypesInRecType()(implicit ctx: WasmContext): Unit = {
     ctx.mainRecType.addSubType(
+      genTypeName.cloneFunctionType,
+      WasmFunctionType(
+        List(WasmRefType(genTypeName.ObjectStruct)),
+        List(WasmRefType(genTypeName.ObjectStruct))
+      )
+    )
+
+    ctx.mainRecType.addSubType(
+      genTypeName.isJSClassInstanceFuncType,
+      WasmFunctionType(List(WasmRefType.anyref), List(WasmInt32))
+    )
+
+    ctx.mainRecType.addSubType(
       genTypeName.typeDataArray,
       WasmArrayType(WasmFieldType(WasmRefType(genTypeName.typeData), isMutable = false))
     )
@@ -932,7 +945,7 @@ object CoreWasmLib {
         instrs += REF_NULL(WasmHeapType.None) // arrayOf
 
         // clone
-        instrs.switch(WasmRefType(ctx.cloneFunctionTypeName)) { () =>
+        instrs.switch(WasmRefType(genTypeName.cloneFunctionType)) { () =>
           instrs += LOCAL_GET(typeDataParam)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
         }(
@@ -1104,7 +1117,7 @@ object CoreWasmLib {
           instrs += BR_ON_NULL(isJSClassInstanceIsNull)
 
           // Call the function
-          instrs += CALL_REF(ctx.isJSClassInstanceFuncTypeName)
+          instrs += CALL_REF(genTypeName.isJSClassInstanceFuncType)
           instrs += RETURN
         }
         instrs += DROP // drop `value` which was left on the stack
@@ -2073,7 +2086,7 @@ object CoreWasmLib {
     val fb = newFunctionBuilder(genFunctionName.clone(baseRef))
     val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
     fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
-    fb.setFunctionType(ctx.cloneFunctionTypeName)
+    fb.setFunctionType(genTypeName.cloneFunctionType)
 
     val instrs = fb
 

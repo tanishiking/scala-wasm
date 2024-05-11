@@ -26,9 +26,6 @@ abstract class ReadOnlyWasmContext {
 
   protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
 
-  val cloneFunctionTypeName: WasmTypeName
-  val isJSClassInstanceFuncTypeName: WasmTypeName
-
   protected var _itablesLength: Int = 0
   def itablesLength = _itablesLength
 
@@ -67,7 +64,6 @@ case class StringData(
 
 abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
   private val functionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
-  private val recFunctionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
   private val tableFunctionTypes = mutable.HashMap.empty[IRNames.MethodName, WasmTypeName]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   protected val classItableGlobals = mutable.ListBuffer.empty[IRNames.ClassName]
@@ -114,32 +110,35 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
     )
   }
 
-  /** Adds or reuses a function type for the given signature that is part of the main `rectype`.
+  /** Adds or reuses a function type for a table function.
     *
-    * This should be used for function types that are used inside other type declarations that are
-    * part of the main `rectype`. In particular, it should be used for the function types appearing
-    * in vtables and itables.
+    * Table function types are part of the main `rectype`, and have names derived from the
+    * `methodName`.
     */
-  def addFunctionTypeInMainRecType(sig: WasmFunctionSignature): WasmTypeName = {
-    recFunctionTypes.getOrElseUpdate(
-      sig, {
-        val typeName = genTypeName.forRecFunction(recFunctionTypes.size)
-        mainRecType.addSubType(typeName, WasmFunctionType(sig))
-        typeName
-      }
-    )
-  }
-
   def tableFunctionType(methodName: IRNames.MethodName): WasmTypeName = {
+    // Project all the names with the same *signatures* onto a normalized `MethodName`
+    val normalizedName = IRNames.MethodName(
+      SpecialNames.normalizedSimpleMethodName,
+      methodName.paramTypeRefs,
+      methodName.resultTypeRef,
+      methodName.isReflectiveProxy
+    )
+
     tableFunctionTypes.getOrElseUpdate(
-      methodName, {
-        val regularParamTyps = methodName.paramTypeRefs.map { typeRef =>
+      normalizedName, {
+        val typeName = genTypeName.forTableFunctionType(normalizedName)
+        val regularParamTyps = normalizedName.paramTypeRefs.map { typeRef =>
           TypeTransformer.transformType(inferTypeFromTypeRef(typeRef))(this)
         }
         val resultTyp =
-          TypeTransformer.transformResultType(inferTypeFromTypeRef(methodName.resultTypeRef))(this)
-        val sig = WasmFunctionSignature(WasmRefType.any :: regularParamTyps, resultTyp)
-        addFunctionTypeInMainRecType(sig)
+          TypeTransformer.transformResultType(inferTypeFromTypeRef(normalizedName.resultTypeRef))(
+            this
+          )
+        mainRecType.addSubType(
+          typeName,
+          WasmFunctionType(WasmRefType.any :: regularParamTyps, resultTyp)
+        )
+        typeName
       }
     )
   }
@@ -268,17 +267,6 @@ final class WasmContext extends TypeDefinableWasmContext {
   def addJSPrivateFieldName(fieldName: IRNames.FieldName): Unit =
     _jsPrivateFieldNames += fieldName
 
-  val cloneFunctionTypeName: WasmTypeName =
-    addFunctionTypeInMainRecType(
-      WasmFunctionSignature(
-        List(WasmRefType(genTypeName.ObjectStruct)),
-        List(WasmRefType(genTypeName.ObjectStruct))
-      )
-    )
-
-  val isJSClassInstanceFuncTypeName: WasmTypeName =
-    addFunctionTypeInMainRecType(WasmFunctionSignature(List(WasmRefType.anyref), List(WasmInt32)))
-
   /** Run-time type data of a `TypeRef`.
     *
     * Support for `j.l.Class` methods and other reflective operations.
@@ -300,10 +288,10 @@ final class WasmContext extends TypeDefinableWasmContext {
       WasmStructField(name, WasmRefType.anyref, isMutable = true),
       WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
       WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
-      WasmStructField(cloneFunction, nullable(cloneFunctionTypeName), isMutable = false),
+      WasmStructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
       WasmStructField(
         isJSClassInstance,
-        nullable(isJSClassInstanceFuncTypeName),
+        nullable(genTypeName.isJSClassInstanceFuncType),
         isMutable = false
       ),
       WasmStructField(
