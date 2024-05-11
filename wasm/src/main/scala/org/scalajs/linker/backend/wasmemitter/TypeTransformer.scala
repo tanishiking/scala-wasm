@@ -24,7 +24,7 @@ object TypeTransformer {
     */
   def transformResultType(
       t: IRTypes.Type
-  )(implicit ctx: ReadOnlyWasmContext): List[Types.WasmType] =
+  )(implicit ctx: WasmContext): List[Types.WasmType] =
     t match {
       case IRTypes.NoType      => Nil
       case IRTypes.NothingType => Nil
@@ -36,7 +36,7 @@ object TypeTransformer {
     * This method cannot be used for `void` and `nothing`, since they have no corresponding Wasm
     * value type.
     */
-  def transformType(t: IRTypes.Type)(implicit ctx: ReadOnlyWasmContext): Types.WasmType =
+  def transformType(t: IRTypes.Type)(implicit ctx: WasmContext): Types.WasmType =
     t match {
       case IRTypes.AnyType => Types.WasmRefType.anyref
 
@@ -51,7 +51,7 @@ object TypeTransformer {
 
   def transformClassType(
       className: IRNames.ClassName
-  )(implicit ctx: ReadOnlyWasmContext): Types.WasmRefType = {
+  )(implicit ctx: WasmContext): Types.WasmRefType = {
     val info = ctx.getClassInfo(className)
     if (info.isAncestorOfHijackedClass)
       Types.WasmRefType.anyref

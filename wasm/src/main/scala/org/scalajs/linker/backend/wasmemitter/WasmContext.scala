@@ -21,13 +21,52 @@ import org.scalajs.linker.backend.webassembly.Types._
 
 import VarGen._
 
-abstract class ReadOnlyWasmContext {
+final class WasmContext {
   import WasmContext._
 
-  protected val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
+  private val classInfo = mutable.Map[IRNames.ClassName, WasmClassInfo]()
 
-  protected var _itablesLength: Int = 0
+  private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
+
+  private val functionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
+  private val tableFunctionTypes = mutable.HashMap.empty[IRNames.MethodName, WasmTypeName]
+  private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
+  private val classItableGlobals = mutable.ListBuffer.empty[IRNames.ClassName]
+  private val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmTypeName]
+  private val reflectiveProxies = LinkedHashMap.empty[IRNames.MethodName, Int]
+
+  val moduleBuilder: ModuleBuilder = {
+    new ModuleBuilder(new ModuleBuilder.FunctionSignatureProvider {
+      def signatureToTypeName(sig: WasmFunctionSignature): WasmTypeName = {
+        functionTypes.getOrElseUpdate(
+          sig, {
+            val typeName = genTypeName.forFunction(functionTypes.size)
+            moduleBuilder.addRecType(typeName, WasmFunctionType(sig))
+            typeName
+          }
+        )
+      }
+    })
+  }
+
+  private var stringPool = new mutable.ArrayBuffer[Byte]()
+  private var nextConstantStringIndex: Int = 0
+  private var nextConstatnStringOffset: Int = 0
+  private var nextArrayTypeIndex: Int = 1
+  private var nextClosureDataTypeIndex: Int = 1
+  private var nextReflectiveProxyIdx: Int = 0
+
+  private val _importedModules: mutable.LinkedHashSet[String] =
+    new mutable.LinkedHashSet()
+
+  private val _jsPrivateFieldNames: mutable.ListBuffer[IRNames.FieldName] =
+    new mutable.ListBuffer()
+  private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
+    new mutable.LinkedHashSet()
+
+  /** The main `rectype` containing the object model types. */
+  val mainRecType: ModuleBuilder.RecTypeBuilder = new ModuleBuilder.RecTypeBuilder
 
   /** Get an index of the itable for the given interface. The itable instance must be placed at the
     * index in the array of itables (whose size is `itablesLength`).
@@ -55,46 +94,6 @@ abstract class ReadOnlyWasmContext {
     case typeRef: IRTypes.ArrayTypeRef =>
       IRTypes.ArrayType(typeRef)
   }
-}
-
-case class StringData(
-    constantStringIndex: Int,
-    offset: Int
-)
-
-abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: WasmContext =>
-  private val functionTypes = LinkedHashMap.empty[WasmFunctionSignature, WasmTypeName]
-  private val tableFunctionTypes = mutable.HashMap.empty[IRNames.MethodName, WasmTypeName]
-  private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
-  protected val classItableGlobals = mutable.ListBuffer.empty[IRNames.ClassName]
-  private val closureDataTypes = LinkedHashMap.empty[List[IRTypes.Type], WasmTypeName]
-  private val reflectiveProxies = LinkedHashMap.empty[IRNames.MethodName, Int]
-
-  val moduleBuilder: ModuleBuilder = {
-    new ModuleBuilder(new ModuleBuilder.FunctionSignatureProvider {
-      def signatureToTypeName(sig: WasmFunctionSignature): WasmTypeName = {
-        functionTypes.getOrElseUpdate(
-          sig, {
-            val typeName = genTypeName.forFunction(functionTypes.size)
-            moduleBuilder.addRecType(typeName, WasmFunctionType(sig))
-            typeName
-          }
-        )
-      }
-    })
-  }
-
-  protected var stringPool = new mutable.ArrayBuffer[Byte]()
-  protected var nextConstantStringIndex: Int = 0
-  private var nextConstatnStringOffset: Int = 0
-  private var nextArrayTypeIndex: Int = 1
-  private var nextClosureDataTypeIndex: Int = 1
-  private var nextReflectiveProxyIdx: Int = 0
-
-  def addFunction(fun: WasmFunction): Unit
-  protected def addGlobal(g: WasmGlobal): Unit
-  def getImportedModuleGlobal(moduleName: String): WasmGlobalName
-  protected def addFuncDeclaration(name: WasmFunctionName): Unit
 
   /** Retrieves a unique identifier for a reflective proxy with the given name */
   def getReflectiveProxyId(name: IRNames.MethodName): Int =
@@ -198,28 +197,8 @@ abstract class TypeDefinableWasmContext extends ReadOnlyWasmContext { this: Wasm
     WasmInstr.REF_FUNC(name)
   }
 
-  private def extractArrayElemType(typeRef: IRTypes.ArrayTypeRef): IRTypes.Type = {
-    if (typeRef.dimensions > 1) IRTypes.ArrayType(typeRef.copy(dimensions = typeRef.dimensions - 1))
-    else inferTypeFromTypeRef(typeRef.base)
-  }
-}
-
-final class WasmContext extends TypeDefinableWasmContext {
-  import WasmContext._
-
-  private val _importedModules: mutable.LinkedHashSet[String] =
-    new mutable.LinkedHashSet()
-
   def assignBuckets(classes: List[LinkedClass]): Unit =
     _itablesLength = assignBuckets0(classes.filterNot(_.kind.isJSType))
-
-  private val _jsPrivateFieldNames: mutable.ListBuffer[IRNames.FieldName] =
-    new mutable.ListBuffer()
-  private val _funcDeclarations: mutable.LinkedHashSet[WasmFunctionName] =
-    new mutable.LinkedHashSet()
-
-  /** The main `rectype` containing the object model types. */
-  val mainRecType: ModuleBuilder.RecTypeBuilder = new ModuleBuilder.RecTypeBuilder
 
   def addExport(exprt: WasmExport): Unit =
     moduleBuilder.addExport(exprt)
@@ -411,6 +390,8 @@ final class WasmContext extends TypeDefinableWasmContext {
 
 object WasmContext {
   private val classFieldOffset = 2 // vtable, itables
+
+  final case class StringData(constantStringIndex: Int, offset: Int)
 
   final class WasmClassInfo(
       ctx: WasmContext,
