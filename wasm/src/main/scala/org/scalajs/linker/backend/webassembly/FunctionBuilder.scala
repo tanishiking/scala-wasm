@@ -2,7 +2,6 @@ package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
-import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.Position
 
 import Instructions._
@@ -58,11 +57,6 @@ final class FunctionBuilder(
 
   def addLocal(name: String, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName(name), typ)
-
-  // Position handling
-
-  def markPosition(tree: IRTrees.Tree): Unit =
-    instrs += PositionMark(tree.pos)
 
   // Instructions
 

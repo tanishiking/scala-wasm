@@ -308,6 +308,9 @@ private class FunctionEmitter private (
     innerName
   }
 
+  private def markPosition(tree: IRTrees.Tree): Unit =
+    instrs += PositionMark(tree.pos)
+
   def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit =
     genTree(tree, expectedType)
 
@@ -985,7 +988,7 @@ private class FunctionEmitter private (
        */
       expectedType
     } else {
-      fb.markPosition(l)
+      markPosition(l)
 
       l match {
         case IRTrees.BooleanLiteral(v) => instrs += I32_CONST(if (v) 1 else 0)
@@ -1052,7 +1055,7 @@ private class FunctionEmitter private (
     // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
     genTreeAuto(sel.qualifier)
 
-    fb.markPosition(sel)
+    markPosition(sel)
 
     if (!classInfo.hasInstances) {
       /* The field may not exist in that case, and we cannot look it up.
@@ -1071,7 +1074,7 @@ private class FunctionEmitter private (
   }
 
   private def genSelectStatic(tree: IRTrees.SelectStatic): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += GLOBAL_GET(genGlobalName.forStaticField(tree.field.name))
     tree.tpe
   }
@@ -1083,7 +1086,7 @@ private class FunctionEmitter private (
 
     genTreeAuto(IRTrees.This()(IRTypes.ClassType(className))(t.pos))
 
-    fb.markPosition(t)
+    markPosition(t)
     instrs += GLOBAL_SET(genGlobalName.forModuleInstance(className))
     IRTypes.NoType
   }
@@ -1093,7 +1096,7 @@ private class FunctionEmitter private (
     * see: WasmBuilder.genLoadModuleFunc
     */
   private def genLoadModule(t: IRTrees.LoadModule): IRTypes.Type = {
-    fb.markPosition(t)
+    markPosition(t)
     instrs += CALL(genFunctionName.loadModule(t.className))
     t.tpe
   }
@@ -1103,7 +1106,7 @@ private class FunctionEmitter private (
 
     genTreeAuto(unary.lhs)
 
-    fb.markPosition(unary)
+    markPosition(unary)
 
     (unary.op: @switch) match {
       case Boolean_! =>
@@ -1159,7 +1162,7 @@ private class FunctionEmitter private (
     def genLongShiftOp(shiftInstr: WasmInstr): IRTypes.Type = {
       genTree(binary.lhs, IRTypes.LongType)
       genTree(binary.rhs, IRTypes.IntType)
-      fb.markPosition(binary)
+      markPosition(binary)
       instrs += I64_EXTEND_I32_S
       instrs += shiftInstr
       IRTypes.LongType
@@ -1195,24 +1198,24 @@ private class FunctionEmitter private (
 
       if (rhsValue == num.zero) {
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary)
+        markPosition(binary)
         genThrowArithmeticException()
         IRTypes.NothingType
       } else if (isDiv && rhsValue == num.fromInt(-1)) {
         /* MinValue / -1 overflows; it traps in Wasm but we need to wrap.
          * We rewrite as `0 - lhs` so that we do not need any test.
          */
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += const(num.zero)
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += sub
         tpe
       } else {
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary.rhs)
+        markPosition(binary.rhs)
         instrs += const(rhsValue)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += mainOp
         tpe
       }
@@ -1240,7 +1243,7 @@ private class FunctionEmitter private (
       genTree(binary.rhs, tpe)
       instrs += LOCAL_TEE(rhsLocal)
 
-      fb.markPosition(binary)
+      markPosition(binary)
 
       instrs += eqz
       instrs.ifThen() {
@@ -1324,14 +1327,14 @@ private class FunctionEmitter private (
         instrs += F64_PROMOTE_F32
         genTree(binary.rhs, IRTypes.FloatType)
         instrs += F64_PROMOTE_F32
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += CALL(genFunctionName.fmod)
         instrs += F32_DEMOTE_F64
         IRTypes.FloatType
       case BinaryOp.Double_% =>
         genTree(binary.lhs, IRTypes.DoubleType)
         genTree(binary.rhs, IRTypes.DoubleType)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += CALL(genFunctionName.fmod)
         IRTypes.DoubleType
 
@@ -1339,7 +1342,7 @@ private class FunctionEmitter private (
       case BinaryOp.String_charAt =>
         genTree(binary.lhs, IRTypes.StringType) // push the string
         genTree(binary.rhs, IRTypes.IntType) // push the index
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += CALL(genFunctionName.stringCharAt)
         IRTypes.CharType
 
@@ -1352,7 +1355,7 @@ private class FunctionEmitter private (
     genTree(binary.lhs, IRTypes.AnyType)
     genTree(binary.rhs, IRTypes.AnyType)
 
-    fb.markPosition(binary)
+    markPosition(binary)
 
     instrs += CALL(genFunctionName.is)
 
@@ -1370,7 +1373,7 @@ private class FunctionEmitter private (
     genTreeAuto(binary.lhs)
     genTreeAuto(binary.rhs)
 
-    fb.markPosition(binary)
+    markPosition(binary)
 
     val operation = binary.op match {
       case BinaryOp.Boolean_== => I32_EQ
@@ -1471,7 +1474,7 @@ private class FunctionEmitter private (
           instrs.block(Types.WasmRefType.any) { labelDone =>
             instrs.block() { labelIsNull =>
               genTreeAuto(tree)
-              fb.markPosition(binary)
+              markPosition(binary)
               instrs += BR_ON_NULL(labelIsNull)
               instrs += LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
@@ -1503,7 +1506,7 @@ private class FunctionEmitter private (
               // Load receiver
               genTreeAuto(tree)
 
-              fb.markPosition(binary)
+              markPosition(binary)
 
               instrs += BR_ON_CAST_FAIL(
                 labelNotOurObject,
@@ -1526,7 +1529,7 @@ private class FunctionEmitter private (
         case primType: IRTypes.PrimType =>
           genTreeAuto(tree)
 
-          fb.markPosition(binary)
+          markPosition(binary)
 
           primType match {
             case IRTypes.StringType =>
@@ -1557,7 +1560,7 @@ private class FunctionEmitter private (
         case IRTypes.ClassType(IRNames.BoxedStringClass) =>
           // Common case for which we want to avoid the hijacked class dispatch
           genTreeAuto(tree)
-          fb.markPosition(binary)
+          markPosition(binary)
           instrs += CALL(genFunctionName.jsValueToStringForConcat) // for `null`
 
         case IRTypes.ClassType(className) =>
@@ -1582,7 +1585,7 @@ private class FunctionEmitter private (
       case _ =>
         genToString(binary.lhs)
         genToString(binary.rhs)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += CALL(genFunctionName.stringConcat)
     }
 
@@ -1592,7 +1595,7 @@ private class FunctionEmitter private (
   private def genIsInstanceOf(tree: IRTrees.IsInstanceOf): IRTypes.Type = {
     genTree(tree.expr, IRTypes.AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     def genIsPrimType(testType: IRTypes.PrimType): Unit = {
       testType match {
@@ -1725,7 +1728,7 @@ private class FunctionEmitter private (
     } else {
       genTree(tree.expr, IRTypes.AnyType)
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
       def genAsPrimType(targetTpe: IRTypes.PrimType): Unit = {
         // TODO We could do something better for things like double.asInstanceOf[int]
@@ -1850,13 +1853,13 @@ private class FunctionEmitter private (
       val typeDataLocal = addSyntheticLocal(typeDataType)
 
       genTreeAuto(tree.expr)
-      fb.markPosition(tree)
+      markPosition(tree)
       instrs += STRUCT_GET(objectTypeIdx, genFieldIdx.objStruct.vtable) // implicit trap on null
       instrs += LOCAL_SET(typeDataLocal)
       genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
     } else {
       genTree(tree.expr, IRTypes.AnyType)
-      fb.markPosition(tree)
+      markPosition(tree)
       instrs += REF_AS_NOT_NULL
       instrs += CALL(genFunctionName.anyGetClass)
     }
@@ -1875,13 +1878,13 @@ private class FunctionEmitter private (
   }
 
   private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
-    fb.markPosition(r)
+    markPosition(r)
     genReadStorage(lookupLocal(r.ident.name))
     r.tpe
   }
 
   private def genThis(t: IRTrees.This): IRTypes.Type = {
-    fb.markPosition(t)
+    markPosition(t)
 
     genReadStorage(receiverStorage)
 
@@ -1910,7 +1913,7 @@ private class FunctionEmitter private (
     val ty = TypeTransformer.transformResultType(expectedType)(ctx)
     genTree(t.cond, IRTypes.BooleanType)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.elsep match {
       case IRTrees.Skip() =>
@@ -1941,10 +1944,10 @@ private class FunctionEmitter private (
         //   br $label
         // end
         // unreachable
-        fb.markPosition(t)
+        markPosition(t)
         instrs.loop() { label =>
           genTree(t.body, IRTypes.NoType)
-          fb.markPosition(t)
+          markPosition(t)
           instrs += BR(label)
         }
         instrs += UNREACHABLE
@@ -1958,13 +1961,13 @@ private class FunctionEmitter private (
         //     br $label
         //   end
         // end
-        fb.markPosition(t)
+        markPosition(t)
         instrs.loop() { label =>
           genTree(t.cond, IRTypes.BooleanType)
-          fb.markPosition(t)
+          markPosition(t)
           instrs.ifThen() {
             genTree(t.body, IRTypes.NoType)
-            fb.markPosition(t)
+            markPosition(t)
             instrs += BR(label)
           }
         }
@@ -1994,7 +1997,7 @@ private class FunctionEmitter private (
           if fVarRef.ident.name != t.keyVar.name && argIdent.name == t.keyVar.name =>
         genTree(t.obj, IRTypes.AnyType)
         genTree(fVarRef, IRTypes.AnyType)
-        fb.markPosition(t)
+        markPosition(t)
         instrs += CALL(genFunctionName.jsForInSimple)
 
       case _ =>
@@ -2008,10 +2011,10 @@ private class FunctionEmitter private (
     val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
 
     if (UseLegacyExceptionsForTryCatch) {
-      fb.markPosition(t)
+      markPosition(t)
       instrs += TRY(instrs.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
       genTree(t.block, expectedType)
-      fb.markPosition(t)
+      markPosition(t)
       instrs += CATCH(genTagName.exceptionTagName)
       withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
         instrs += ANY_CONVERT_EXTERN
@@ -2020,7 +2023,7 @@ private class FunctionEmitter private (
       }
       instrs += END
     } else {
-      fb.markPosition(t)
+      markPosition(t)
       instrs.block(resultType) { doneLabel =>
         instrs.block(Types.WasmRefType.externref) { catchLabel =>
           /* We used to have `resultType` as result of the try_table, with the
@@ -2033,7 +2036,7 @@ private class FunctionEmitter private (
             List(CatchClause.Catch(genTagName.exceptionTagName, catchLabel))
           ) {
             genTree(t.block, expectedType)
-            fb.markPosition(t)
+            markPosition(t)
             instrs += BR(doneLabel)
           }
         } // end block $catch
@@ -2053,7 +2056,7 @@ private class FunctionEmitter private (
 
   private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
     genTree(tree.expr, IRTypes.AnyType)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += EXTERN_CONVERT_ANY
     instrs += THROW(genTagName.exceptionTagName)
 
@@ -2071,7 +2074,7 @@ private class FunctionEmitter private (
     stats match {
       case (stat @ IRTrees.VarDef(name, _, vtpe, _, rhs)) :: rest =>
         genTree(rhs, vtpe)
-        fb.markPosition(stat)
+        markPosition(stat)
         withNewLocal(name.name, TypeTransformer.transformType(vtpe)(ctx)) { local =>
           instrs += LOCAL_SET(local)
           genBlockStats(rest)(inner)
@@ -2092,13 +2095,13 @@ private class FunctionEmitter private (
     val instanceTyp = Types.WasmRefType(genTypeName.forClass(n.className))
     val localInstance = addSyntheticLocal(instanceTyp)
 
-    fb.markPosition(n)
+    markPosition(n)
     instrs += CALL(genFunctionName.newDefault(n.className))
     instrs += LOCAL_TEE(localInstance)
 
     genArgs(n.args, n.ctor.name)
 
-    fb.markPosition(n)
+    markPosition(n)
 
     instrs += CALL(
       genFunctionName.forMethod(
@@ -2158,7 +2161,7 @@ private class FunctionEmitter private (
     // TODO Avoid dispatch when we know a more precise type than any
     genTree(tree.expr, IRTypes.AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.identityHashCode)
 
     IRTypes.IntType
@@ -2174,7 +2177,7 @@ private class FunctionEmitter private (
     instrs.block(nonNullThrowableTyp) { doneLabel =>
       genTree(tree.expr, IRTypes.AnyType)
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
       // if expr.isInstanceOf[Throwable], then br $done
       instrs += BR_ON_CAST(
@@ -2209,7 +2212,7 @@ private class FunctionEmitter private (
     instrs.block(Types.WasmRefType.anyref) { doneLabel =>
       genTree(tree.expr, IRTypes.ClassType(IRNames.ThrowableClass))
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
       instrs += REF_AS_NOT_NULL
 
@@ -2234,7 +2237,7 @@ private class FunctionEmitter private (
   private def genJSNew(tree: IRTrees.JSNew): IRTypes.Type = {
     genTree(tree.ctor, IRTypes.AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsNew)
     IRTypes.AnyType
   }
@@ -2242,7 +2245,7 @@ private class FunctionEmitter private (
   private def genJSSelect(tree: IRTrees.JSSelect): IRTypes.Type = {
     genTree(tree.qualifier, IRTypes.AnyType)
     genTree(tree.item, IRTypes.AnyType)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsSelect)
     IRTypes.AnyType
   }
@@ -2250,7 +2253,7 @@ private class FunctionEmitter private (
   private def genJSFunctionApply(tree: IRTrees.JSFunctionApply): IRTypes.Type = {
     genTree(tree.fun, IRTypes.AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsFunctionApply)
     IRTypes.AnyType
   }
@@ -2259,32 +2262,32 @@ private class FunctionEmitter private (
     genTree(tree.receiver, IRTypes.AnyType)
     genTree(tree.method, IRTypes.AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsMethodApply)
     IRTypes.AnyType
   }
 
   private def genJSImportCall(tree: IRTrees.JSImportCall): IRTypes.Type = {
     genTree(tree.arg, IRTypes.AnyType)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsImportCall)
     IRTypes.AnyType
   }
 
   private def genJSImportMeta(tree: IRTrees.JSImportMeta): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsImportMeta)
     IRTypes.AnyType
   }
 
   private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     SWasmGen.genLoadJSConstructor(instrs, tree.className)(ctx)
     IRTypes.AnyType
   }
 
   private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
 
     val info = ctx.getClassInfo(tree.className)
 
@@ -2321,14 +2324,14 @@ private class FunctionEmitter private (
   private def genJSDelete(tree: IRTrees.JSDelete): IRTypes.Type = {
     genTree(tree.qualifier, IRTypes.AnyType)
     genTree(tree.item, IRTypes.AnyType)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsDelete)
     IRTypes.NoType
   }
 
   private def genJSUnaryOp(tree: IRTrees.JSUnaryOp): IRTypes.Type = {
     genTree(tree.lhs, IRTypes.AnyType)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsUnaryOps(tree.op))
     IRTypes.AnyType
   }
@@ -2343,7 +2346,7 @@ private class FunctionEmitter private (
          */
         val lhsLocal = addSyntheticLocal(Types.WasmRefType.anyref)
         genTree(tree.lhs, IRTypes.AnyType)
-        fb.markPosition(tree)
+        markPosition(tree)
         instrs += LOCAL_TEE(lhsLocal)
         instrs += CALL(genFunctionName.jsIsTruthy)
         instrs += IF(BlockType.ValueType(Types.WasmRefType.anyref))
@@ -2351,10 +2354,10 @@ private class FunctionEmitter private (
           instrs += LOCAL_GET(lhsLocal)
           instrs += ELSE
           genTree(tree.rhs, IRTypes.AnyType)
-          fb.markPosition(tree)
+          markPosition(tree)
         } else {
           genTree(tree.rhs, IRTypes.AnyType)
-          fb.markPosition(tree)
+          markPosition(tree)
           instrs += ELSE
           instrs += LOCAL_GET(lhsLocal)
         }
@@ -2363,7 +2366,7 @@ private class FunctionEmitter private (
       case _ =>
         genTree(tree.lhs, IRTypes.AnyType)
         genTree(tree.rhs, IRTypes.AnyType)
-        fb.markPosition(tree)
+        markPosition(tree)
         instrs += CALL(genFunctionName.jsBinaryOps(tree.op))
     }
 
@@ -2376,7 +2379,7 @@ private class FunctionEmitter private (
   }
 
   private def genJSObjectConstr(tree: IRTrees.JSObjectConstr): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsNewObject)
     for ((prop, value) <- tree.fields) {
       genTree(prop, IRTypes.AnyType)
@@ -2387,14 +2390,14 @@ private class FunctionEmitter private (
   }
 
   private def genJSGlobalRef(tree: IRTrees.JSGlobalRef): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs ++= ctx.getConstantStringInstr(tree.name)
     instrs += CALL(genFunctionName.jsGlobalRefGet)
     IRTypes.AnyType
   }
 
   private def genJSTypeOfGlobalRef(tree: IRTrees.JSTypeOfGlobalRef): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs ++= ctx.getConstantStringInstr(tree.globalRef.name)
     instrs += CALL(genFunctionName.jsGlobalRefTypeof)
     IRTypes.AnyType
@@ -2415,7 +2418,7 @@ private class FunctionEmitter private (
   }
 
   private def genJSLinkingInfo(tree: IRTrees.JSLinkingInfo): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += CALL(genFunctionName.jsLinkingInfo)
     IRTypes.AnyType
   }
@@ -2426,7 +2429,7 @@ private class FunctionEmitter private (
   private def genArrayLength(t: IRTrees.ArrayLength): IRTypes.Type = {
     genTreeAuto(t.array)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.array.tpe match {
       case IRTypes.ArrayType(arrayTypeRef) =>
@@ -2460,14 +2463,14 @@ private class FunctionEmitter private (
         s"invalid lengths ${t.lengths} for array type ${arrayTypeRef.displayName}"
       )
 
-    fb.markPosition(t)
+    markPosition(t)
 
     if (t.lengths.size == 1) {
       genLoadVTableAndITableForArray(arrayTypeRef)
 
       // Create the underlying array
       genTree(t.lengths.head, IRTypes.IntType)
-      fb.markPosition(t)
+      markPosition(t)
 
       val underlyingArrayType = genTypeName.underlyingOf(arrayTypeRef)
       instrs += ARRAY_NEW_DEFAULT(underlyingArrayType)
@@ -2487,7 +2490,7 @@ private class FunctionEmitter private (
       // Second arg: an array of the lengths
       for (length <- t.lengths)
         genTree(length, IRTypes.IntType)
-      fb.markPosition(t)
+      markPosition(t)
       instrs += ARRAY_NEW_FIXED(genTypeName.i32Array, t.lengths.size)
 
       // Third arg: constant 0 (start index inside the array of lengths)
@@ -2514,7 +2517,7 @@ private class FunctionEmitter private (
   private def genArraySelect(t: IRTrees.ArraySelect): IRTypes.Type = {
     genTreeAuto(t.array)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.array.tpe match {
       case IRTypes.ArrayType(arrayTypeRef) =>
@@ -2527,7 +2530,7 @@ private class FunctionEmitter private (
         // Load the index
         genTree(t.index, IRTypes.IntType)
 
-        fb.markPosition(t)
+        markPosition(t)
 
         // Use the appropriate variant of array.get for sign extension
         val typeIdx = genTypeName.underlyingOf(arrayTypeRef)
@@ -2577,7 +2580,7 @@ private class FunctionEmitter private (
   private def genArrayValue(t: IRTrees.ArrayValue): IRTypes.Type = {
     val arrayTypeRef = t.typeRef
 
-    fb.markPosition(t)
+    markPosition(t)
 
     genLoadVTableAndITableForArray(arrayTypeRef)
 
@@ -2588,7 +2591,7 @@ private class FunctionEmitter private (
 
     // Create the underlying array
     t.elems.foreach(genTree(_, expectedElemType))
-    fb.markPosition(t)
+    markPosition(t)
     val underlyingArrayType = genTypeName.underlyingOf(arrayTypeRef)
     instrs += ARRAY_NEW_FIXED(underlyingArrayType, t.elems.size)
 
@@ -2619,7 +2622,7 @@ private class FunctionEmitter private (
       resultType = IRTypes.AnyType
     )
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     // Put a reference to the function on the stack
     instrs += ctx.refFuncWithDeclaration(closureFuncName)
@@ -2627,7 +2630,7 @@ private class FunctionEmitter private (
     // Evaluate the capture values and instantiate the capture data struct
     for ((param, value) <- tree.captureParams.zip(tree.captureValues))
       genTree(value, param.ptpe)
-    fb.markPosition(tree)
+    markPosition(tree)
     instrs += STRUCT_NEW(dataStructTypeName)
 
     /* If there is a ...rest param, the helper requires as third argument the
@@ -2653,7 +2656,7 @@ private class FunctionEmitter private (
 
     genTree(t.expr, IRTypes.ClassType(IRNames.CloneableClass))
 
-    fb.markPosition(t)
+    markPosition(t)
 
     instrs += REF_CAST(Types.WasmRefType(genTypeName.ObjectStruct))
     instrs += LOCAL_TEE(expr)
@@ -2690,7 +2693,7 @@ private class FunctionEmitter private (
 
     genTreeAuto(selector)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     instrs += LOCAL_SET(selectorLocal)
 
@@ -2704,7 +2707,7 @@ private class FunctionEmitter private (
           caseLabel <- caseLabels
           matchableLiteral <- caseLabel._1
         } {
-          fb.markPosition(matchableLiteral)
+          markPosition(matchableLiteral)
           val label = caseLabel._2
           instrs += LOCAL_GET(selectorLocal)
           matchableLiteral match {
@@ -2724,7 +2727,7 @@ private class FunctionEmitter private (
         instrs += BR(defaultLabel)
 
         for ((caseLabel, caze) <- caseLabels.zip(cases).reverse) {
-          fb.markPosition(caze._2)
+          markPosition(caze._2)
           instrs += END
           genTree(caze._2, expectedType)
           instrs += BR(doneLabel)
@@ -2750,7 +2753,7 @@ private class FunctionEmitter private (
     for ((captureValue, captureParam) <- tree.captureValues.zip(jsClassCaptures))
       genTree(captureValue, captureParam.ptpe)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     instrs += CALL(genFunctionName.createJSClassOf(tree.className))
 
@@ -2760,7 +2763,7 @@ private class FunctionEmitter private (
   private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
     genTree(tree.qualifier, IRTypes.AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(tree.field.name))
     instrs += CALL(genFunctionName.jsSelect)
@@ -2773,7 +2776,7 @@ private class FunctionEmitter private (
     genTree(tree.receiver, IRTypes.AnyType)
     genTree(tree.item, IRTypes.AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     instrs += CALL(genFunctionName.jsSuperGet)
 
@@ -2786,7 +2789,7 @@ private class FunctionEmitter private (
     genTree(tree.method, IRTypes.AnyType)
     genJSArgsArray(tree.args)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     instrs += CALL(genFunctionName.jsSuperCall)
 
@@ -2794,7 +2797,7 @@ private class FunctionEmitter private (
   }
 
   private def genJSNewTarget(tree: IRTrees.JSNewTarget): IRTypes.Type = {
-    fb.markPosition(tree)
+    markPosition(tree)
 
     genReadStorage(newTargetStorage)
 
@@ -3092,7 +3095,7 @@ private class FunctionEmitter private (
 
       val ty = TypeTransformer.transformResultType(expectedType)(ctx)
 
-      fb.markPosition(t)
+      markPosition(t)
 
       // Manual BLOCK here because we have a specific `label`
       instrs += BLOCK(
@@ -3110,7 +3113,7 @@ private class FunctionEmitter private (
         genTree(t.body, expectedType)
       }
 
-      fb.markPosition(t)
+      markPosition(t)
 
       // Deal with crossing behavior
       if (entry.wasCrossUsed) {
@@ -3168,7 +3171,7 @@ private class FunctionEmitter private (
       val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
       val resultLocals = resultType.map(addSyntheticLocal(_))
 
-      fb.markPosition(t)
+      markPosition(t)
 
       instrs.block() { doneLabel =>
         instrs.block(Types.WasmRefType.exnref) { catchLabel =>
@@ -3183,7 +3186,7 @@ private class FunctionEmitter private (
               genTree(t.block, expectedType)
             }
 
-            fb.markPosition(t)
+            markPosition(t)
 
             // store the result in locals during the finally block
             for (resultLocal <- resultLocals.reverse)
@@ -3227,7 +3230,7 @@ private class FunctionEmitter private (
         // finally block (during which we leave the `(ref null exn)` on the stack)
         genTree(t.finalizer, IRTypes.NoType)
 
-        fb.markPosition(t)
+        markPosition(t)
 
         if (!entry.wasCrossed) {
           // If the `exnref` is non-null, rethrow it
@@ -3320,7 +3323,7 @@ private class FunctionEmitter private (
 
       genTree(t.expr, targetEntry.expectedType)
 
-      fb.markPosition(t)
+      markPosition(t)
 
       if (targetEntry.expectedType != IRTypes.NothingType) {
         innermostTryFinally.filter(_.isInside(targetEntry)) match {
