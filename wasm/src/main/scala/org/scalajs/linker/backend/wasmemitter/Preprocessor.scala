@@ -1,14 +1,11 @@
 package org.scalajs.linker.backend.wasmemitter
 
-import org.scalajs.ir.{Trees => IRTrees}
-import org.scalajs.ir.{Types => IRTypes}
-import org.scalajs.ir.{Names => IRNames}
-import org.scalajs.ir.ClassKind
-import org.scalajs.ir.Traversers
+import org.scalajs.ir.Names._
+import org.scalajs.ir.Trees._
+import org.scalajs.ir.Types._
+import org.scalajs.ir.{ClassKind, Traversers}
 
 import org.scalajs.linker.standard.{LinkedClass, LinkedTopLevelExport}
-
-import org.scalajs.linker.backend.webassembly._
 
 import EmbeddedConstants._
 import WasmContext._
@@ -35,16 +32,16 @@ object Preprocessor {
   private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val kind = clazz.kind
 
-    val allFieldDefs: List[IRTrees.FieldDef] =
+    val allFieldDefs: List[FieldDef] =
       if (kind.isClass) {
         val inheritedFields = clazz.superClass match {
           case None      => Nil
           case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
         }
         val myFieldDefs = clazz.fields.collect {
-          case fd: IRTrees.FieldDef if !fd.flags.namespace.isStatic =>
+          case fd: FieldDef if !fd.flags.namespace.isStatic =>
             fd
-          case fd: IRTrees.JSFieldDef =>
+          case fd: JSFieldDef =>
             throw new AssertionError(s"Illegal $fd in Scala class ${clazz.className}")
         }
         inheritedFields ::: myFieldDefs
@@ -56,7 +53,7 @@ object Preprocessor {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
         for {
           m <- clazz.methods
-          if m.body.isDefined && m.flags.namespace == IRTrees.MemberNamespace.Public
+          if m.body.isDefined && m.flags.namespace == MemberNamespace.Public
         } yield {
           m.methodName
         }
@@ -109,14 +106,14 @@ object Preprocessor {
         clazz.ancestors.foreach(ctx.getClassInfo(_).addSpecialInstanceType(jsValueType))
 
       clazz.className match {
-        case IRNames.BoxedBooleanClass =>
+        case BoxedBooleanClass =>
           addSpecialInstanceTypeOnAllAncestors(JSValueTypeFalse)
           addSpecialInstanceTypeOnAllAncestors(JSValueTypeTrue)
-        case IRNames.BoxedStringClass =>
+        case BoxedStringClass =>
           addSpecialInstanceTypeOnAllAncestors(JSValueTypeString)
-        case IRNames.BoxedDoubleClass =>
+        case BoxedDoubleClass =>
           addSpecialInstanceTypeOnAllAncestors(JSValueTypeNumber)
-        case IRNames.BoxedUnitClass =>
+        case BoxedUnitClass =>
           addSpecialInstanceTypeOnAllAncestors(JSValueTypeUndefined)
         case _ =>
           ()
@@ -151,8 +148,6 @@ object Preprocessor {
     * we have val `x: C` and we call `x.c`, we don't find the method at all.
     */
   private class AbstractMethodCallCollector(ctx: WasmContext) extends Traversers.Traverser {
-    import IRTrees._
-
     def collectAbstractMethodCalls(clazz: LinkedClass): Unit = {
       for (method <- clazz.methods)
         traverseMethodDef(method)
@@ -164,7 +159,7 @@ object Preprocessor {
 
     def collectAbstractMethodCalls(tle: LinkedTopLevelExport): Unit = {
       tle.tree match {
-        case IRTrees.TopLevelMethodExportDef(_, jsMethodDef) =>
+        case TopLevelMethodExportDef(_, jsMethodDef) =>
           traverseJSMethodPropDef(jsMethodDef)
         case _ =>
           ()
@@ -177,12 +172,12 @@ object Preprocessor {
       tree match {
         case Apply(flags, receiver, methodName, _) if !methodName.name.isReflectiveProxy =>
           receiver.tpe match {
-            case IRTypes.ClassType(className) =>
+            case ClassType(className) =>
               val classInfo = ctx.getClassInfo(className)
               if (classInfo.hasInstances)
                 classInfo.registerDynamicCall(methodName.name)
-            case IRTypes.AnyType =>
-              ctx.getClassInfo(IRNames.ObjectClass).registerDynamicCall(methodName.name)
+            case AnyType =>
+              ctx.getClassInfo(ObjectClass).registerDynamicCall(methodName.name)
             case _ =>
               // For all other cases, including arrays, we will always perform a static dispatch
               ()
