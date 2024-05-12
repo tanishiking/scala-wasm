@@ -1,6 +1,6 @@
 package org.scalajs.linker.backend.wasmemitter
 
-import org.scalajs.ir.Names._
+import org.scalajs.ir.Names.{FieldName => IRFieldName, _}
 import org.scalajs.ir.Trees.{JSUnaryOp, JSBinaryOp, MemberNamespace}
 import org.scalajs.ir.Types._
 
@@ -10,78 +10,78 @@ import org.scalajs.linker.backend.webassembly.Names._
 object VarGen {
 
   object genGlobalName {
-    def forImportedModule(moduleName: String): WasmGlobalName =
-      WasmGlobalName(s"imported.$moduleName")
+    def forImportedModule(moduleName: String): GlobalName =
+      GlobalName(s"imported.$moduleName")
 
-    def forModuleInstance(className: ClassName): WasmGlobalName =
-      WasmGlobalName(s"modinstace.${className.nameString}")
+    def forModuleInstance(className: ClassName): GlobalName =
+      GlobalName(s"modinstace.${className.nameString}")
 
-    def forJSClassValue(className: ClassName): WasmGlobalName =
-      WasmGlobalName(s"jsclass.${className.nameString}")
+    def forJSClassValue(className: ClassName): GlobalName =
+      GlobalName(s"jsclass.${className.nameString}")
 
-    def forVTable(className: ClassName): WasmGlobalName =
-      WasmGlobalName(s"vtable.L${className.nameString}")
+    def forVTable(className: ClassName): GlobalName =
+      GlobalName(s"vtable.L${className.nameString}")
 
-    def forVTable(typeRef: NonArrayTypeRef): WasmGlobalName = typeRef match {
-      case typeRef: PrimRef    => WasmGlobalName(s"vtable.${typeRef.charCode}")
+    def forVTable(typeRef: NonArrayTypeRef): GlobalName = typeRef match {
+      case typeRef: PrimRef    => GlobalName(s"vtable.${typeRef.charCode}")
       case ClassRef(className) => forVTable(className)
     }
 
-    def forITable(className: ClassName): WasmGlobalName =
-      WasmGlobalName(s"itable.L${className.nameString}")
+    def forITable(className: ClassName): GlobalName =
+      GlobalName(s"itable.L${className.nameString}")
 
-    def forStaticField(fieldName: FieldName): WasmGlobalName =
-      WasmGlobalName(s"static.${fieldName.nameString}")
+    def forStaticField(fieldName: IRFieldName): GlobalName =
+      GlobalName(s"static.${fieldName.nameString}")
 
-    def forTopLevelExport(exportName: String): WasmGlobalName =
-      WasmGlobalName(s"export.$exportName")
+    def forTopLevelExport(exportName: String): GlobalName =
+      GlobalName(s"export.$exportName")
 
-    def forJSPrivateField(fieldName: FieldName): WasmGlobalName =
-      WasmGlobalName(s"jspfield.${fieldName.nameString}")
+    def forJSPrivateField(fieldName: IRFieldName): GlobalName =
+      GlobalName(s"jspfield.${fieldName.nameString}")
 
-    val undef: WasmGlobalName =
-      WasmGlobalName("undef")
+    val undef: GlobalName =
+      GlobalName("undef")
 
-    val bFalse: WasmGlobalName =
-      WasmGlobalName("bFalse")
+    val bFalse: GlobalName =
+      GlobalName("bFalse")
 
-    val bZero: WasmGlobalName =
-      WasmGlobalName("bZero")
+    val bZero: GlobalName =
+      GlobalName("bZero")
 
-    val bZeroChar: WasmGlobalName =
-      WasmGlobalName("bZeroChar")
+    val bZeroChar: GlobalName =
+      GlobalName("bZeroChar")
 
-    val bZeroLong: WasmGlobalName =
-      WasmGlobalName("bZeroLong")
+    val bZeroLong: GlobalName =
+      GlobalName("bZeroLong")
 
-    val emptyString: WasmGlobalName =
-      WasmGlobalName("emptyString")
+    val emptyString: GlobalName =
+      GlobalName("emptyString")
 
-    val stringLiteralCache: WasmGlobalName =
-      WasmGlobalName("string_literal")
+    val stringLiteralCache: GlobalName =
+      GlobalName("string_literal")
 
-    val arrayClassITable: WasmGlobalName =
-      WasmGlobalName("itable.A")
+    val arrayClassITable: GlobalName =
+      GlobalName("itable.A")
 
-    val lastIDHashCode: WasmGlobalName =
-      WasmGlobalName("lastIDHashCode")
+    val lastIDHashCode: GlobalName =
+      GlobalName("lastIDHashCode")
 
-    val idHashCodeMap: WasmGlobalName =
-      WasmGlobalName("idHashCodeMap")
+    val idHashCodeMap: GlobalName =
+      GlobalName("idHashCodeMap")
   }
 
   object genFunctionName {
-    private def make(str: String): WasmFunctionName =
-      WasmFunctionName(str)
+    private def make(str: String): FunctionName =
+      FunctionName(str)
 
-    private def make(namespace: String, simpleName: String): WasmFunctionName =
+    private def make(namespace: String, simpleName: String): FunctionName =
       make(namespace + "#" + simpleName)
 
     def forMethod(
         namespace: MemberNamespace,
         clazz: ClassName,
         method: MethodName
-    ): WasmFunctionName =
+    ): FunctionName =
       make(namespaceString(namespace) + "#" + clazz.nameString + "#" + method.nameString)
 
     private def namespaceString(namespace: MemberNamespace): String = {
@@ -98,22 +98,22 @@ object VarGen {
       }
     }
 
-    def forTableEntry(clazz: ClassName, method: MethodName): WasmFunctionName =
+    def forTableEntry(clazz: ClassName, method: MethodName): FunctionName =
       make("t#" + clazz.nameString, method.nameString)
 
-    def forExport(exportedName: String): WasmFunctionName =
+    def forExport(exportedName: String): FunctionName =
       make("export", exportedName)
 
-    def loadModule(clazz: ClassName): WasmFunctionName =
+    def loadModule(clazz: ClassName): FunctionName =
       make("loadModule", clazz.nameString)
-    def newDefault(clazz: ClassName): WasmFunctionName =
+    def newDefault(clazz: ClassName): FunctionName =
       make("new", clazz.nameString)
-    def instanceTest(clazz: ClassName): WasmFunctionName =
+    def instanceTest(clazz: ClassName): FunctionName =
       make("instanceTest", clazz.nameString)
-    def clone(clazz: ClassName): WasmFunctionName =
+    def clone(clazz: ClassName): FunctionName =
       make("clone", clazz.nameString)
 
-    def clone(arrayBaseRef: NonArrayTypeRef): WasmFunctionName = {
+    def clone(arrayBaseRef: NonArrayTypeRef): FunctionName = {
       val simpleName = arrayBaseRef match {
         case ClassRef(_)  => "O"
         case PrimRef(tpe) => tpe.primRef.charCode.toString()
@@ -121,17 +121,17 @@ object VarGen {
       make("cloneArray", simpleName)
     }
 
-    def isJSClassInstance(clazz: ClassName): WasmFunctionName =
+    def isJSClassInstance(clazz: ClassName): FunctionName =
       make("isJSClassInstance", clazz.nameString)
-    def loadJSClass(clazz: ClassName): WasmFunctionName =
+    def loadJSClass(clazz: ClassName): FunctionName =
       make("loadJSClass", clazz.nameString)
-    def createJSClassOf(clazz: ClassName): WasmFunctionName =
+    def createJSClassOf(clazz: ClassName): FunctionName =
       make("createJSClassOf", clazz.nameString)
-    def preSuperStats(clazz: ClassName): WasmFunctionName =
+    def preSuperStats(clazz: ClassName): FunctionName =
       make("preSuperStats", clazz.nameString)
-    def superArgs(clazz: ClassName): WasmFunctionName =
+    def superArgs(clazz: ClassName): FunctionName =
       make("superArgs", clazz.nameString)
-    def postSuperStats(clazz: ClassName): WasmFunctionName =
+    def postSuperStats(clazz: ClassName): FunctionName =
       make("postSuperStats", clazz.nameString)
 
     val start = make("start")
@@ -142,10 +142,10 @@ object VarGen {
 
     val isUndef = make("isUndef")
 
-    def box(primRef: PrimRef): WasmFunctionName = make("b" + primRef.charCode)
-    def unbox(primRef: PrimRef): WasmFunctionName = make("u" + primRef.charCode)
-    def unboxOrNull(primRef: PrimRef): WasmFunctionName = make("uN" + primRef.charCode)
-    def typeTest(primRef: PrimRef): WasmFunctionName = make("t" + primRef.charCode)
+    def box(primRef: PrimRef): FunctionName = make("b" + primRef.charCode)
+    def unbox(primRef: PrimRef): FunctionName = make("u" + primRef.charCode)
+    def unboxOrNull(primRef: PrimRef): FunctionName = make("uN" + primRef.charCode)
+    def typeTest(primRef: PrimRef): FunctionName = make("t" + primRef.charCode)
 
     val fmod = make("fmod")
 
@@ -193,7 +193,7 @@ object VarGen {
     val jsIsTruthy = make("jsIsTruthy")
     val jsLinkingInfo = make("jsLinkingInfo")
 
-    val jsUnaryOps: Map[JSUnaryOp.Code, WasmFunctionName] = {
+    val jsUnaryOps: Map[JSUnaryOp.Code, FunctionName] = {
       Map(
         JSUnaryOp.+ -> make("jsUnaryPlus"),
         JSUnaryOp.- -> make("jsUnaryMinus"),
@@ -203,7 +203,7 @@ object VarGen {
       )
     }
 
-    val jsBinaryOps: Map[JSBinaryOp.Code, WasmFunctionName] = {
+    val jsBinaryOps: Map[JSBinaryOp.Code, FunctionName] = {
       Map(
         JSBinaryOp.=== -> make("jsStrictEquals"),
         JSBinaryOp.!== -> make("jsNotStrictEquals"),
@@ -261,28 +261,28 @@ object VarGen {
   }
 
   object genFieldName {
-    def forClassInstanceField(name: FieldName): WasmFieldName =
-      WasmFieldName(name.nameString)
+    def forClassInstanceField(name: IRFieldName): FieldName =
+      FieldName(name.nameString)
 
     /** For class itable fields, each fields point to an itable of the interfaces */
-    def forITable(className: ClassName): WasmFieldName =
-      WasmFieldName(className.nameString)
+    def forITable(className: ClassName): FieldName =
+      FieldName(className.nameString)
 
-    def forMethodTableEntry(name: MethodName): WasmFieldName =
-      WasmFieldName("m." + name.nameString)
+    def forMethodTableEntry(name: MethodName): FieldName =
+      FieldName("m." + name.nameString)
 
-    def captureParam(i: Int): WasmFieldName =
-      WasmFieldName("c" + i)
+    def captureParam(i: Int): FieldName =
+      FieldName("c" + i)
 
     object objStruct {
-      val vtable = WasmFieldName("vtable")
-      val itables = WasmFieldName("itables")
-      val arrayUnderlying = WasmFieldName("underlying")
+      val vtable = FieldName("vtable")
+      val itables = FieldName("itables")
+      val arrayUnderlying = FieldName("underlying")
     }
 
     object reflectiveProxy {
-      val func_name = WasmFieldName("reflective_proxy_func_name")
-      val func_ref = WasmFieldName("reflective_proxy_func_ref")
+      val func_name = FieldName("reflective_proxy_func_name")
+      val func_ref = FieldName("reflective_proxy_func_ref")
     }
 
     // Fields of the typeData structs
@@ -293,26 +293,26 @@ object VarGen {
         * It is only meaningful for primitives and for classes. For array types, they are all 0, as
         * array types compute their `name` from the `name` of their component type.
         */
-      val nameOffset = WasmFieldName("nameOffset")
+      val nameOffset = FieldName("nameOffset")
 
       /** See `nameOffset`. */
-      val nameSize = WasmFieldName("nameSize")
+      val nameSize = FieldName("nameSize")
 
       /** See `nameOffset`. */
-      val nameStringIndex = WasmFieldName("nameStringIndex")
+      val nameStringIndex = FieldName("nameStringIndex")
 
       /** The kind of type data, an `i32`.
         *
         * Possible values are the the `KindX` constants in `EmbeddedConstants`.
         */
-      val kind = WasmFieldName("kind")
+      val kind = FieldName("kind")
 
       /** A bitset of special (primitive) instance types that are instances of this type, an `i32`.
         *
         * From 0 to 5, the bits correspond to the values returned by the helper `jsValueType`. In
         * addition, bits 6 and 7 represent `char` and `long`, respectively.
         */
-      val specialInstanceTypes = WasmFieldName("specialInstanceTypes")
+      val specialInstanceTypes = FieldName("specialInstanceTypes")
 
       /** Array of the strict ancestor classes of this class.
         *
@@ -322,7 +322,7 @@ object VarGen {
         *   - are not themselves (hence the *strict* ancestors),
         *   - have typeData to begin with.
         */
-      val strictAncestors = WasmFieldName("strictAncestors")
+      val strictAncestors = FieldName("strictAncestors")
 
       /** The typeData of a component of this array type, or `null` if this is not an array type.
         *
@@ -330,7 +330,7 @@ object VarGen {
         *   - the `componentType` for class `Foo` is `null`,
         *   - the `componentType` for the array type `Array[Foo]` is the `typeData` of `Foo`.
         */
-      val componentType = WasmFieldName("componentType")
+      val componentType = FieldName("componentType")
 
       /** The name as nullable string (`anyref`), lazily initialized from the nameData.
         *
@@ -349,13 +349,13 @@ object VarGen {
         * ¹ We use the Unicode character `⟦` to represent two consecutive `[` characters in order
         * not to confuse Scaladoc.
         */
-      val name = WasmFieldName("name")
+      val name = FieldName("name")
 
       /** The `classOf` value, a nullable `java.lang.Class`, lazily initialized from this typeData.
         *
         * This field is initialized by the `createClassOf` helper.
         */
-      val classOfValue = WasmFieldName("classOf")
+      val classOfValue = FieldName("classOf")
 
       /** The typeData/vtable of an array of this type, a nullable `typeData`, lazily initialized.
         *
@@ -365,15 +365,15 @@ object VarGen {
         *   - in the `typeData` of class `Foo`, it contains the `typeData` of `Array[Foo]`,
         *   - in the `typeData` of `Array[Int]`, it contains the `typeData` of `Array[Array[Int]]`.
         */
-      val arrayOf = WasmFieldName("arrayOf")
+      val arrayOf = FieldName("arrayOf")
 
       /** The function to clone the object of this type, a nullable function reference. This field
         * is instantiated only with the classes that implement java.lang.Cloneable.
         */
-      val cloneFunction = WasmFieldName("clone")
+      val cloneFunction = FieldName("clone")
 
       /** `isInstance` func ref for top-level JS classes. */
-      val isJSClassInstance = WasmFieldName("isJSClassInstance")
+      val isJSClassInstance = FieldName("isJSClassInstance")
 
       /** The reflective proxies in this type, used for reflective call on the class at runtime.
         * This field contains an array of reflective proxy structs, where each struct contains the
@@ -382,69 +382,69 @@ object VarGen {
         *
         * See `genSearchReflectivePRoxy` in `HelperFunctions`
         */
-      val reflectiveProxies = WasmFieldName("reflectiveProxies")
+      val reflectiveProxies = FieldName("reflectiveProxies")
     }
   }
 
   object genFieldIdx {
     object objStruct {
-      val vtable = WasmFieldIdx(0)
-      val itables = WasmFieldIdx(1)
-      val uniqueRegularField = WasmFieldIdx(2)
+      val vtable = FieldIdx(0)
+      val itables = FieldIdx(1)
+      val uniqueRegularField = FieldIdx(2)
     }
 
     object typeData {
-      val nameOffsetIdx = WasmFieldIdx(0)
-      val nameSizeIdx = WasmFieldIdx(1)
-      val nameStringIndexIdx = WasmFieldIdx(2)
-      val kindIdx = WasmFieldIdx(3)
-      val specialInstanceTypesIdx = WasmFieldIdx(4)
-      val strictAncestorsIdx = WasmFieldIdx(5)
-      val componentTypeIdx = WasmFieldIdx(6)
-      val nameIdx = WasmFieldIdx(7)
-      val classOfIdx = WasmFieldIdx(8)
-      val arrayOfIdx = WasmFieldIdx(9)
-      val cloneFunctionIdx = WasmFieldIdx(10)
-      val isJSClassInstanceIdx = WasmFieldIdx(11)
-      val reflectiveProxiesIdx = WasmFieldIdx(12)
+      val nameOffsetIdx = FieldIdx(0)
+      val nameSizeIdx = FieldIdx(1)
+      val nameStringIndexIdx = FieldIdx(2)
+      val kindIdx = FieldIdx(3)
+      val specialInstanceTypesIdx = FieldIdx(4)
+      val strictAncestorsIdx = FieldIdx(5)
+      val componentTypeIdx = FieldIdx(6)
+      val nameIdx = FieldIdx(7)
+      val classOfIdx = FieldIdx(8)
+      val arrayOfIdx = FieldIdx(9)
+      val cloneFunctionIdx = FieldIdx(10)
+      val isJSClassInstanceIdx = FieldIdx(11)
+      val reflectiveProxiesIdx = FieldIdx(12)
 
       /** Index of a method in the actual vtable. */
-      def vtableMethodIdx(methodIdx: Int): WasmFieldIdx = WasmFieldIdx(13 + methodIdx)
+      def vtableMethodIdx(methodIdx: Int): FieldIdx = FieldIdx(13 + methodIdx)
     }
 
     object reflectiveProxy {
-      val nameIdx = WasmFieldIdx(0)
-      val funcIdx = WasmFieldIdx(1)
+      val nameIdx = FieldIdx(0)
+      val funcIdx = FieldIdx(1)
     }
   }
 
   object genTypeName {
-    def forClass(name: ClassName): WasmTypeName =
-      WasmTypeName(s"c.L${name.nameString}")
+    def forClass(name: ClassName): TypeName =
+      TypeName(s"c.L${name.nameString}")
 
     val ObjectStruct = forClass(ObjectClass)
     val ClassStruct = forClass(ClassClass)
     val ThrowableStruct = forClass(ThrowableClass)
     val JSExceptionStruct = forClass(SpecialNames.JSExceptionClass)
 
-    def captureData(index: Int): WasmTypeName =
-      WasmTypeName(s"captureData.$index")
+    def captureData(index: Int): TypeName =
+      TypeName(s"captureData.$index")
 
-    val typeData = WasmTypeName("typeData")
-    val reflectiveProxy = WasmTypeName("reflective_proxy")
+    val typeData = TypeName("typeData")
+    val reflectiveProxy = TypeName("reflective_proxy")
 
     // Array types -- they extend j.l.Object
-    val BooleanArray = WasmTypeName("c.AZ")
-    val CharArray = WasmTypeName("c.AC")
-    val ByteArray = WasmTypeName("c.AB")
-    val ShortArray = WasmTypeName("c.AS")
-    val IntArray = WasmTypeName("c.AI")
-    val LongArray = WasmTypeName("c.AJ")
-    val FloatArray = WasmTypeName("c.AF")
-    val DoubleArray = WasmTypeName("c.AD")
-    val ObjectArray = WasmTypeName("c.AO")
+    val BooleanArray = TypeName("c.AZ")
+    val CharArray = TypeName("c.AC")
+    val ByteArray = TypeName("c.AB")
+    val ShortArray = TypeName("c.AS")
+    val IntArray = TypeName("c.AI")
+    val LongArray = TypeName("c.AJ")
+    val FloatArray = TypeName("c.AF")
+    val DoubleArray = TypeName("c.AD")
+    val ObjectArray = TypeName("c.AO")
 
-    def forArrayClass(arrayTypeRef: ArrayTypeRef): WasmTypeName = {
+    def forArrayClass(arrayTypeRef: ArrayTypeRef): TypeName = {
       if (arrayTypeRef.dimensions > 1) {
         ObjectArray
       } else {
@@ -462,28 +462,28 @@ object VarGen {
       }
     }
 
-    def forVTable(className: ClassName): WasmTypeName =
-      WasmTypeName(s"v.${className.nameString}")
+    def forVTable(className: ClassName): TypeName =
+      TypeName(s"v.${className.nameString}")
 
-    val ObjectVTable: WasmTypeName = forVTable(ObjectClass)
+    val ObjectVTable: TypeName = forVTable(ObjectClass)
 
-    def forITable(className: ClassName): WasmTypeName =
-      WasmTypeName(s"i.${className.nameString}")
+    def forITable(className: ClassName): TypeName =
+      TypeName(s"i.${className.nameString}")
 
-    val typeDataArray = WasmTypeName("a.typeDataArray")
-    val itables = WasmTypeName("a.itable")
-    val reflectiveProxies = WasmTypeName("a.reflectiveProxies")
+    val typeDataArray = TypeName("a.typeDataArray")
+    val itables = TypeName("a.itable")
+    val reflectiveProxies = TypeName("a.reflectiveProxies")
 
     // primitive array types, underlying the Array[T] classes
-    val i8Array = WasmTypeName("a.i8Array")
-    val i16Array = WasmTypeName("a.i16Array")
-    val i32Array = WasmTypeName("a.i32Array")
-    val i64Array = WasmTypeName("a.i64Array")
-    val f32Array = WasmTypeName("a.f32Array")
-    val f64Array = WasmTypeName("a.f64Array")
-    val anyArray = WasmTypeName("a.anyArray")
+    val i8Array = TypeName("a.i8Array")
+    val i16Array = TypeName("a.i16Array")
+    val i32Array = TypeName("a.i32Array")
+    val i64Array = TypeName("a.i64Array")
+    val f32Array = TypeName("a.f32Array")
+    val f64Array = TypeName("a.f64Array")
+    val anyArray = TypeName("a.anyArray")
 
-    def underlyingOf(arrayTypeRef: ArrayTypeRef): WasmTypeName = {
+    def underlyingOf(arrayTypeRef: ArrayTypeRef): TypeName = {
       if (arrayTypeRef.dimensions > 1) {
         anyArray
       } else {
@@ -501,21 +501,21 @@ object VarGen {
       }
     }
 
-    def forFunction(idx: Int): WasmTypeName = WasmTypeName(s"f.$idx")
+    def forFunction(idx: Int): TypeName = TypeName(s"f.$idx")
 
-    val cloneFunctionType = WasmTypeName("cloneFuncType")
-    val isJSClassInstanceFuncType = WasmTypeName("isJSClassInstanceFuncType")
+    val cloneFunctionType = TypeName("cloneFuncType")
+    val isJSClassInstanceFuncType = TypeName("isJSClassInstanceFuncType")
 
-    def forTableFunctionType(methodName: MethodName): WasmTypeName =
-      WasmTypeName("m." + methodName.nameString)
+    def forTableFunctionType(methodName: MethodName): TypeName =
+      TypeName("m." + methodName.nameString)
   }
 
   object genTagName {
-    val exceptionTagName: WasmTagName = WasmTagName("exception")
+    val exceptionTagName: TagName = TagName("exception")
   }
 
   object genDataName {
-    val string = WasmDataName("string")
+    val string = DataName("string")
   }
 
 }

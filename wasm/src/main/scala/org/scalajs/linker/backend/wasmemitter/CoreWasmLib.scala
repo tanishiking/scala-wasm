@@ -2,7 +2,7 @@ package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.Names._
 import org.scalajs.ir.Trees.{JSUnaryOp, JSBinaryOp, MemberNamespace}
-import org.scalajs.ir.Types._
+import org.scalajs.ir.Types.{Type => _, ArrayType => _, _}
 import org.scalajs.ir.Position
 
 import org.scalajs.linker.backend.webassembly._
@@ -16,7 +16,7 @@ import VarGen._
 import TypeTransformer._
 
 object CoreWasmLib {
-  import WasmRefType.anyref
+  import RefType.anyref
 
   private implicit val noPos: Position = Position.NoPosition
 
@@ -28,29 +28,29 @@ object CoreWasmLib {
     * @see
     *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
     */
-  val typeDataStructFields: List[WasmStructField] = {
+  val typeDataStructFields: List[StructField] = {
     import genFieldName.typeData._
-    import WasmRefType.nullable
+    import RefType.nullable
     List(
-      WasmStructField(nameOffset, WasmInt32, isMutable = false),
-      WasmStructField(nameSize, WasmInt32, isMutable = false),
-      WasmStructField(nameStringIndex, WasmInt32, isMutable = false),
-      WasmStructField(kind, WasmInt32, isMutable = false),
-      WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
-      WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
-      WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
-      WasmStructField(name, WasmRefType.anyref, isMutable = true),
-      WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
-      WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
-      WasmStructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
-      WasmStructField(
+      StructField(nameOffset, Int32, isMutable = false),
+      StructField(nameSize, Int32, isMutable = false),
+      StructField(nameStringIndex, Int32, isMutable = false),
+      StructField(kind, Int32, isMutable = false),
+      StructField(specialInstanceTypes, Int32, isMutable = false),
+      StructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
+      StructField(componentType, nullable(genTypeName.typeData), isMutable = false),
+      StructField(name, RefType.anyref, isMutable = true),
+      StructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
+      StructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
+      StructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
+      StructField(
         isJSClassInstance,
         nullable(genTypeName.isJSClassInstanceFuncType),
         isMutable = false
       ),
-      WasmStructField(
+      StructField(
         reflectiveProxies,
-        WasmRefType(genTypeName.reflectiveProxies),
+        RefType(genTypeName.reflectiveProxies),
         isMutable = false
       )
     )
@@ -90,59 +90,59 @@ object CoreWasmLib {
   private def genPreMainRecTypeDefinitions()(implicit ctx: WasmContext): Unit = {
     val b = ctx.moduleBuilder
 
-    b.addRecType(genTypeName.i8Array, WasmArrayType(WasmFieldType(WasmInt8, true)))
-    b.addRecType(genTypeName.i16Array, WasmArrayType(WasmFieldType(WasmInt16, true)))
-    b.addRecType(genTypeName.i32Array, WasmArrayType(WasmFieldType(WasmInt32, true)))
-    b.addRecType(genTypeName.i64Array, WasmArrayType(WasmFieldType(WasmInt64, true)))
-    b.addRecType(genTypeName.f32Array, WasmArrayType(WasmFieldType(WasmFloat32, true)))
-    b.addRecType(genTypeName.f64Array, WasmArrayType(WasmFieldType(WasmFloat64, true)))
-    b.addRecType(genTypeName.anyArray, WasmArrayType(WasmFieldType(anyref, true)))
+    b.addRecType(genTypeName.i8Array, ArrayType(FieldType(Int8, true)))
+    b.addRecType(genTypeName.i16Array, ArrayType(FieldType(Int16, true)))
+    b.addRecType(genTypeName.i32Array, ArrayType(FieldType(Int32, true)))
+    b.addRecType(genTypeName.i64Array, ArrayType(FieldType(Int64, true)))
+    b.addRecType(genTypeName.f32Array, ArrayType(FieldType(Float32, true)))
+    b.addRecType(genTypeName.f64Array, ArrayType(FieldType(Float64, true)))
+    b.addRecType(genTypeName.anyArray, ArrayType(FieldType(anyref, true)))
   }
 
   private def genCoreTypesInRecType()(implicit ctx: WasmContext): Unit = {
     ctx.mainRecType.addSubType(
       genTypeName.cloneFunctionType,
-      WasmFunctionType(
-        List(WasmRefType(genTypeName.ObjectStruct)),
-        List(WasmRefType(genTypeName.ObjectStruct))
+      FunctionType(
+        List(RefType(genTypeName.ObjectStruct)),
+        List(RefType(genTypeName.ObjectStruct))
       )
     )
 
     ctx.mainRecType.addSubType(
       genTypeName.isJSClassInstanceFuncType,
-      WasmFunctionType(List(WasmRefType.anyref), List(WasmInt32))
+      FunctionType(List(RefType.anyref), List(Int32))
     )
 
     ctx.mainRecType.addSubType(
       genTypeName.typeDataArray,
-      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.typeData), isMutable = false))
+      ArrayType(FieldType(RefType(genTypeName.typeData), isMutable = false))
     )
     ctx.mainRecType.addSubType(
       genTypeName.itables,
-      WasmArrayType(WasmFieldType(WasmRefType.nullable(WasmHeapType.Struct), isMutable = true))
+      ArrayType(FieldType(RefType.nullable(HeapType.Struct), isMutable = true))
     )
     ctx.mainRecType.addSubType(
       genTypeName.reflectiveProxies,
-      WasmArrayType(WasmFieldType(WasmRefType(genTypeName.reflectiveProxy), isMutable = false))
+      ArrayType(FieldType(RefType(genTypeName.reflectiveProxy), isMutable = false))
     )
 
     ctx.mainRecType.addSubType(
-      WasmSubType(
+      SubType(
         genTypeName.typeData,
         isFinal = false,
         None,
-        WasmStructType(typeDataStructFields)
+        StructType(typeDataStructFields)
       )
     )
 
     ctx.mainRecType.addSubType(
       genTypeName.reflectiveProxy,
-      WasmStructType(
+      StructType(
         List(
-          WasmStructField(genFieldName.reflectiveProxy.func_name, WasmInt32, isMutable = false),
-          WasmStructField(
+          StructField(genFieldName.reflectiveProxy.func_name, Int32, isMutable = false),
+          StructField(
             genFieldName.reflectiveProxy.func_ref,
-            WasmRefType(WasmHeapType.Func),
+            RefType(HeapType.Func),
             isMutable = false
           )
         )
@@ -153,18 +153,18 @@ object CoreWasmLib {
   private def genArrayClassTypes()(implicit ctx: WasmContext): Unit = {
     // The vtable type is always the same as j.l.Object
     val vtableTypeName = genTypeName.ObjectVTable
-    val vtableField = WasmStructField(
+    val vtableField = StructField(
       genFieldName.objStruct.vtable,
-      WasmRefType(vtableTypeName),
+      RefType(vtableTypeName),
       isMutable = false
     )
-    val itablesField = WasmStructField(
+    val itablesField = StructField(
       genFieldName.objStruct.itables,
-      WasmRefType.nullable(genTypeName.itables),
+      RefType.nullable(genTypeName.itables),
       isMutable = false
     )
 
-    val typeRefsWithArrays: List[(WasmTypeName, WasmTypeName)] =
+    val typeRefsWithArrays: List[(TypeName, TypeName)] =
       List(
         (genTypeName.BooleanArray, genTypeName.i8Array),
         (genTypeName.CharArray, genTypeName.i16Array),
@@ -178,49 +178,49 @@ object CoreWasmLib {
       )
 
     for ((structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
-      val underlyingArrayField = WasmStructField(
+      val underlyingArrayField = StructField(
         genFieldName.objStruct.arrayUnderlying,
-        WasmRefType(underlyingArrayTypeName),
+        RefType(underlyingArrayTypeName),
         isMutable = false
       )
 
       val superType = genTypeName.ObjectStruct
-      val structType = WasmStructType(
+      val structType = StructType(
         List(vtableField, itablesField, underlyingArrayField)
       )
-      val subType = WasmSubType(structTypeName, isFinal = true, Some(superType), structType)
+      val subType = SubType(structTypeName, isFinal = true, Some(superType), structType)
       ctx.mainRecType.addSubType(subType)
     }
   }
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
-    val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
+    val exceptionSig = FunctionSignature(List(RefType.externref), Nil)
     val typeName = ctx.moduleBuilder.signatureToTypeName(exceptionSig)
     ctx.moduleBuilder.addImport(
-      WasmImport(
+      Import(
         "__scalaJSHelpers",
         "JSTag",
-        WasmImportDesc.Tag(genTagName.exceptionTagName, typeName)
+        ImportDesc.Tag(genTagName.exceptionTagName, typeName)
       )
     )
   }
 
   private def genGlobalImports()(implicit ctx: WasmContext): Unit = {
-    def addGlobalHelperImport(name: WasmGlobalName, typ: WasmType, isMutable: Boolean): Unit = {
+    def addGlobalHelperImport(name: GlobalName, typ: Type, isMutable: Boolean): Unit = {
       ctx.moduleBuilder.addImport(
-        WasmImport(
+        Import(
           "__scalaJSHelpers",
           name.name,
-          WasmImportDesc.Global(name, typ, isMutable)
+          ImportDesc.Global(name, typ, isMutable)
         )
       )
     }
 
-    addGlobalHelperImport(genGlobalName.undef, WasmRefType.any, isMutable = false)
-    addGlobalHelperImport(genGlobalName.bFalse, WasmRefType.any, isMutable = false)
-    addGlobalHelperImport(genGlobalName.bZero, WasmRefType.any, isMutable = false)
-    addGlobalHelperImport(genGlobalName.emptyString, WasmRefType.any, isMutable = false)
-    addGlobalHelperImport(genGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
+    addGlobalHelperImport(genGlobalName.undef, RefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.bFalse, RefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.bZero, RefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.emptyString, RefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.idHashCodeMap, RefType.extern, isMutable = false)
   }
 
   private def genPrimitiveTypeDataGlobals()(implicit ctx: WasmContext): Unit = {
@@ -245,37 +245,37 @@ object CoreWasmLib {
       // specialInstanceTypes
       I32_CONST(0),
       // strictAncestors
-      REF_NULL(WasmHeapType.None),
+      REF_NULL(HeapType.None),
       // componentType
-      REF_NULL(WasmHeapType.None),
+      REF_NULL(HeapType.None),
       // name - initially `null`; filled in by the `typeDataName` helper
-      REF_NULL(WasmHeapType.None),
+      REF_NULL(HeapType.None),
       // the classOf instance - initially `null`; filled in by the `createClassOf` helper
-      REF_NULL(WasmHeapType.None),
+      REF_NULL(HeapType.None),
       // arrayOf, the typeData of an array of this type - initially `null`; filled in by the `arrayTypeData` helper
-      REF_NULL(WasmHeapType.None),
+      REF_NULL(HeapType.None),
       // cloneFunction
-      REF_NULL(WasmHeapType.NoFunc),
+      REF_NULL(HeapType.NoFunc),
       // isJSClassInstance
-      REF_NULL(WasmHeapType.NoFunc),
+      REF_NULL(HeapType.NoFunc),
       // reflectiveProxies
       ARRAY_NEW_FIXED(genTypeName.reflectiveProxies, 0)
     )
 
     for ((primRef, kind) <- primRefsWithTypeData) {
-      val nameDataValue: List[WasmInstr] =
+      val nameDataValue: List[Instr] =
         ctx.getConstantStringDataInstr(primRef.displayName)
 
-      val instrs: List[WasmInstr] = {
+      val instrs: List[Instr] = {
         nameDataValue ::: I32_CONST(kind) :: commonFieldValues :::
           STRUCT_NEW(genTypeName.typeData) :: Nil
       }
 
       ctx.addGlobal(
-        WasmGlobal(
+        Global(
           genGlobalName.forVTable(primRef),
-          WasmRefType(genTypeName.typeData),
-          WasmExpr(instrs),
+          RefType(genTypeName.typeData),
+          Expr(instrs),
           isMutable = false
         )
       )
@@ -283,14 +283,14 @@ object CoreWasmLib {
   }
 
   private def genBoxedZeroGlobals()(implicit ctx: WasmContext): Unit = {
-    val primTypesWithBoxClasses: List[(WasmGlobalName, ClassName, WasmInstr)] = List(
+    val primTypesWithBoxClasses: List[(GlobalName, ClassName, Instr)] = List(
       (genGlobalName.bZeroChar, SpecialNames.CharBoxClass, I32_CONST(0)),
       (genGlobalName.bZeroLong, SpecialNames.LongBoxClass, I64_CONST(0))
     )
 
     for ((globalName, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
       val boxStruct = genTypeName.forClass(boxClassName)
-      val instrs: List[WasmInstr] = List(
+      val instrs: List[Instr] = List(
         GLOBAL_GET(genGlobalName.forVTable(boxClassName)),
         GLOBAL_GET(genGlobalName.forITable(boxClassName)),
         zeroValueInstr,
@@ -298,10 +298,10 @@ object CoreWasmLib {
       )
 
       ctx.addGlobal(
-        WasmGlobal(
+        Global(
           globalName,
-          WasmRefType(boxStruct),
-          WasmExpr(instrs),
+          RefType(boxStruct),
+          Expr(instrs),
           isMutable = false
         )
       )
@@ -315,111 +315,111 @@ object CoreWasmLib {
       ARRAY_NEW_DEFAULT(genTypeName.itables)
     )
     ctx.addGlobal(
-      WasmGlobal(
+      Global(
         genGlobalName.arrayClassITable,
-        WasmRefType(genTypeName.itables),
-        init = WasmExpr(itablesInit),
+        RefType(genTypeName.itables),
+        init = Expr(itablesInit),
         isMutable = false
       )
     )
   }
 
   private def genHelperImports()(implicit ctx: WasmContext): Unit = {
-    import WasmRefType.anyref
+    import RefType.anyref
 
     def addHelperImport(
-        name: WasmFunctionName,
-        params: List[WasmType],
-        results: List[WasmType]
+        name: FunctionName,
+        params: List[Type],
+        results: List[Type]
     ): Unit = {
-      val sig = WasmFunctionSignature(params, results)
+      val sig = FunctionSignature(params, results)
       val typeName = ctx.moduleBuilder.signatureToTypeName(sig)
       ctx.moduleBuilder.addImport(
-        WasmImport("__scalaJSHelpers", name.name, WasmImportDesc.Func(name, typeName))
+        Import("__scalaJSHelpers", name.name, ImportDesc.Func(name, typeName))
       )
     }
 
-    addHelperImport(genFunctionName.is, List(anyref, anyref), List(WasmInt32))
+    addHelperImport(genFunctionName.is, List(anyref, anyref), List(Int32))
 
-    addHelperImport(genFunctionName.isUndef, List(anyref), List(WasmInt32))
+    addHelperImport(genFunctionName.isUndef, List(anyref), List(Int32))
 
     for (primRef <- List(BooleanRef, ByteRef, ShortRef, IntRef, FloatRef, DoubleRef)) {
       val wasmType = primRef match {
-        case FloatRef  => WasmFloat32
-        case DoubleRef => WasmFloat64
-        case _         => WasmInt32
+        case FloatRef  => Float32
+        case DoubleRef => Float64
+        case _         => Int32
       }
       addHelperImport(genFunctionName.box(primRef), List(wasmType), List(anyref))
       addHelperImport(genFunctionName.unbox(primRef), List(anyref), List(wasmType))
       addHelperImport(genFunctionName.unboxOrNull(primRef), List(anyref), List(anyref))
-      addHelperImport(genFunctionName.typeTest(primRef), List(anyref), List(WasmInt32))
+      addHelperImport(genFunctionName.typeTest(primRef), List(anyref), List(Int32))
     }
 
-    addHelperImport(genFunctionName.fmod, List(WasmFloat64, WasmFloat64), List(WasmFloat64))
+    addHelperImport(genFunctionName.fmod, List(Float64, Float64), List(Float64))
 
     addHelperImport(
       genFunctionName.closure,
-      List(WasmRefType.func, anyref),
-      List(WasmRefType.any)
+      List(RefType.func, anyref),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.closureThis,
-      List(WasmRefType.func, anyref),
-      List(WasmRefType.any)
+      List(RefType.func, anyref),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.closureRest,
-      List(WasmRefType.func, anyref, WasmInt32),
-      List(WasmRefType.any)
+      List(RefType.func, anyref, Int32),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.closureThisRest,
-      List(WasmRefType.func, anyref, WasmInt32),
-      List(WasmRefType.any)
+      List(RefType.func, anyref, Int32),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.closureRestNoData,
-      List(WasmRefType.func, WasmInt32),
-      List(WasmRefType.any)
+      List(RefType.func, Int32),
+      List(RefType.any)
     )
 
-    addHelperImport(genFunctionName.stringLength, List(WasmRefType.any), List(WasmInt32))
-    addHelperImport(genFunctionName.stringCharAt, List(WasmRefType.any, WasmInt32), List(WasmInt32))
-    addHelperImport(genFunctionName.jsValueToString, List(WasmRefType.any), List(WasmRefType.any))
-    addHelperImport(genFunctionName.jsValueToStringForConcat, List(anyref), List(WasmRefType.any))
-    addHelperImport(genFunctionName.booleanToString, List(WasmInt32), List(WasmRefType.any))
-    addHelperImport(genFunctionName.charToString, List(WasmInt32), List(WasmRefType.any))
-    addHelperImport(genFunctionName.intToString, List(WasmInt32), List(WasmRefType.any))
-    addHelperImport(genFunctionName.longToString, List(WasmInt64), List(WasmRefType.any))
-    addHelperImport(genFunctionName.doubleToString, List(WasmFloat64), List(WasmRefType.any))
+    addHelperImport(genFunctionName.stringLength, List(RefType.any), List(Int32))
+    addHelperImport(genFunctionName.stringCharAt, List(RefType.any, Int32), List(Int32))
+    addHelperImport(genFunctionName.jsValueToString, List(RefType.any), List(RefType.any))
+    addHelperImport(genFunctionName.jsValueToStringForConcat, List(anyref), List(RefType.any))
+    addHelperImport(genFunctionName.booleanToString, List(Int32), List(RefType.any))
+    addHelperImport(genFunctionName.charToString, List(Int32), List(RefType.any))
+    addHelperImport(genFunctionName.intToString, List(Int32), List(RefType.any))
+    addHelperImport(genFunctionName.longToString, List(Int64), List(RefType.any))
+    addHelperImport(genFunctionName.doubleToString, List(Float64), List(RefType.any))
     addHelperImport(
       genFunctionName.stringConcat,
-      List(WasmRefType.any, WasmRefType.any),
-      List(WasmRefType.any)
+      List(RefType.any, RefType.any),
+      List(RefType.any)
     )
-    addHelperImport(genFunctionName.isString, List(anyref), List(WasmInt32))
+    addHelperImport(genFunctionName.isString, List(anyref), List(Int32))
 
-    addHelperImport(genFunctionName.jsValueType, List(WasmRefType.any), List(WasmInt32))
-    addHelperImport(genFunctionName.bigintHashCode, List(WasmRefType.any), List(WasmInt32))
+    addHelperImport(genFunctionName.jsValueType, List(RefType.any), List(Int32))
+    addHelperImport(genFunctionName.bigintHashCode, List(RefType.any), List(Int32))
     addHelperImport(
       genFunctionName.symbolDescription,
-      List(WasmRefType.any),
-      List(WasmRefType.anyref)
+      List(RefType.any),
+      List(RefType.anyref)
     )
     addHelperImport(
       genFunctionName.idHashCodeGet,
-      List(WasmRefType.extern, WasmRefType.any),
-      List(WasmInt32)
+      List(RefType.extern, RefType.any),
+      List(Int32)
     )
     addHelperImport(
       genFunctionName.idHashCodeSet,
-      List(WasmRefType.extern, WasmRefType.any, WasmInt32),
+      List(RefType.extern, RefType.any, Int32),
       Nil
     )
 
-    addHelperImport(genFunctionName.jsGlobalRefGet, List(WasmRefType.any), List(anyref))
-    addHelperImport(genFunctionName.jsGlobalRefSet, List(WasmRefType.any, anyref), Nil)
-    addHelperImport(genFunctionName.jsGlobalRefTypeof, List(WasmRefType.any), List(WasmRefType.any))
+    addHelperImport(genFunctionName.jsGlobalRefGet, List(RefType.any), List(anyref))
+    addHelperImport(genFunctionName.jsGlobalRefSet, List(RefType.any, anyref), Nil)
+    addHelperImport(genFunctionName.jsGlobalRefTypeof, List(RefType.any), List(RefType.any))
     addHelperImport(genFunctionName.jsNewArray, Nil, List(anyref))
     addHelperImport(genFunctionName.jsArrayPush, List(anyref, anyref), List(anyref))
     addHelperImport(
@@ -446,7 +446,7 @@ object CoreWasmLib {
     addHelperImport(genFunctionName.jsImportMeta, Nil, List(anyref))
     addHelperImport(genFunctionName.jsDelete, List(anyref, anyref), Nil)
     addHelperImport(genFunctionName.jsForInSimple, List(anyref, anyref), Nil)
-    addHelperImport(genFunctionName.jsIsTruthy, List(anyref), List(WasmInt32))
+    addHelperImport(genFunctionName.jsIsTruthy, List(anyref), List(Int32))
     addHelperImport(genFunctionName.jsLinkingInfo, Nil, List(anyref))
 
     for ((op, name) <- genFunctionName.jsUnaryOps)
@@ -454,7 +454,7 @@ object CoreWasmLib {
 
     for ((op, name) <- genFunctionName.jsBinaryOps) {
       val resultType =
-        if (op == JSBinaryOp.=== || op == JSBinaryOp.!==) WasmInt32
+        if (op == JSBinaryOp.=== || op == JSBinaryOp.!==) Int32
         else anyref
       addHelperImport(name, List(anyref, anyref), List(resultType))
     }
@@ -462,13 +462,13 @@ object CoreWasmLib {
     addHelperImport(genFunctionName.newSymbol, Nil, List(anyref))
     addHelperImport(
       genFunctionName.createJSClass,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref),
-      List(WasmRefType.any)
+      List(anyref, anyref, RefType.func, RefType.func, RefType.func, anyref),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.createJSClassRest,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref, WasmInt32),
-      List(WasmRefType.any)
+      List(anyref, anyref, RefType.func, RefType.func, RefType.func, anyref, Int32),
+      List(RefType.any)
     )
     addHelperImport(
       genFunctionName.installJSField,
@@ -477,22 +477,22 @@ object CoreWasmLib {
     )
     addHelperImport(
       genFunctionName.installJSMethod,
-      List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
+      List(anyref, anyref, anyref, RefType.func, Int32),
       Nil
     )
     addHelperImport(
       genFunctionName.installJSStaticMethod,
-      List(anyref, anyref, anyref, WasmRefType.func, WasmInt32),
+      List(anyref, anyref, anyref, RefType.func, Int32),
       Nil
     )
     addHelperImport(
       genFunctionName.installJSProperty,
-      List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
+      List(anyref, anyref, anyref, RefType.funcref, RefType.funcref),
       Nil
     )
     addHelperImport(
       genFunctionName.installJSStaticProperty,
-      List(anyref, anyref, anyref, WasmRefType.funcref, WasmRefType.funcref),
+      List(anyref, anyref, anyref, RefType.funcref, RefType.funcref),
       Nil
     )
     addHelperImport(
@@ -533,7 +533,7 @@ object CoreWasmLib {
     genArrayCloneFunctions()
   }
 
-  private def newFunctionBuilder(functionName: WasmFunctionName)(implicit
+  private def newFunctionBuilder(functionName: FunctionName)(implicit
       ctx: WasmContext
   ): FunctionBuilder = {
     new FunctionBuilder(ctx.moduleBuilder, functionName, noPos)
@@ -541,16 +541,16 @@ object CoreWasmLib {
 
   private def genStringLiteral()(implicit ctx: WasmContext): Unit = {
     val fb = newFunctionBuilder(genFunctionName.stringLiteral)
-    val offsetParam = fb.addParam("offset", WasmInt32)
-    val sizeParam = fb.addParam("size", WasmInt32)
-    val stringIndexParam = fb.addParam("stringIndex", WasmInt32)
-    fb.setResultType(WasmRefType.any)
+    val offsetParam = fb.addParam("offset", Int32)
+    val sizeParam = fb.addParam("size", Int32)
+    val stringIndexParam = fb.addParam("stringIndex", Int32)
+    fb.setResultType(RefType.any)
 
-    val str = fb.addLocal("str", WasmRefType.any)
+    val str = fb.addLocal("str", RefType.any)
 
     val instrs = fb
 
-    instrs.block(WasmRefType.any) { cacheHit =>
+    instrs.block(RefType.any) { cacheHit =>
       instrs += GLOBAL_GET(genGlobalName.stringLiteralCache)
       instrs += LOCAL_GET(stringIndexParam)
       instrs += ARRAY_GET(genTypeName.anyArray)
@@ -576,17 +576,17 @@ object CoreWasmLib {
 
   /** `createStringFromData: (ref array u16) -> (ref any)` (representing a `string`). */
   private def genCreateStringFromData()(implicit ctx: WasmContext): Unit = {
-    val dataType = WasmRefType(genTypeName.i16Array)
+    val dataType = RefType(genTypeName.i16Array)
 
     val fb = newFunctionBuilder(genFunctionName.createStringFromData)
     val dataParam = fb.addParam("data", dataType)
-    fb.setResultType(WasmRefType.any)
+    fb.setResultType(RefType.any)
 
     val instrs = fb
 
-    val lenLocal = fb.addLocal("len", WasmInt32)
-    val iLocal = fb.addLocal("i", WasmInt32)
-    val resultLocal = fb.addLocal("result", WasmRefType.any)
+    val lenLocal = fb.addLocal("len", Int32)
+    val iLocal = fb.addLocal("i", Int32)
+    val resultLocal = fb.addLocal("result", RefType.any)
 
     // len := data.length
     instrs += LOCAL_GET(dataParam)
@@ -647,21 +647,21 @@ object CoreWasmLib {
     *   [[https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Class.html#getName()]]
     */
   private def genTypeDataName()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
-    val nameDataType = WasmRefType(genTypeName.i16Array)
+    val typeDataType = RefType(genTypeName.typeData)
+    val nameDataType = RefType(genTypeName.i16Array)
 
     val fb = newFunctionBuilder(genFunctionName.typeDataName)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    fb.setResultType(WasmRefType.any)
+    fb.setResultType(RefType.any)
 
     val instrs = fb
 
     val componentTypeDataLocal = fb.addLocal("componentTypeData", typeDataType)
     val componentNameDataLocal = fb.addLocal("componentNameData", nameDataType)
-    val firstCharLocal = fb.addLocal("firstChar", WasmInt32)
-    val nameLocal = fb.addLocal("name", WasmRefType.any)
+    val firstCharLocal = fb.addLocal("firstChar", Int32)
+    val nameLocal = fb.addLocal("name", RefType.any)
 
-    instrs.block(WasmRefType.any) { alreadyInitializedLabel =>
+    instrs.block(RefType.any) { alreadyInitializedLabel =>
       // br_on_non_null $alreadyInitialized typeData.name
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.nameIdx)
@@ -675,7 +675,7 @@ object CoreWasmLib {
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
       instrs += I32_CONST(KindArray)
       instrs += I32_EQ
-      instrs.ifThenElse(WasmRefType.any) {
+      instrs.ifThenElse(RefType.any) {
         // it is an array; compute its name from the component type name
 
         // <top of stack> := "[", for the CALL to stringConcat near the end
@@ -693,7 +693,7 @@ object CoreWasmLib {
 
         // switch (componentTypeData.kind)
         // the result of this switch is the string that must come after "["
-        instrs.switch(WasmRefType.any) { () =>
+        instrs.switch(RefType.any) { () =>
           // scrutinee
           instrs += LOCAL_GET(componentTypeDataLocal)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
@@ -783,15 +783,15 @@ object CoreWasmLib {
     * with the non-null case as a fast-path.
     */
   private def genCreateClassOf()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.createClassOf)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    fb.setResultType(WasmRefType(genTypeName.ClassStruct))
+    fb.setResultType(RefType(genTypeName.ClassStruct))
 
     val instrs = fb
 
-    val classInstanceLocal = fb.addLocal("classInstance", WasmRefType(genTypeName.ClassStruct))
+    val classInstanceLocal = fb.addLocal("classInstance", RefType(genTypeName.ClassStruct))
 
     // classInstance := newDefault$java.lang.Class()
     // leave it on the stack for the constructor call
@@ -897,15 +897,15 @@ object CoreWasmLib {
     * performance-sensitive.
     */
   private def genGetClassOf()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.getClassOf)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    fb.setResultType(WasmRefType(genTypeName.ClassStruct))
+    fb.setResultType(RefType(genTypeName.ClassStruct))
 
     val instrs = fb
 
-    instrs.block(WasmRefType(genTypeName.ClassStruct)) { alreadyInitializedLabel =>
+    instrs.block(RefType(genTypeName.ClassStruct)) { alreadyInitializedLabel =>
       // fast path
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -924,8 +924,8 @@ object CoreWasmLib {
     * must be be strictly positive.
     */
   private def genArrayTypeData()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
-    val objectVTableType = WasmRefType(genTypeName.ObjectVTable)
+    val typeDataType = RefType(genTypeName.typeData)
+    val objectVTableType = RefType(genTypeName.ObjectVTable)
 
     /* Array classes extend Cloneable, Serializable and Object.
      * Filter out the ones that do not have run-time type info at all, as
@@ -937,7 +937,7 @@ object CoreWasmLib {
 
     val fb = newFunctionBuilder(genFunctionName.arrayTypeData)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val dimsParam = fb.addParam("dims", WasmInt32)
+    val dimsParam = fb.addParam("dims", Int32)
     fb.setResultType(objectVTableType)
 
     val instrs = fb
@@ -973,12 +973,12 @@ object CoreWasmLib {
         )
 
         instrs += LOCAL_GET(typeDataParam) // componentType
-        instrs += REF_NULL(WasmHeapType.None) // name
-        instrs += REF_NULL(WasmHeapType.None) // classOf
-        instrs += REF_NULL(WasmHeapType.None) // arrayOf
+        instrs += REF_NULL(HeapType.None) // name
+        instrs += REF_NULL(HeapType.None) // classOf
+        instrs += REF_NULL(HeapType.None) // arrayOf
 
         // clone
-        instrs.switch(WasmRefType(genTypeName.cloneFunctionType)) { () =>
+        instrs.switch(RefType(genTypeName.cloneFunctionType)) { () =>
           instrs += LOCAL_GET(typeDataParam)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
         }(
@@ -1013,7 +1013,7 @@ object CoreWasmLib {
         }
 
         // isJSClassInstance
-        instrs += REF_NULL(WasmHeapType.NoFunc)
+        instrs += REF_NULL(HeapType.NoFunc)
 
         // reflectiveProxies
         instrs += ARRAY_NEW_FIXED(genTypeName.reflectiveProxies, 0) // TODO
@@ -1044,7 +1044,7 @@ object CoreWasmLib {
       // if dims == 0 then
       //   return typeData.arrayOf (which is on the stack)
       instrs += I32_EQZ
-      instrs.ifThen(WasmFunctionSignature(List(objectVTableType), List(objectVTableType))) {
+      instrs.ifThen(FunctionSignature(List(objectVTableType), List(objectVTableType))) {
         instrs += RETURN
       }
 
@@ -1067,21 +1067,21 @@ object CoreWasmLib {
   private def genIsInstance()(implicit ctx: WasmContext): Unit = {
     import genFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(genTypeName.typeData)
-    val objectRefType = WasmRefType(genTypeName.forClass(ObjectClass))
+    val typeDataType = RefType(genTypeName.typeData)
+    val objectRefType = RefType(genTypeName.forClass(ObjectClass))
 
     val fb = newFunctionBuilder(genFunctionName.isInstance)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val valueParam = fb.addParam("value", WasmRefType.anyref)
-    fb.setResultType(WasmInt32)
+    val valueParam = fb.addParam("value", RefType.anyref)
+    fb.setResultType(Int32)
 
     val instrs = fb
 
-    val valueNonNullLocal = fb.addLocal("valueNonNull", WasmRefType.any)
-    val specialInstanceTypesLocal = fb.addLocal("specialInstanceTypes", WasmInt32)
+    val valueNonNullLocal = fb.addLocal("valueNonNull", RefType.any)
+    val specialInstanceTypesLocal = fb.addLocal("specialInstanceTypes", Int32)
 
     // switch (typeData.kind)
-    instrs.switch(WasmInt32) { () =>
+    instrs.switch(Int32) { () =>
       instrs += LOCAL_GET(typeDataParam)
       instrs += STRUCT_GET(genTypeName.typeData, kindIdx)
     }(
@@ -1107,7 +1107,7 @@ object CoreWasmLib {
       List(KindBoxedCharacter) -> { () =>
         instrs += LOCAL_GET(valueParam)
         val structTypeName = genTypeName.forClass(SpecialNames.CharBoxClass)
-        instrs += REF_TEST(WasmRefType(structTypeName))
+        instrs += REF_TEST(RefType(structTypeName))
       },
       List(KindBoxedByte) -> { () =>
         instrs += LOCAL_GET(valueParam)
@@ -1124,7 +1124,7 @@ object CoreWasmLib {
       List(KindBoxedLong) -> { () =>
         instrs += LOCAL_GET(valueParam)
         val structTypeName = genTypeName.forClass(SpecialNames.LongBoxClass)
-        instrs += REF_TEST(WasmRefType(structTypeName))
+        instrs += REF_TEST(RefType(structTypeName))
       },
       List(KindBoxedFloat) -> { () =>
         instrs += LOCAL_GET(valueParam)
@@ -1140,7 +1140,7 @@ object CoreWasmLib {
       },
       // case KindJSType => call typeData.isJSClassInstance(value) or throw if it is null
       List(KindJSType) -> { () =>
-        instrs.block(WasmRefType.anyref) { isJSClassInstanceIsNull =>
+        instrs.block(RefType.anyref) { isJSClassInstanceIsNull =>
           // Load value as the argument to the function
           instrs += LOCAL_GET(valueParam)
 
@@ -1171,7 +1171,7 @@ object CoreWasmLib {
       // case _ =>
 
       // valueNonNull := as_non_null value; return false if null
-      instrs.block(WasmRefType.any) { nonNullLabel =>
+      instrs.block(RefType.any) { nonNullLabel =>
         instrs += LOCAL_GET(valueParam)
         instrs += BR_ON_NON_NULL(nonNullLabel)
         instrs += I32_CONST(0)
@@ -1235,8 +1235,8 @@ object CoreWasmLib {
         instrs += LOCAL_GET(valueNonNullLocal)
         instrs += BR_ON_CAST(
           ourObjectLabel,
-          WasmRefType.any,
-          WasmRefType(objectRefType.heapType)
+          RefType.any,
+          RefType(objectRefType.heapType)
         )
 
         // on cast fail, return false
@@ -1260,12 +1260,12 @@ object CoreWasmLib {
     * This is the underlying func for the `isAssignableFrom()` closure inside class data objects.
     */
   private def genIsAssignableFromExternal()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.isAssignableFromExternal)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val fromParam = fb.addParam("from", WasmRefType.anyref)
-    fb.setResultType(WasmInt32)
+    val fromParam = fb.addParam("from", RefType.anyref)
+    fb.setResultType(Int32)
 
     val instrs = fb
 
@@ -1276,7 +1276,7 @@ object CoreWasmLib {
     instrs += LOCAL_GET(fromParam)
     instrs ++= ctx.getConstantStringInstr("__typeData")
     instrs += CALL(genFunctionName.jsSelect)
-    instrs += REF_CAST(WasmRefType(typeDataType.heapType))
+    instrs += REF_CAST(RefType(typeDataType.heapType))
 
     // delegate to isAssignableFrom
     instrs += CALL(genFunctionName.isAssignableFrom)
@@ -1291,18 +1291,18 @@ object CoreWasmLib {
   private def genIsAssignableFrom()(implicit ctx: WasmContext): Unit = {
     import genFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.isAssignableFrom)
     val typeDataParam = fb.addParam("typeData", typeDataType)
     val fromTypeDataParam = fb.addParam("fromTypeData", typeDataType)
-    fb.setResultType(WasmInt32)
+    fb.setResultType(Int32)
 
     val instrs = fb
 
-    val fromAncestorsLocal = fb.addLocal("fromAncestors", WasmRefType(genTypeName.typeDataArray))
-    val lenLocal = fb.addLocal("len", WasmInt32)
-    val iLocal = fb.addLocal("i", WasmInt32)
+    val fromAncestorsLocal = fb.addLocal("fromAncestors", RefType(genTypeName.typeDataArray))
+    val lenLocal = fb.addLocal("len", Int32)
+    val iLocal = fb.addLocal("i", Int32)
 
     // if (fromTypeData eq typeData)
     instrs += LOCAL_GET(fromTypeDataParam)
@@ -1315,9 +1315,9 @@ object CoreWasmLib {
     }
 
     // "Tail call" loop for diving into array component types
-    instrs.loop(WasmInt32) { loopForArrayLabel =>
+    instrs.loop(Int32) { loopForArrayLabel =>
       // switch (typeData.kind)
-      instrs.switch(WasmInt32) { () =>
+      instrs.switch(Int32) { () =>
         // typeData.kind
         instrs += LOCAL_GET(typeDataParam)
         instrs += STRUCT_GET(genTypeName.typeData, kindIdx)
@@ -1415,12 +1415,12 @@ object CoreWasmLib {
     * Casts the given value to the given type; subject to undefined behaviors.
     */
   private def genCheckCast()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.checkCast)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val valueParam = fb.addParam("value", WasmRefType.anyref)
-    fb.setResultType(WasmRefType.anyref)
+    val valueParam = fb.addParam("value", RefType.anyref)
+    fb.setResultType(RefType.anyref)
 
     val instrs = fb
 
@@ -1438,11 +1438,11 @@ object CoreWasmLib {
     * This is the underlying func for the `getComponentType()` closure inside class data objects.
     */
   private def genGetComponentType()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.getComponentType)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    fb.setResultType(WasmRefType.nullable(genTypeName.ClassStruct))
+    fb.setResultType(RefType.nullable(genTypeName.ClassStruct))
 
     val instrs = fb
 
@@ -1460,7 +1460,7 @@ object CoreWasmLib {
       instrs += CALL(genFunctionName.getClassOf)
       instrs += RETURN
     } // end block nullResultLabel
-    instrs += REF_NULL(WasmHeapType(genTypeName.ClassStruct))
+    instrs += REF_NULL(HeapType(genTypeName.ClassStruct))
 
     fb.buildAndAddToModule()
   }
@@ -1470,19 +1470,19 @@ object CoreWasmLib {
     * This is the underlying func for the `newArrayOfThisClass()` closure inside class data objects.
     */
   private def genNewArrayOfThisClass()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
-    val i32ArrayType = WasmRefType(genTypeName.i32Array)
+    val typeDataType = RefType(genTypeName.typeData)
+    val i32ArrayType = RefType(genTypeName.i32Array)
 
     val fb = newFunctionBuilder(genFunctionName.newArrayOfThisClass)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val lengthsParam = fb.addParam("lengths", WasmRefType.anyref)
-    fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
+    val lengthsParam = fb.addParam("lengths", RefType.anyref)
+    fb.setResultType(RefType(genTypeName.ObjectStruct))
 
     val instrs = fb
 
-    val lengthsLenLocal = fb.addLocal("lengthsLenLocal", WasmInt32)
+    val lengthsLenLocal = fb.addLocal("lengthsLenLocal", Int32)
     val lengthsValuesLocal = fb.addLocal("lengthsValues", i32ArrayType)
-    val iLocal = fb.addLocal("i", WasmInt32)
+    val iLocal = fb.addLocal("i", Int32)
 
     // lengthsLen := lengths.length // as a JS field access
     instrs += LOCAL_GET(lengthsParam)
@@ -1545,31 +1545,31 @@ object CoreWasmLib {
     * [[https://www.scala-js.org/doc/semantics.html#getclass]].
     */
   private def genAnyGetClass()(implicit ctx: WasmContext): Unit = {
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.anyGetClass)
-    val valueParam = fb.addParam("value", WasmRefType.any)
-    fb.setResultType(WasmRefType.nullable(genTypeName.ClassStruct))
+    val valueParam = fb.addParam("value", RefType.any)
+    fb.setResultType(RefType.nullable(genTypeName.ClassStruct))
 
     val instrs = fb
 
     val typeDataLocal = fb.addLocal("typeData", typeDataType)
-    val doubleValueLocal = fb.addLocal("doubleValue", WasmFloat64)
-    val intValueLocal = fb.addLocal("intValue", WasmInt32)
-    val ourObjectLocal = fb.addLocal("ourObject", WasmRefType(genTypeName.ObjectStruct))
+    val doubleValueLocal = fb.addLocal("doubleValue", Float64)
+    val intValueLocal = fb.addLocal("intValue", Int32)
+    val ourObjectLocal = fb.addLocal("ourObject", RefType(genTypeName.ObjectStruct))
 
-    def getHijackedClassTypeDataInstr(className: ClassName): WasmInstr =
+    def getHijackedClassTypeDataInstr(className: ClassName): Instr =
       GLOBAL_GET(genGlobalName.forVTable(className))
 
-    instrs.block(WasmRefType.nullable(genTypeName.ClassStruct)) { nonNullClassOfLabel =>
+    instrs.block(RefType.nullable(genTypeName.ClassStruct)) { nonNullClassOfLabel =>
       instrs.block(typeDataType) { gotTypeDataLabel =>
-        instrs.block(WasmRefType(genTypeName.ObjectStruct)) { ourObjectLabel =>
+        instrs.block(RefType(genTypeName.ObjectStruct)) { ourObjectLabel =>
           // if value is our object, jump to $ourObject
           instrs += LOCAL_GET(valueParam)
           instrs += BR_ON_CAST(
             ourObjectLabel,
-            WasmRefType.any,
-            WasmRefType(genTypeName.ObjectStruct)
+            RefType.any,
+            RefType(genTypeName.ObjectStruct)
           )
 
           // switch(jsValueType(value)) { ... }
@@ -1665,7 +1665,7 @@ object CoreWasmLib {
             }
           ) { () =>
             // case _ (JSValueTypeOther) => return null
-            instrs += REF_NULL(WasmHeapType(genTypeName.ClassStruct))
+            instrs += REF_NULL(HeapType(genTypeName.ClassStruct))
             instrs += RETURN
           }
 
@@ -1678,12 +1678,12 @@ object CoreWasmLib {
          * `jl.Character` or `jl.Long`, respectively.
          */
         instrs += LOCAL_TEE(ourObjectLocal)
-        instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.CharBoxClass)))
+        instrs += REF_TEST(RefType(genTypeName.forClass(SpecialNames.CharBoxClass)))
         instrs.ifThenElse(typeDataType) {
           instrs += getHijackedClassTypeDataInstr(BoxedCharacterClass)
         } {
           instrs += LOCAL_GET(ourObjectLocal)
-          instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.LongBoxClass)))
+          instrs += REF_TEST(RefType(genTypeName.forClass(SpecialNames.LongBoxClass)))
           instrs.ifThenElse(typeDataType) {
             instrs += getHijackedClassTypeDataInstr(BoxedLongClass)
           } {
@@ -1714,27 +1714,27 @@ object CoreWasmLib {
   private def genNewArrayObject()(implicit ctx: WasmContext): Unit = {
     import genFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(genTypeName.typeData)
-    val i32ArrayType = WasmRefType(genTypeName.i32Array)
-    val objectVTableType = WasmRefType(genTypeName.ObjectVTable)
+    val typeDataType = RefType(genTypeName.typeData)
+    val i32ArrayType = RefType(genTypeName.i32Array)
+    val objectVTableType = RefType(genTypeName.ObjectVTable)
     val arrayTypeDataType = objectVTableType
-    val itablesType = WasmRefType.nullable(genTypeName.itables)
-    val nonNullObjectType = WasmRefType(genTypeName.ObjectStruct)
-    val anyArrayType = WasmRefType(genTypeName.anyArray)
+    val itablesType = RefType.nullable(genTypeName.itables)
+    val nonNullObjectType = RefType(genTypeName.ObjectStruct)
+    val anyArrayType = RefType(genTypeName.anyArray)
 
     val fb = newFunctionBuilder(genFunctionName.newArrayObject)
     val arrayTypeDataParam = fb.addParam("arrayTypeData", arrayTypeDataType)
     val lengthsParam = fb.addParam("lengths", i32ArrayType)
-    val lengthIndexParam = fb.addParam("lengthIndex", WasmInt32)
+    val lengthIndexParam = fb.addParam("lengthIndex", Int32)
     fb.setResultType(nonNullObjectType)
 
     val instrs = fb
 
-    val lenLocal = fb.addLocal("len", WasmInt32)
+    val lenLocal = fb.addLocal("len", Int32)
     val underlyingLocal = fb.addLocal("underlying", anyArrayType)
-    val subLengthIndexLocal = fb.addLocal("subLengthIndex", WasmInt32)
+    val subLengthIndexLocal = fb.addLocal("subLengthIndex", Int32)
     val arrayComponentTypeDataLocal = fb.addLocal("arrayComponentTypeData", arrayTypeDataType)
-    val iLocal = fb.addLocal("i", WasmInt32)
+    val iLocal = fb.addLocal("i", Int32)
 
     /* High-level pseudo code of what this function does:
      *
@@ -1783,8 +1783,8 @@ object CoreWasmLib {
 
     // componentTypeData := ref_as_non_null(arrayTypeData.componentType)
     // switch (componentTypeData.kind)
-    val switchClauseSig = WasmFunctionSignature(
-      List(arrayTypeDataType, itablesType, WasmInt32),
+    val switchClauseSig = FunctionSignature(
+      List(arrayTypeDataType, itablesType, Int32),
       List(nonNullObjectType)
     )
     instrs.switch(switchClauseSig) { () =>
@@ -1839,7 +1839,7 @@ object CoreWasmLib {
           genTypeName.typeData,
           genFieldIdx.typeData.componentTypeIdx
         )
-        instrs += REF_CAST(WasmRefType(arrayTypeDataType.heapType))
+        instrs += REF_CAST(RefType(arrayTypeDataType.heapType))
         instrs += LOCAL_SET(arrayComponentTypeDataLocal)
 
         // i := 0
@@ -1897,25 +1897,25 @@ object CoreWasmLib {
 
     // A global exclusively used by this function
     ctx.addGlobal(
-      WasmGlobal(
+      Global(
         genGlobalName.lastIDHashCode,
-        WasmInt32,
-        WasmExpr(List(I32_CONST(0))),
+        Int32,
+        Expr(List(I32_CONST(0))),
         isMutable = true
       )
     )
 
     val fb = newFunctionBuilder(genFunctionName.identityHashCode)
-    val objParam = fb.addParam("obj", WasmRefType.anyref)
-    fb.setResultType(WasmInt32)
+    val objParam = fb.addParam("obj", RefType.anyref)
+    fb.setResultType(Int32)
 
     val instrs = fb
 
-    val objNonNullLocal = fb.addLocal("objNonNull", WasmRefType.any)
-    val resultLocal = fb.addLocal("result", WasmInt32)
+    val objNonNullLocal = fb.addLocal("objNonNull", RefType.any)
+    val resultLocal = fb.addLocal("result", Int32)
 
     // If `obj` is `null`, return 0 (by spec)
-    instrs.block(WasmRefType.any) { nonNullLabel =>
+    instrs.block(RefType.any) { nonNullLabel =>
       instrs += LOCAL_GET(objParam)
       instrs += BR_ON_NON_NULL(nonNullLabel)
       instrs += I32_CONST(0)
@@ -1924,7 +1924,7 @@ object CoreWasmLib {
     instrs += LOCAL_TEE(objNonNullLocal)
 
     // If `obj` is one of our objects, skip all the jsValueType tests
-    instrs += REF_TEST(WasmRefType(genTypeName.ObjectStruct))
+    instrs += REF_TEST(RefType(genTypeName.ObjectStruct))
     instrs += I32_EQZ
     instrs.ifThen() {
       instrs.switch() { () =>
@@ -2020,19 +2020,19 @@ object CoreWasmLib {
   private def genSearchReflectiveProxy()(implicit ctx: WasmContext): Unit = {
     import genFieldIdx.typeData._
 
-    val typeDataType = WasmRefType(genTypeName.typeData)
+    val typeDataType = RefType(genTypeName.typeData)
 
     val fb = newFunctionBuilder(genFunctionName.searchReflectiveProxy)
     val typeDataParam = fb.addParam("typeData", typeDataType)
-    val methodIdParam = fb.addParam("methodId", WasmInt32)
-    fb.setResultType(WasmRefType(WasmHeapType.Func))
+    val methodIdParam = fb.addParam("methodId", Int32)
+    fb.setResultType(RefType(HeapType.Func))
 
     val instrs = fb
 
     val reflectiveProxies =
-      fb.addLocal("reflectiveProxies", Types.WasmRefType(genTypeName.reflectiveProxies))
-    val size = fb.addLocal("size", Types.WasmInt32)
-    val i = fb.addLocal("i", Types.WasmInt32)
+      fb.addLocal("reflectiveProxies", Types.RefType(genTypeName.reflectiveProxies))
+    val size = fb.addLocal("size", Types.Int32)
+    val i = fb.addLocal("i", Types.Int32)
 
     instrs += LOCAL_GET(typeDataParam)
     instrs += STRUCT_GET(
@@ -2115,8 +2115,8 @@ object CoreWasmLib {
   /** Generates the clone function for the array class with the given base. */
   private def genArrayCloneFunction(baseRef: NonArrayTypeRef)(implicit ctx: WasmContext): Unit = {
     val fb = newFunctionBuilder(genFunctionName.clone(baseRef))
-    val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
-    fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
+    val fromParam = fb.addParam("from", RefType(genTypeName.ObjectStruct))
+    fb.setResultType(RefType(genTypeName.ObjectStruct))
     fb.setFunctionType(genTypeName.cloneFunctionType)
 
     val instrs = fb
@@ -2124,14 +2124,14 @@ object CoreWasmLib {
     val arrayTypeRef = ArrayTypeRef(baseRef, 1)
 
     val arrayStructTypeName = genTypeName.forArrayClass(arrayTypeRef)
-    val arrayClassType = WasmRefType(arrayStructTypeName)
+    val arrayClassType = RefType(arrayStructTypeName)
 
     val underlyingArrayTypeName = genTypeName.underlyingOf(arrayTypeRef)
-    val underlyingArrayType = WasmRefType(underlyingArrayTypeName)
+    val underlyingArrayType = RefType(underlyingArrayTypeName)
 
     val fromLocal = fb.addLocal("fromTyped", arrayClassType)
     val fromUnderlyingLocal = fb.addLocal("fromUnderlying", underlyingArrayType)
-    val lengthLocal = fb.addLocal("length", WasmInt32)
+    val lengthLocal = fb.addLocal("length", Int32)
     val resultUnderlyingLocal = fb.addLocal("resultUnderlying", underlyingArrayType)
 
     // Cast down the from argument

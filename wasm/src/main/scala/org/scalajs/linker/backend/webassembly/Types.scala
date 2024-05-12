@@ -8,76 +8,75 @@ import Names._
   *   [[https://webassembly.github.io/gc/core/syntax/types.html]]
   */
 object Types {
-  sealed trait WasmStorageType
+  sealed trait StorageType
 
-  sealed abstract class WasmType extends WasmStorageType
+  sealed abstract class Type extends StorageType
 
-  sealed abstract class WasmSimpleType(val textName: String, val binaryCode: Byte) extends WasmType
+  sealed abstract class SimpleType(val textName: String, val binaryCode: Byte) extends Type
 
-  case object WasmInt32 extends WasmSimpleType("i32", 0x7F)
-  case object WasmInt64 extends WasmSimpleType("i64", 0x7E)
-  case object WasmFloat32 extends WasmSimpleType("f32", 0x7D)
-  case object WasmFloat64 extends WasmSimpleType("f64", 0x7C)
+  case object Int32 extends SimpleType("i32", 0x7F)
+  case object Int64 extends SimpleType("i64", 0x7E)
+  case object Float32 extends SimpleType("f32", 0x7D)
+  case object Float64 extends SimpleType("f64", 0x7C)
 
-  sealed abstract class WasmPackedType(val textName: String, val binaryCode: Byte)
-      extends WasmStorageType
-  case object WasmInt8 extends WasmPackedType("i8", 0x78)
-  case object WasmInt16 extends WasmPackedType("i16", 0x77)
+  sealed abstract class PackedType(val textName: String, val binaryCode: Byte) extends StorageType
+  case object Int8 extends PackedType("i8", 0x78)
+  case object Int16 extends PackedType("i16", 0x77)
 
-  final case class WasmRefType(nullable: Boolean, heapType: WasmHeapType) extends WasmType {
-    def toNullable: WasmRefType = WasmRefType(true, heapType)
-    def toNonNullable: WasmRefType = WasmRefType(false, heapType)
+  final case class RefType(nullable: Boolean, heapType: HeapType) extends Type {
+    def toNullable: RefType = RefType(true, heapType)
+    def toNonNullable: RefType = RefType(false, heapType)
   }
 
-  object WasmRefType {
+  object RefType {
 
     /** Builds a non-nullable `(ref ht)` for the given `ht`. */
-    def apply(ht: WasmHeapType): WasmRefType = WasmRefType(false, ht)
+    def apply(ht: HeapType): RefType = RefType(false, ht)
 
     /** Builds a non-nullable `(ref typ)` for the given `typ`. */
-    def apply(typ: WasmTypeName): WasmRefType = apply(WasmHeapType(typ))
+    def apply(typ: TypeName): RefType = apply(HeapType(typ))
 
     /** Builds a nullable `(ref null ht)` for the given `ht`. */
-    def nullable(ht: WasmHeapType): WasmRefType = WasmRefType(true, ht)
+    def nullable(ht: HeapType): RefType = RefType(true, ht)
 
     /** Builds a nullable `(ref null typ)` for the given `typ`. */
-    def nullable(typ: WasmTypeName): WasmRefType = nullable(WasmHeapType(typ))
+    def nullable(typ: TypeName): RefType = nullable(HeapType(typ))
 
     /** `(ref any)`. */
-    val any: WasmRefType = apply(WasmHeapType.Any)
+    val any: RefType = apply(HeapType.Any)
 
     /** `(ref null any)`, i.e., `anyref`. */
-    val anyref: WasmRefType = nullable(WasmHeapType.Any)
+    val anyref: RefType = nullable(HeapType.Any)
 
     /** `(ref func)`. */
-    val func: WasmRefType = apply(WasmHeapType.Func)
+    val func: RefType = apply(HeapType.Func)
 
     /** `(ref null func)`, i.e., `funcref`. */
-    val funcref: WasmRefType = nullable(WasmHeapType.Func)
+    val funcref: RefType = nullable(HeapType.Func)
 
     /** `(ref extern)`. */
-    val extern: WasmRefType = apply(WasmHeapType.Extern)
+    val extern: RefType = apply(HeapType.Extern)
 
     /** `(ref null extern)`, i.e., `externref`. */
-    val externref: WasmRefType = nullable(WasmHeapType.Extern)
+    val externref: RefType = nullable(HeapType.Extern)
 
     /** `(ref null exn)`, i.e., `exnref`. */
-    val exnref: WasmRefType = nullable(WasmHeapType.Exn)
+    val exnref: RefType = nullable(HeapType.Exn)
 
     /** `(ref null none)`, i.e., `nullref`. */
-    val nullref: WasmRefType = nullable(WasmHeapType.None)
+    val nullref: RefType = nullable(HeapType.None)
   }
 
-  sealed trait WasmHeapType
+  sealed trait HeapType
 
-  object WasmHeapType {
-    final case class Type(val typ: WasmTypeName) extends WasmHeapType
+  object HeapType {
+    final case class Type(val typ: TypeName) extends HeapType
 
     sealed abstract class AbsHeapType(
         val textName: String,
         val nullableRefTextName: String,
         val binaryCode: Byte
-    ) extends WasmHeapType
+    ) extends HeapType
 
     case object Func extends AbsHeapType("func", "funcref", 0x70)
     case object Extern extends AbsHeapType("extern", "externref", 0x6F)
@@ -91,7 +90,7 @@ object Types {
     case object NoFunc extends AbsHeapType("nofunc", "nullfuncref", 0x73)
     case object NoExn extends AbsHeapType("noexn", "nullexnref", 0x74)
 
-    def apply(typ: WasmTypeName): WasmHeapType.Type =
-      WasmHeapType.Type(typ)
+    def apply(typ: TypeName): HeapType.Type =
+      HeapType.Type(typ)
   }
 }

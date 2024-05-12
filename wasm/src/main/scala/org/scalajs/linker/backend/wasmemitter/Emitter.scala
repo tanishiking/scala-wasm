@@ -91,13 +91,13 @@ final class Emitter(config: Emitter.Config) {
     // string
     val (stringPool, stringPoolCount) = ctx.getFinalStringPool()
     ctx.moduleBuilder.addData(
-      wamod.WasmData(genDataName.string, stringPool, wamod.WasmData.Mode.Passive)
+      wamod.Data(genDataName.string, stringPool, wamod.Data.Mode.Passive)
     )
     ctx.addGlobal(
-      wamod.WasmGlobal(
+      wamod.Global(
         genGlobalName.stringLiteralCache,
-        watpe.WasmRefType(genTypeName.anyArray),
-        wamod.WasmExpr(
+        watpe.RefType(genTypeName.anyArray),
+        wamod.Expr(
           List(
             wa.I32_CONST(stringPoolCount),
             wa.ARRAY_NEW_DEFAULT(genTypeName.anyArray)
@@ -259,10 +259,10 @@ final class Emitter(config: Emitter.Config) {
        * introduce these declarations.
        */
       val exprs = funcDeclarations.map { name =>
-        wamod.WasmExpr(List(wa.REF_FUNC(name)))
+        wamod.Expr(List(wa.REF_FUNC(name)))
       }
       ctx.moduleBuilder.addElement(
-        wamod.WasmElement(watpe.WasmRefType.funcref, exprs, wamod.WasmElement.Mode.Declarative)
+        wamod.Element(watpe.RefType.funcref, exprs, wamod.Element.Mode.Declarative)
       )
     }
   }
@@ -318,7 +318,7 @@ object Emitter {
   }
 
   final class Result(
-      val wasmModule: wamod.WasmModule,
+      val wasmModule: wamod.Module,
       val loaderContent: Array[Byte],
       val jsFileContent: String
   )

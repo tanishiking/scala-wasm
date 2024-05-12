@@ -12,54 +12,53 @@ import Types._
   *   [[https://webassembly.github.io/gc/core/syntax/modules.html]]
   */
 object Modules {
-  sealed case class WasmExpr(instr: List[WasmInstr])
+  sealed case class Expr(instr: List[Instr])
 
-  sealed abstract class WasmExport {
+  sealed abstract class Export {
     val exportName: String
   }
 
-  object WasmExport {
-    final case class Function(exportName: String, funcName: WasmFunctionName) extends WasmExport
-    final case class Global(exportName: String, globalName: WasmGlobalName) extends WasmExport
+  object Export {
+    final case class Function(exportName: String, funcName: FunctionName) extends Export
+    final case class Global(exportName: String, globalName: GlobalName) extends Export
   }
 
-  final case class WasmImport(module: String, name: String, desc: WasmImportDesc)
+  final case class Import(module: String, name: String, desc: ImportDesc)
 
-  sealed abstract class WasmImportDesc
+  sealed abstract class ImportDesc
 
-  object WasmImportDesc {
-    final case class Func(id: WasmFunctionName, typeName: WasmTypeName) extends WasmImportDesc
-    final case class Global(id: WasmGlobalName, typ: WasmType, isMutable: Boolean)
-        extends WasmImportDesc
-    final case class Tag(id: WasmTagName, typeName: WasmTypeName) extends WasmImportDesc
+  object ImportDesc {
+    final case class Func(id: FunctionName, typeName: TypeName) extends ImportDesc
+    final case class Global(id: GlobalName, typ: Type, isMutable: Boolean) extends ImportDesc
+    final case class Tag(id: TagName, typeName: TypeName) extends ImportDesc
   }
 
   /** @see
     *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
     */
-  final case class WasmFunction(
-      val name: WasmFunctionName,
-      val typeName: WasmTypeName,
-      val locals: List[WasmLocal],
-      val results: List[WasmType],
-      val body: WasmExpr,
+  final case class Function(
+      val name: FunctionName,
+      val typeName: TypeName,
+      val locals: List[Local],
+      val results: List[Type],
+      val body: Expr,
       val pos: Position
   )
 
   /** The index space for locals is only accessible inside a function and includes the parameters of
     * that function, which precede the local variables.
     */
-  case class WasmLocal(
-      val name: WasmLocalName,
-      val typ: WasmType,
+  case class Local(
+      val name: LocalName,
+      val typ: Type,
       val isParameter: Boolean // for text
   )
 
-  final case class WasmTag(val name: WasmTagName, val typ: WasmTypeName)
+  final case class Tag(val name: TagName, val typ: TypeName)
 
-  final case class WasmData(val name: WasmDataName, val bytes: Array[Byte], mode: WasmData.Mode)
+  final case class Data(val name: DataName, val bytes: Array[Byte], mode: Data.Mode)
 
-  object WasmData {
+  object Data {
     sealed abstract class Mode
     object Mode {
       case object Passive extends Mode
@@ -67,77 +66,77 @@ object Modules {
     }
   }
 
-  final case class WasmGlobal(
-      val name: WasmGlobalName,
-      val typ: WasmType,
-      val init: WasmExpr,
+  final case class Global(
+      val name: GlobalName,
+      val typ: Type,
+      val init: Expr,
       val isMutable: Boolean
   )
 
-  final case class WasmRecType(subTypes: List[WasmSubType])
+  final case class RecType(subTypes: List[SubType])
 
-  object WasmRecType {
+  object RecType {
 
     /** Builds a `rectype` with a single `subtype`. */
-    def apply(singleSubType: WasmSubType): WasmRecType =
-      WasmRecType(singleSubType :: Nil)
+    def apply(singleSubType: SubType): RecType =
+      RecType(singleSubType :: Nil)
   }
 
-  final case class WasmSubType(
-      name: WasmTypeName,
+  final case class SubType(
+      name: TypeName,
       isFinal: Boolean,
-      superType: Option[WasmTypeName],
-      compositeType: WasmCompositeType
+      superType: Option[TypeName],
+      compositeType: CompositeType
   )
 
-  object WasmSubType {
+  object SubType {
 
     /** Builds a `subtype` that is `final` and without any super type. */
-    def apply(name: WasmTypeName, compositeType: WasmCompositeType): WasmSubType =
-      WasmSubType(name, isFinal = true, superType = None, compositeType)
+    def apply(name: TypeName, compositeType: CompositeType): SubType =
+      SubType(name, isFinal = true, superType = None, compositeType)
   }
 
-  sealed abstract class WasmCompositeType
+  sealed abstract class CompositeType
 
-  final case class WasmFunctionSignature(
-      params: List[WasmType],
-      results: List[WasmType]
+  final case class FunctionSignature(
+      params: List[Type],
+      results: List[Type]
   )
-  object WasmFunctionSignature {
-    val NilToNil: WasmFunctionSignature = WasmFunctionSignature(Nil, Nil)
+  object FunctionSignature {
+    val NilToNil: FunctionSignature = FunctionSignature(Nil, Nil)
   }
 
-  final case class WasmFunctionType(
-      params: List[WasmType],
-      results: List[WasmType]
-  ) extends WasmCompositeType
-  object WasmFunctionType {
-    def apply(sig: WasmFunctionSignature): WasmFunctionType = {
-      WasmFunctionType(sig.params, sig.results)
+  final case class FunctionType(
+      params: List[Type],
+      results: List[Type]
+  ) extends CompositeType
+  object FunctionType {
+    def apply(sig: FunctionSignature): FunctionType = {
+      FunctionType(sig.params, sig.results)
     }
   }
 
-  final case class WasmStructType(fields: List[WasmStructField]) extends WasmCompositeType
+  final case class StructType(fields: List[StructField]) extends CompositeType
 
-  final case class WasmArrayType(fieldType: WasmFieldType) extends WasmCompositeType
+  final case class ArrayType(fieldType: FieldType) extends CompositeType
 
-  final case class WasmFieldType(typ: WasmStorageType, isMutable: Boolean)
+  final case class FieldType(typ: StorageType, isMutable: Boolean)
 
-  final case class WasmStructField(name: WasmFieldName, fieldType: WasmFieldType)
+  final case class StructField(name: FieldName, fieldType: FieldType)
 
-  object WasmStructField {
-    def apply(name: WasmFieldName, typ: WasmStorageType, isMutable: Boolean): WasmStructField =
-      WasmStructField(name, WasmFieldType(typ, isMutable))
+  object StructField {
+    def apply(name: FieldName, typ: StorageType, isMutable: Boolean): StructField =
+      StructField(name, FieldType(typ, isMutable))
   }
 
-  final case class WasmElement(typ: WasmType, init: List[WasmExpr], mode: WasmElement.Mode)
+  final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
 
-  object WasmElement {
+  object Element {
     sealed abstract class Mode
 
     object Mode {
       case object Passive extends Mode
-      // final case class Active(table: WasmImmediate.TableIdx, offset: WasmExpr) extends Mode
+      // final case class Active(table: Immediate.TableIdx, offset: Expr) extends Mode
       case object Declarative extends Mode
     }
   }
@@ -145,15 +144,15 @@ object Modules {
   /** @see
     *   https://webassembly.github.io/spec/core/syntax/modules.html#modules
     */
-  final class WasmModule(
-      val types: List[WasmRecType],
-      val imports: List[WasmImport],
-      val funcs: List[WasmFunction],
-      val tags: List[WasmTag],
-      val globals: List[WasmGlobal],
-      val exports: List[WasmExport],
-      val start: Option[WasmFunctionName],
-      val elems: List[WasmElement],
-      val datas: List[WasmData]
+  final class Module(
+      val types: List[RecType],
+      val imports: List[Import],
+      val funcs: List[Function],
+      val tags: List[Tag],
+      val globals: List[Global],
+      val exports: List[Export],
+      val start: Option[FunctionName],
+      val elems: List[Element],
+      val datas: List[Data]
   )
 }

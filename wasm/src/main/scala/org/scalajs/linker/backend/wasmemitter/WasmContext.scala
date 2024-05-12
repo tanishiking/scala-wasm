@@ -26,25 +26,25 @@ import VarGen._
 final class WasmContext {
   import WasmContext._
 
-  private val classInfo = mutable.Map[ClassName, WasmClassInfo]()
+  private val classInfo = mutable.Map[ClassName, ClassInfo]()
 
   private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
 
-  private val functionTypes = LinkedHashMap.empty[wamod.WasmFunctionSignature, wanme.WasmTypeName]
-  private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.WasmTypeName]
+  private val functionTypes = LinkedHashMap.empty[wamod.FunctionSignature, wanme.TypeName]
+  private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeName]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
-  private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.WasmTypeName]
+  private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeName]
   private val reflectiveProxies = LinkedHashMap.empty[MethodName, Int]
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionSignatureProvider {
-      def signatureToTypeName(sig: wamod.WasmFunctionSignature): wanme.WasmTypeName = {
+      def signatureToTypeName(sig: wamod.FunctionSignature): wanme.TypeName = {
         functionTypes.getOrElseUpdate(
           sig, {
             val typeName = genTypeName.forFunction(functionTypes.size)
-            moduleBuilder.addRecType(typeName, wamod.WasmFunctionType(sig))
+            moduleBuilder.addRecType(typeName, wamod.FunctionType(sig))
             typeName
           }
         )
@@ -64,7 +64,7 @@ final class WasmContext {
 
   private val _jsPrivateFieldNames: mutable.ListBuffer[FieldName] =
     new mutable.ListBuffer()
-  private val _funcDeclarations: mutable.LinkedHashSet[wanme.WasmFunctionName] =
+  private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionName] =
     new mutable.LinkedHashSet()
 
   /** The main `rectype` containing the object model types. */
@@ -73,16 +73,16 @@ final class WasmContext {
   /** Get an index of the itable for the given interface. The itable instance must be placed at the
     * index in the array of itables (whose size is `itablesLength`).
     */
-  def getItableIdx(iface: WasmClassInfo): Int = {
+  def getItableIdx(iface: ClassInfo): Int = {
     val idx = iface.itableIdx
     if (idx < 0) throw new IllegalArgumentException(s"Interface $iface is not registed.")
     idx
   }
 
-  def getClassInfoOption(name: ClassName): Option[WasmClassInfo] =
+  def getClassInfoOption(name: ClassName): Option[ClassInfo] =
     classInfo.get(name)
 
-  def getClassInfo(name: ClassName): WasmClassInfo =
+  def getClassInfo(name: ClassName): ClassInfo =
     classInfo.getOrElse(name, throw new Error(s"Class not found: $name"))
 
   def inferTypeFromTypeRef(typeRef: TypeRef): Type = typeRef match {
@@ -112,7 +112,7 @@ final class WasmContext {
     * Table function types are part of the main `rectype`, and have names derived from the
     * `methodName`.
     */
-  def tableFunctionType(methodName: MethodName): wanme.WasmTypeName = {
+  def tableFunctionType(methodName: MethodName): wanme.TypeName = {
     // Project all the names with the same *signatures* onto a normalized `MethodName`
     val normalizedName = MethodName(
       SpecialNames.normalizedSimpleMethodName,
@@ -133,7 +133,7 @@ final class WasmContext {
           )
         mainRecType.addSubType(
           typeName,
-          wamod.WasmFunctionType(watpe.WasmRefType.any :: regularParamTyps, resultTyp)
+          wamod.FunctionType(watpe.RefType.any :: regularParamTyps, resultTyp)
         )
         typeName
       }
@@ -160,7 +160,7 @@ final class WasmContext {
     }
   }
 
-  def getConstantStringInstr(str: String): List[wa.WasmInstr] =
+  def getConstantStringInstr(str: String): List[wa.Instr] =
     getConstantStringDataInstr(str) :+ wa.CALL(genFunctionName.stringLiteral)
 
   def getConstantStringDataInstr(str: String): List[wa.I32_CONST] = {
@@ -175,26 +175,26 @@ final class WasmContext {
     )
   }
 
-  def getClosureDataStructType(captureParamTypes: List[Type]): wanme.WasmTypeName = {
+  def getClosureDataStructType(captureParamTypes: List[Type]): wanme.TypeName = {
     closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
-        val fields: List[wamod.WasmStructField] =
+        val fields: List[wamod.StructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
-            yield wamod.WasmStructField(
+            yield wamod.StructField(
               genFieldName.captureParam(i),
               TypeTransformer.transformType(tpe)(this),
               isMutable = false
             )
         val structTypeName = genTypeName.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
-        val structType = wamod.WasmStructType(fields)
+        val structType = wamod.StructType(fields)
         moduleBuilder.addRecType(structTypeName, structType)
         structTypeName
       }
     )
   }
 
-  def refFuncWithDeclaration(name: wanme.WasmFunctionName): wa.REF_FUNC = {
+  def refFuncWithDeclaration(name: wanme.FunctionName): wa.REF_FUNC = {
     addFuncDeclaration(name)
     wa.REF_FUNC(name)
   }
@@ -202,16 +202,16 @@ final class WasmContext {
   def assignBuckets(classes: List[LinkedClass]): Unit =
     _itablesLength = assignBuckets0(classes.filterNot(_.kind.isJSType))
 
-  def addExport(exprt: wamod.WasmExport): Unit =
+  def addExport(exprt: wamod.Export): Unit =
     moduleBuilder.addExport(exprt)
 
-  def addFunction(fun: wamod.WasmFunction): Unit =
+  def addFunction(fun: wamod.Function): Unit =
     moduleBuilder.addFunction(fun)
 
-  def addGlobal(g: wamod.WasmGlobal): Unit =
+  def addGlobal(g: wamod.Global): Unit =
     moduleBuilder.addGlobal(g)
 
-  def addGlobalITable(name: ClassName, g: wamod.WasmGlobal): Unit = {
+  def addGlobalITable(name: ClassName, g: wamod.Global): Unit = {
     classItableGlobals += name
     addGlobal(g)
   }
@@ -219,14 +219,14 @@ final class WasmContext {
   def getAllClassesWithITableGlobal(): List[ClassName] =
     classItableGlobals.toList
 
-  def getImportedModuleGlobal(moduleName: String): wanme.WasmGlobalName = {
+  def getImportedModuleGlobal(moduleName: String): wanme.GlobalName = {
     val name = genGlobalName.forImportedModule(moduleName)
     if (_importedModules.add(moduleName)) {
       moduleBuilder.addImport(
-        wamod.WasmImport(
+        wamod.Import(
           "__scalaJSImports",
           moduleName,
-          wamod.WasmImportDesc.Global(name, watpe.WasmRefType.anyref, isMutable = false)
+          wamod.ImportDesc.Global(name, watpe.RefType.anyref, isMutable = false)
         )
       )
     }
@@ -235,10 +235,10 @@ final class WasmContext {
 
   def allImportedModules: List[String] = _importedModules.toList
 
-  def addFuncDeclaration(name: wanme.WasmFunctionName): Unit =
+  def addFuncDeclaration(name: wanme.FunctionName): Unit =
     _funcDeclarations += name
 
-  def putClassInfo(name: ClassName, info: WasmClassInfo): Unit =
+  def putClassInfo(name: ClassName, info: ClassInfo): Unit =
     classInfo.put(name, info)
 
   def addJSPrivateFieldName(fieldName: FieldName): Unit =
@@ -250,7 +250,7 @@ final class WasmContext {
   def getAllJSPrivateFieldNames(): List[FieldName] =
     _jsPrivateFieldNames.toList
 
-  def getAllFuncDeclarations(): List[wanme.WasmFunctionName] =
+  def getAllFuncDeclarations(): List[wanme.FunctionName] =
     _funcDeclarations.toList
 
   /** Group interface types + types that implements any interfaces into buckets, where no two types
@@ -306,7 +306,7 @@ final class WasmContext {
       nextIdx += 1
       new Bucket(idx)
     }
-    def getAllInterfaces(info: WasmClassInfo): List[ClassName] =
+    def getAllInterfaces(info: ClassInfo): List[ClassName] =
       info.ancestors.filter(getClassInfo(_).isInterface)
 
     val buckets = new mutable.ListBuffer[Bucket]()
@@ -395,7 +395,7 @@ object WasmContext {
 
   final case class StringData(constantStringIndex: Int, offset: Int)
 
-  final class WasmClassInfo(
+  final class ClassInfo(
       ctx: WasmContext,
       val name: ClassName,
       val kind: ClassKind,
@@ -555,8 +555,8 @@ object WasmContext {
       _tableMethodInfos
     }
 
-    def getFieldIdx(name: FieldName): wanme.WasmFieldIdx = {
-      wanme.WasmFieldIdx(
+    def getFieldIdx(name: FieldName): wanme.FieldIdx = {
+      wanme.FieldIdx(
         fieldIdxByName.getOrElse(
           name, {
             throw new AssertionError(
@@ -585,7 +585,7 @@ object WasmContext {
   final class TableMethodInfo(val methodName: MethodName, val tableIndex: Int)
 
   private[WasmContext] class Bucket(idx: Int) {
-    def add(clazz: WasmClassInfo) = clazz.setItableIdx((idx))
+    def add(clazz: ClassInfo) = clazz.setItableIdx((idx))
 
     /** A set of join types that are descendants of the types assigned to that bucket */
     val joins = new mutable.HashSet[ClassName]()

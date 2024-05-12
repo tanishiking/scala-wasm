@@ -5,28 +5,28 @@ package org.scalajs.linker.backend.webassembly
   * See [[https://webassembly.github.io/gc/core/syntax/modules.html#indices]]
   */
 object Names {
-  sealed abstract class WasmName {
+  sealed abstract class Name {
     val name: String
   }
 
-  final case class WasmLocalName(name: String) extends WasmName
+  final case class LocalName(name: String) extends Name
 
-  final case class WasmLabelName(name: String) extends WasmName
+  final case class LabelName(name: String) extends Name
 
-  final case class WasmGlobalName(name: String) extends WasmName
+  final case class GlobalName(name: String) extends Name
 
-  final case class WasmFunctionName(name: String) extends WasmName
+  final case class FunctionName(name: String) extends Name
 
-  final case class WasmFieldName(name: String) extends WasmName
+  final case class FieldName(name: String) extends Name
 
-  final case class WasmFieldIdx(value: Int)
+  final case class FieldIdx(value: Int)
 
-  final case class WasmTypeName(name: String) extends WasmName
+  final case class TypeName(name: String) extends Name
 
-  final case class WasmTagName(name: String) extends WasmName
+  final case class TagName(name: String) extends Name
 
-  final case class WasmDataName(name: String) extends WasmName
+  final case class DataName(name: String) extends Name
 
-  final case class WasmExportName(name: String) extends WasmName
+  final case class ExportName(name: String) extends Name
 
 }

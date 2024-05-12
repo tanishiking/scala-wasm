@@ -81,7 +81,7 @@ object Preprocessor {
 
     ctx.putClassInfo(
       clazz.name.name,
-      new WasmClassInfo(
+      new ClassInfo(
         ctx,
         clazz.name.name,
         kind,
@@ -127,7 +127,7 @@ object Preprocessor {
       clazz.ancestors.foreach(ancestor => ctx.getClassInfo(ancestor).setHasInstances())
   }
 
-  /** Collect WasmFunctionInfo based on the abstract method call
+  /** Collect FunctionInfo based on the abstract method call
     *
     * ```
     * class A extends B:

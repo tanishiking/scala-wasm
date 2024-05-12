@@ -13,7 +13,7 @@ import org.scalajs.linker.backend.webassembly._
 import org.scalajs.linker.backend.webassembly.{Instructions => wa}
 import org.scalajs.linker.backend.webassembly.{Names => wanme}
 import org.scalajs.linker.backend.webassembly.{Types => watpe}
-import org.scalajs.linker.backend.webassembly.Modules.{WasmFunctionSignature => Sig}
+import org.scalajs.linker.backend.webassembly.Modules.{FunctionSignature => Sig}
 
 import EmbeddedConstants._
 import SWasmGen._
@@ -38,10 +38,10 @@ object FunctionEmitter {
   private final val UseLegacyExceptionsForTryCatch = true
 
   def emitFunction(
-      functionName: wanme.WasmFunctionName,
+      functionName: wanme.FunctionName,
       enclosingClassName: Option[ClassName],
       captureParamDefs: Option[List[ParamDef]],
-      receiverTyp: Option[watpe.WasmType],
+      receiverTyp: Option[watpe.Type],
       paramDefs: List[ParamDef],
       restParam: Option[ParamDef],
       body: Tree,
@@ -62,9 +62,9 @@ object FunctionEmitter {
   }
 
   def emitJSConstructorFunctions(
-      preSuperStatsFunctionName: wanme.WasmFunctionName,
-      superArgsFunctionName: wanme.WasmFunctionName,
-      postSuperStatsFunctionName: wanme.WasmFunctionName,
+      preSuperStatsFunctionName: wanme.FunctionName,
+      superArgsFunctionName: wanme.FunctionName,
+      postSuperStatsFunctionName: wanme.FunctionName,
       enclosingClassName: ClassName,
       jsClassCaptures: List[ParamDef],
       ctor: JSConstructorDef
@@ -82,7 +82,7 @@ object FunctionEmitter {
     // Build the `preSuperStats` function
     locally {
       val preSuperEnvStructTypeName = ctx.getClosureDataStructType(preSuperDecls.map(_.vtpe))
-      val preSuperEnvTyp = watpe.WasmRefType(preSuperEnvStructTypeName)
+      val preSuperEnvTyp = watpe.RefType(preSuperEnvStructTypeName)
 
       val emitter = prepareEmitter(
         preSuperStatsFunctionName,
@@ -115,7 +115,7 @@ object FunctionEmitter {
         hasNewTarget = true,
         receiverTyp = None,
         allCtorParams,
-        List(watpe.WasmRefType.anyref) // a js.Array
+        List(watpe.RefType.anyref) // a js.Array
       )
       emitter.genBody(JSArrayConstr(ctorBody.superCall.args), AnyType)
       emitter.fb.buildAndAddToModule()
@@ -129,9 +129,9 @@ object FunctionEmitter {
         Some(jsClassCaptures),
         Some(preSuperDecls),
         hasNewTarget = true,
-        receiverTyp = Some(watpe.WasmRefType.anyref),
+        receiverTyp = Some(watpe.RefType.anyref),
         allCtorParams,
-        List(watpe.WasmRefType.anyref)
+        List(watpe.RefType.anyref)
       )
       emitter.genBody(Block(ctorBody.afterSuper), AnyType)
       emitter.fb.buildAndAddToModule()
@@ -139,14 +139,14 @@ object FunctionEmitter {
   }
 
   private def prepareEmitter(
-      functionName: wanme.WasmFunctionName,
+      functionName: wanme.FunctionName,
       enclosingClassName: Option[ClassName],
       captureParamDefs: Option[List[ParamDef]],
       preSuperVarDefs: Option[List[VarDef]],
       hasNewTarget: Boolean,
-      receiverTyp: Option[watpe.WasmType],
+      receiverTyp: Option[watpe.Type],
       paramDefs: List[ParamDef],
-      resultTypes: List[watpe.WasmType]
+      resultTypes: List[watpe.Type]
   )(implicit ctx: WasmContext, pos: Position): FunctionEmitter = {
     val fb = new FunctionBuilder(ctx.moduleBuilder, functionName, pos)
 
@@ -160,12 +160,12 @@ object FunctionEmitter {
 
         case Some(captureLikes) =>
           val dataStructTypeName = ctx.getClosureDataStructType(captureLikes.map(_._2))
-          val param = fb.addParam(captureParamName, watpe.WasmRefType(dataStructTypeName))
+          val param = fb.addParam(captureParamName, watpe.RefType(dataStructTypeName))
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
               param,
               dataStructTypeName,
-              wanme.WasmFieldIdx(idx)
+              wanme.FieldIdx(idx)
             )
             captureLike._1 -> storage
           }.toMap
@@ -186,7 +186,7 @@ object FunctionEmitter {
     val newTargetStorage = if (!hasNewTarget) {
       None
     } else {
-      val newTargetParam = fb.addParam(newTargetLocalName, watpe.WasmRefType.anyref)
+      val newTargetParam = fb.addParam(newTargetLocalName, watpe.RefType.anyref)
       Some(VarStorage.Local(newTargetParam))
     }
 
@@ -227,21 +227,21 @@ object FunctionEmitter {
   private val ComparableClass = ClassName("java.lang.Comparable")
   private val JLNumberClass = ClassName("java.lang.Number")
 
-  private val newTargetLocalName = wanme.WasmLocalName("new.target")
-  private val receiverLocalName = wanme.WasmLocalName("___<this>")
+  private val newTargetLocalName = wanme.LocalName("new.target")
+  private val receiverLocalName = wanme.LocalName("___<this>")
 
-  private def localNameFromIR(name: LocalName): wanme.WasmLocalName =
-    wanme.WasmLocalName(name.nameString)
+  private def localNameFromIR(name: LocalName): wanme.LocalName =
+    wanme.LocalName(name.nameString)
 
   private sealed abstract class VarStorage
 
   private object VarStorage {
-    final case class Local(idx: wanme.WasmLocalName) extends VarStorage
+    final case class Local(idx: wanme.LocalName) extends VarStorage
 
     final case class StructField(
-        structIdx: wanme.WasmLocalName,
-        structTypeName: wanme.WasmTypeName,
-        fieldIdx: wanme.WasmFieldIdx
+        structIdx: wanme.LocalName,
+        structTypeName: wanme.TypeName,
+        fieldIdx: wanme.FieldIdx
     ) extends VarStorage
   }
 
@@ -270,8 +270,8 @@ private class FunctionEmitter private (
   private def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
-  private def withNewLocal[A](name: LocalName, typ: watpe.WasmType)(
-      body: wanme.WasmLocalName => A
+  private def withNewLocal[A](name: LocalName, typ: watpe.Type)(
+      body: wanme.LocalName => A
   ): A = {
     val savedEnv = currentEnv
     val local = fb.addLocal(localNameFromIR(name), typ)
@@ -288,20 +288,20 @@ private class FunctionEmitter private (
     )
   }
 
-  private def lookupLocalAssertLocalStorage(name: LocalName): wanme.WasmLocalName = {
+  private def lookupLocalAssertLocalStorage(name: LocalName): wanme.LocalName = {
     (lookupLocal(name): @unchecked) match {
       case VarStorage.Local(local) => local
     }
   }
 
-  private def addSyntheticLocal(typ: watpe.WasmType): wanme.WasmLocalName = {
-    val name = wanme.WasmLocalName(s"local___$nextSyntheticLocalIndex")
+  private def addSyntheticLocal(typ: watpe.Type): wanme.LocalName = {
+    val name = wanme.LocalName(s"local___$nextSyntheticLocalIndex")
     nextSyntheticLocalIndex += 1
     fb.addLocal(name, typ)
   }
 
-  private def genInnerFuncName(): wanme.WasmFunctionName = {
-    val innerName = wanme.WasmFunctionName(fb.functionName.name + "__c" + innerFuncIdx)
+  private def genInnerFuncName(): wanme.FunctionName = {
+    val innerName = wanme.FunctionName(fb.functionName.name + "__c" + innerFuncIdx)
     innerFuncIdx += 1
     innerName
   }
@@ -575,13 +575,13 @@ private class FunctionEmitter private (
   private def genReflectiveCall(t: Apply): Type = {
     assert(t.method.name.isReflectiveProxy)
     val receiverLocalForDispatch =
-      addSyntheticLocal(watpe.WasmRefType.any)
+      addSyntheticLocal(watpe.RefType.any)
 
     val proxyId = ctx.getReflectiveProxyId(t.method.name)
     val funcTypeName = ctx.tableFunctionType(t.method.name)
 
-    instrs.block(watpe.WasmRefType.anyref) { done =>
-      instrs.block(watpe.WasmRefType.any) { labelNotOurObject =>
+    instrs.block(watpe.RefType.anyref) { done =>
+      instrs.block(watpe.RefType.any) { labelNotOurObject =>
         // arguments
         genTree(t.receiver, AnyType)
         instrs += wa.REF_AS_NOT_NULL
@@ -592,8 +592,8 @@ private class FunctionEmitter private (
         instrs += wa.LOCAL_GET(receiverLocalForDispatch)
         instrs += wa.BR_ON_CAST_FAIL(
           labelNotOurObject,
-          watpe.WasmRefType.any,
-          watpe.WasmRefType(genTypeName.ObjectStruct)
+          watpe.RefType.any,
+          watpe.RefType(genTypeName.ObjectStruct)
         )
         instrs += wa.STRUCT_GET(
           genTypeName.forClass(ObjectClass),
@@ -603,7 +603,7 @@ private class FunctionEmitter private (
         // `searchReflectiveProxy`: [typeData, i32] -> [(ref func)]
         instrs += wa.CALL(genFunctionName.searchReflectiveProxy)
 
-        instrs += wa.REF_CAST(watpe.WasmRefType(watpe.WasmHeapType(funcTypeName)))
+        instrs += wa.REF_CAST(watpe.RefType(watpe.HeapType(funcTypeName)))
         instrs += wa.CALL_REF(funcTypeName)
         instrs += wa.BR(done)
       } // labelNotFound
@@ -621,7 +621,7 @@ private class FunctionEmitter private (
     */
   private def genApplyWithDispatch(
       t: Apply,
-      receiverClassInfo: WasmContext.WasmClassInfo
+      receiverClassInfo: WasmContext.ClassInfo
   ): Type = {
     implicit val pos: Position = t.pos
 
@@ -635,11 +635,11 @@ private class FunctionEmitter private (
      * This is used in the code paths where we have already ruled out `null`
      * values and primitive values (that implement hijacked classes).
      */
-    val refTypeForDispatch: watpe.WasmRefType = {
+    val refTypeForDispatch: watpe.RefType = {
       if (receiverClassInfo.isInterface)
-        watpe.WasmRefType(genTypeName.ObjectStruct)
+        watpe.RefType(genTypeName.ObjectStruct)
       else
-        watpe.WasmRefType(genTypeName.forClass(receiverClassName))
+        watpe.RefType(genTypeName.forClass(receiverClassName))
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
@@ -710,11 +710,11 @@ private class FunctionEmitter private (
       val resultTyp = TypeTransformer.transformResultType(t.tpe)(ctx)
 
       instrs.block(resultTyp) { labelDone =>
-        def pushArgs(argsLocals: List[wanme.WasmLocalName]): Unit =
+        def pushArgs(argsLocals: List[wanme.LocalName]): Unit =
           argsLocals.foreach(argLocal => instrs += wa.LOCAL_GET(argLocal))
 
         // First try the case where the value is one of our objects
-        val argsLocals = instrs.block(watpe.WasmRefType.any) { labelNotOurObject =>
+        val argsLocals = instrs.block(watpe.RefType.any) { labelNotOurObject =>
           // Load receiver and arguments and store them in temporary variables
           genReceiverNotNull()
           val argsLocals = if (t.args.isEmpty) {
@@ -724,10 +724,10 @@ private class FunctionEmitter private (
              */
             Nil
           } else {
-            val receiverLocal = addSyntheticLocal(watpe.WasmRefType.any)
+            val receiverLocal = addSyntheticLocal(watpe.RefType.any)
 
             instrs += wa.LOCAL_SET(receiverLocal)
-            val argsLocals: List[wanme.WasmLocalName] =
+            val argsLocals: List[wanme.LocalName] =
               for ((arg, typeRef) <- t.args.zip(t.method.name.paramTypeRefs)) yield {
                 val typ = ctx.inferTypeFromTypeRef(typeRef)
                 genTree(arg, typ)
@@ -739,7 +739,7 @@ private class FunctionEmitter private (
             argsLocals
           }
 
-          instrs += wa.BR_ON_CAST_FAIL(labelNotOurObject, watpe.WasmRefType.any, refTypeForDispatch)
+          instrs += wa.BR_ON_CAST_FAIL(labelNotOurObject, watpe.RefType.any, refTypeForDispatch)
           instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
           pushArgs(argsLocals)
           genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
@@ -780,14 +780,14 @@ private class FunctionEmitter private (
            */
           assert(argsLocals.size == 1)
 
-          val receiverLocal = addSyntheticLocal(watpe.WasmRefType.any)
+          val receiverLocal = addSyntheticLocal(watpe.RefType.any)
           instrs += wa.LOCAL_TEE(receiverLocal)
 
-          val jsValueTypeLocal = addSyntheticLocal(watpe.WasmInt32)
+          val jsValueTypeLocal = addSyntheticLocal(watpe.Int32)
           instrs += wa.CALL(genFunctionName.jsValueType)
           instrs += wa.LOCAL_TEE(jsValueTypeLocal)
 
-          instrs.switch(Sig(List(watpe.WasmInt32), Nil), Sig(Nil, List(watpe.WasmInt32))) { () =>
+          instrs.switch(Sig(List(watpe.Int32), Nil), Sig(Nil, List(watpe.Int32))) { () =>
             // scrutinee is already on the stack
           }(
             // case JSValueTypeFalse | JSValueTypeTrue =>
@@ -849,9 +849,9 @@ private class FunctionEmitter private (
     * `unreachable` instruction when appropriate.
     */
   def genTableDispatch(
-      receiverClassInfo: WasmContext.WasmClassInfo,
+      receiverClassInfo: WasmContext.ClassInfo,
       methodName: MethodName,
-      receiverLocalForDispatch: wanme.WasmLocalName
+      receiverLocalForDispatch: wanme.LocalName
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
@@ -867,10 +867,10 @@ private class FunctionEmitter private (
       )
       instrs += wa.I32_CONST(itableIdx)
       instrs += wa.ARRAY_GET(genTypeName.itables)
-      instrs += wa.REF_CAST(watpe.WasmRefType(genTypeName.forITable(receiverClassInfo.name)))
+      instrs += wa.REF_CAST(watpe.RefType(genTypeName.forITable(receiverClassInfo.name)))
       instrs += wa.STRUCT_GET(
         genTypeName.forITable(receiverClassInfo.name),
-        wanme.WasmFieldIdx(methodIdx)
+        wanme.FieldIdx(methodIdx)
       )
       instrs += wa.CALL_REF(ctx.tableFunctionType(methodName))
     }
@@ -887,7 +887,7 @@ private class FunctionEmitter private (
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
       instrs += wa.LOCAL_GET(receiverLocalForDispatch)
-      instrs += wa.REF_CAST(watpe.WasmRefType(genTypeName.forClass(receiverClassName)))
+      instrs += wa.REF_CAST(watpe.RefType(genTypeName.forClass(receiverClassName)))
       instrs += wa.STRUCT_GET(
         genTypeName.forClass(receiverClassName),
         genFieldIdx.objStruct.vtable
@@ -1000,7 +1000,7 @@ private class FunctionEmitter private (
         case v: Undefined =>
           instrs += wa.GLOBAL_GET(genGlobalName.undef)
         case v: Null =>
-          instrs += wa.REF_NULL(watpe.WasmHeapType.None)
+          instrs += wa.REF_NULL(watpe.HeapType.None)
 
         case v: StringLiteral =>
           instrs ++= ctx.getConstantStringInstr(v.value)
@@ -1011,7 +1011,7 @@ private class FunctionEmitter private (
               genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
 
             case typeRef: ArrayTypeRef =>
-              val typeDataType = watpe.WasmRefType(genTypeName.typeData)
+              val typeDataType = watpe.RefType(genTypeName.typeData)
               val typeDataLocal = addSyntheticLocal(typeDataType)
 
               genLoadArrayTypeData(typeRef)
@@ -1024,7 +1024,7 @@ private class FunctionEmitter private (
     }
   }
 
-  private def getNonArrayTypeDataInstr(typeRef: NonArrayTypeRef): wa.WasmInstr =
+  private def getNonArrayTypeDataInstr(typeRef: NonArrayTypeRef): wa.Instr =
     wa.GLOBAL_GET(genGlobalName.forVTable(typeRef))
 
   private def genLoadArrayTypeData(arrayTypeRef: ArrayTypeRef): Unit = {
@@ -1033,8 +1033,8 @@ private class FunctionEmitter private (
     instrs += wa.CALL(genFunctionName.arrayTypeData)
   }
 
-  private def genClassOfFromTypeData(loadTypeDataInstr: wa.WasmInstr): Unit = {
-    instrs.block(watpe.WasmRefType(genTypeName.ClassStruct)) { nonNullLabel =>
+  private def genClassOfFromTypeData(loadTypeDataInstr: wa.Instr): Unit = {
+    instrs.block(watpe.RefType(genTypeName.ClassStruct)) { nonNullLabel =>
       // fast path first
       instrs += loadTypeDataInstr
       instrs += wa.STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
@@ -1090,7 +1090,7 @@ private class FunctionEmitter private (
 
   /** Push module class instance to the stack.
     *
-    * see: WasmBuilder.genLoadModuleFunc
+    * see: Builder.genLoadModuleFunc
     */
   private def genLoadModule(t: LoadModule): Type = {
     markPosition(t)
@@ -1154,7 +1154,7 @@ private class FunctionEmitter private (
   }
 
   private def genBinaryOp(binary: BinaryOp): Type = {
-    def genLongShiftOp(shiftInstr: wa.WasmInstr): Type = {
+    def genLongShiftOp(shiftInstr: wa.Instr): Type = {
       genTree(binary.lhs, LongType)
       genTree(binary.rhs, IntType)
       markPosition(binary)
@@ -1180,9 +1180,9 @@ private class FunctionEmitter private (
     def genDivModByConstant[T](
         isDiv: Boolean,
         rhsValue: T,
-        const: T => wa.WasmInstr,
-        sub: wa.WasmInstr,
-        mainOp: wa.WasmInstr
+        const: T => wa.Instr,
+        sub: wa.Instr,
+        mainOp: wa.Instr
     )(implicit num: Numeric[T]): Type = {
       /* When we statically know the value of the rhs, we can avoid the
        * dynamic tests for division by zero and overflow. This is quite
@@ -1218,11 +1218,11 @@ private class FunctionEmitter private (
 
     def genDivMod[T](
         isDiv: Boolean,
-        const: T => wa.WasmInstr,
-        eqz: wa.WasmInstr,
-        eq: wa.WasmInstr,
-        sub: wa.WasmInstr,
-        mainOp: wa.WasmInstr
+        const: T => wa.Instr,
+        eqz: wa.Instr,
+        eq: wa.Instr,
+        sub: wa.Instr,
+        mainOp: wa.Instr
     )(implicit num: Numeric[T]): Type = {
       /* Here we perform the same steps as in the static case, but using
        * value tests at run-time.
@@ -1458,7 +1458,7 @@ private class FunctionEmitter private (
   }
 
   private def genStringConcat(binary: BinaryOp): Type = {
-    val wasmStringType = watpe.WasmRefType.any
+    val wasmStringType = watpe.RefType.any
 
     def genToString(tree: Tree): Unit = {
       def genWithDispatch(isAncestorOfHijackedClass: Boolean): Unit = {
@@ -1472,7 +1472,7 @@ private class FunctionEmitter private (
 
         // A local for a copy of the receiver that we will use to resolve dispatch
         val receiverLocalForDispatch =
-          addSyntheticLocal(watpe.WasmRefType(genTypeName.ObjectStruct))
+          addSyntheticLocal(watpe.RefType(genTypeName.ObjectStruct))
 
         val objectClassInfo = ctx.getClassInfo(ObjectClass)
 
@@ -1492,7 +1492,7 @@ private class FunctionEmitter private (
            * end $done
            */
 
-          instrs.block(watpe.WasmRefType.any) { labelDone =>
+          instrs.block(watpe.RefType.any) { labelDone =>
             instrs.block() { labelIsNull =>
               genTreeAuto(tree)
               markPosition(binary)
@@ -1521,9 +1521,9 @@ private class FunctionEmitter private (
            * end $done
            */
 
-          instrs.block(watpe.WasmRefType.any) { labelDone =>
+          instrs.block(watpe.RefType.any) { labelDone =>
             // First try the case where the value is one of our objects
-            instrs.block(watpe.WasmRefType.anyref) { labelNotOurObject =>
+            instrs.block(watpe.RefType.anyref) { labelNotOurObject =>
               // Load receiver
               genTreeAuto(tree)
 
@@ -1531,13 +1531,13 @@ private class FunctionEmitter private (
 
               instrs += wa.BR_ON_CAST_FAIL(
                 labelNotOurObject,
-                watpe.WasmRefType.anyref,
-                watpe.WasmRefType(genTypeName.ObjectStruct)
+                watpe.RefType.anyref,
+                watpe.RefType(genTypeName.ObjectStruct)
               )
               instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
               instrs += wa.BR_ON_NON_NULL(labelDone)
-              instrs += wa.REF_NULL(watpe.WasmHeapType.Any)
+              instrs += wa.REF_NULL(watpe.HeapType.Any)
             } // end block labelNotOurObject
 
             // Now we have a value that is not one of our objects; the anyref is still on the stack
@@ -1629,10 +1629,10 @@ private class FunctionEmitter private (
           testType match {
             case CharType =>
               val structTypeName = genTypeName.forClass(SpecialNames.CharBoxClass)
-              instrs += wa.REF_TEST(watpe.WasmRefType(structTypeName))
+              instrs += wa.REF_TEST(watpe.RefType(structTypeName))
             case LongType =>
               val structTypeName = genTypeName.forClass(SpecialNames.LongBoxClass)
-              instrs += wa.REF_TEST(watpe.WasmRefType(structTypeName))
+              instrs += wa.REF_TEST(watpe.RefType(structTypeName))
             case NoType | NothingType | NullType =>
               throw new AssertionError(s"Illegal isInstanceOf[$testType]")
             case _ =>
@@ -1659,10 +1659,10 @@ private class FunctionEmitter private (
         /* Special case: the only non-Object *class* that is an ancestor of a
          * hijacked class. We need to accept `number` primitives here.
          */
-        val tempLocal = addSyntheticLocal(watpe.WasmRefType.anyref)
+        val tempLocal = addSyntheticLocal(watpe.RefType.anyref)
         instrs += wa.LOCAL_TEE(tempLocal)
-        instrs += wa.REF_TEST(watpe.WasmRefType(genTypeName.forClass(JLNumberClass)))
-        instrs.ifThenElse(watpe.WasmInt32) {
+        instrs += wa.REF_TEST(watpe.RefType(genTypeName.forClass(JLNumberClass)))
+        instrs.ifThenElse(watpe.Int32) {
           instrs += wa.I32_CONST(1)
         } {
           instrs += wa.LOCAL_GET(tempLocal)
@@ -1679,7 +1679,7 @@ private class FunctionEmitter private (
             if (info.isInterface)
               instrs += wa.CALL(genFunctionName.instanceTest(testClassName))
             else
-              instrs += wa.REF_TEST(watpe.WasmRefType(genTypeName.forClass(testClassName)))
+              instrs += wa.REF_TEST(watpe.RefType(genTypeName.forClass(testClassName)))
         }
 
       case ArrayType(arrayTypeRef) =>
@@ -1690,27 +1690,27 @@ private class FunctionEmitter private (
               ) =>
             // For primitive arrays and exactly Array[Object], a wa.REF_TEST is enough
             val structTypeName = genTypeName.forArrayClass(arrayTypeRef)
-            instrs += wa.REF_TEST(watpe.WasmRefType(structTypeName))
+            instrs += wa.REF_TEST(watpe.RefType(structTypeName))
 
           case _ =>
             /* Non-Object reference arra types need a sophisticated type test
              * based on assignability of component types.
              */
-            import watpe.WasmRefType.anyref
+            import watpe.RefType.anyref
 
-            instrs.block(Sig(List(anyref), List(watpe.WasmInt32))) { doneLabel =>
+            instrs.block(Sig(List(anyref), List(watpe.Int32))) { doneLabel =>
               instrs.block(Sig(List(anyref), List(anyref))) { notARefArrayLabel =>
                 // Try and cast to the generic representation first
                 val refArrayStructTypeName = genTypeName.forArrayClass(arrayTypeRef)
                 instrs += wa.BR_ON_CAST_FAIL(
                   notARefArrayLabel,
-                  watpe.WasmRefType.anyref,
-                  watpe.WasmRefType(refArrayStructTypeName)
+                  watpe.RefType.anyref,
+                  watpe.RefType(refArrayStructTypeName)
                 )
 
                 // refArrayValue := the generic representation
                 val refArrayValueLocal =
-                  addSyntheticLocal(watpe.WasmRefType(refArrayStructTypeName))
+                  addSyntheticLocal(watpe.RefType(refArrayStructTypeName))
                 instrs += wa.LOCAL_SET(refArrayValueLocal)
 
                 // Load typeDataOf(arrayTypeRef)
@@ -1773,10 +1773,10 @@ private class FunctionEmitter private (
                 primType match {
                   case CharType =>
                     val structTypeName = genTypeName.forClass(SpecialNames.CharBoxClass)
-                    instrs += wa.REF_CAST(watpe.WasmRefType.nullable(structTypeName))
+                    instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
                   case LongType =>
                     val structTypeName = genTypeName.forClass(SpecialNames.LongBoxClass)
-                    instrs += wa.REF_CAST(watpe.WasmRefType.nullable(structTypeName))
+                    instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
                   case NoType | NothingType | NullType =>
                     throw new AssertionError(s"Unexpected prim type $primType for $targetClassName")
                   case _ =>
@@ -1788,15 +1788,15 @@ private class FunctionEmitter private (
             ()
           } else if (info.kind.isClass) {
             instrs += wa.REF_CAST(
-              watpe.WasmRefType.nullable(genTypeName.forClass(targetClassName))
+              watpe.RefType.nullable(genTypeName.forClass(targetClassName))
             )
           } else if (info.isInterface) {
-            instrs += wa.REF_CAST(watpe.WasmRefType.nullable(genTypeName.ObjectStruct))
+            instrs += wa.REF_CAST(watpe.RefType.nullable(genTypeName.ObjectStruct))
           }
 
         case ArrayType(arrayTypeRef) =>
           val structTypeName = genTypeName.forArrayClass(arrayTypeRef)
-          instrs += wa.REF_CAST(watpe.WasmRefType.nullable(structTypeName))
+          instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
 
         case targetTpe: RecordType =>
           throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
@@ -1830,11 +1830,11 @@ private class FunctionEmitter private (
               else SpecialNames.LongBoxClass
             val resultType = TypeTransformer.transformType(targetTpe)(ctx)
 
-            instrs.block(Sig(List(watpe.WasmRefType.anyref), List(resultType))) { doneLabel =>
-              instrs.block(Sig(List(watpe.WasmRefType.anyref), Nil)) { isNullLabel =>
+            instrs.block(Sig(List(watpe.RefType.anyref), List(resultType))) { doneLabel =>
+              instrs.block(Sig(List(watpe.RefType.anyref), Nil)) { isNullLabel =>
                 instrs += wa.BR_ON_NULL(isNullLabel)
                 val structTypeName = genTypeName.forClass(boxClass)
-                instrs += wa.REF_CAST(watpe.WasmRefType(structTypeName))
+                instrs += wa.REF_CAST(watpe.RefType(structTypeName))
                 instrs += wa.STRUCT_GET(structTypeName, genFieldIdx.objStruct.uniqueRegularField)
                 instrs += wa.BR(doneLabel)
               }
@@ -1868,7 +1868,7 @@ private class FunctionEmitter private (
     }
 
     if (!needHijackedClassDispatch) {
-      val typeDataType = watpe.WasmRefType(genTypeName.typeData)
+      val typeDataType = watpe.RefType(genTypeName.typeData)
       val objectTypeIdx = genTypeName.forClass(ObjectClass)
 
       val typeDataLocal = addSyntheticLocal(typeDataType)
@@ -2037,7 +2037,7 @@ private class FunctionEmitter private (
       genTree(t.block, expectedType)
       markPosition(t)
       instrs += wa.CATCH(genTagName.exceptionTagName)
-      withNewLocal(t.errVar.name, watpe.WasmRefType.anyref) { exceptionLocal =>
+      withNewLocal(t.errVar.name, watpe.RefType.anyref) { exceptionLocal =>
         instrs += wa.ANY_CONVERT_EXTERN
         instrs += wa.LOCAL_SET(exceptionLocal)
         genTree(t.handler, expectedType)
@@ -2046,14 +2046,14 @@ private class FunctionEmitter private (
     } else {
       markPosition(t)
       instrs.block(resultType) { doneLabel =>
-        instrs.block(watpe.WasmRefType.externref) { catchLabel =>
+        instrs.block(watpe.RefType.externref) { catchLabel =>
           /* We used to have `resultType` as result of the try_table, with the
            * `wa.BR(doneLabel)` outside of the try_table. Unfortunately it seems
            * V8 cannot handle try_table with a result type that is `(ref ...)`.
            * The current encoding with `externref` as result type (to match the
            * enclosing block) and the `br` *inside* the `try_table` works.
            */
-          instrs.tryTable(watpe.WasmRefType.externref)(
+          instrs.tryTable(watpe.RefType.externref)(
             List(wa.CatchClause.Catch(genTagName.exceptionTagName, catchLabel))
           ) {
             genTree(t.block, expectedType)
@@ -2061,7 +2061,7 @@ private class FunctionEmitter private (
             instrs += wa.BR(doneLabel)
           }
         } // end block $catch
-        withNewLocal(t.errVar.name, watpe.WasmRefType.anyref) { exceptionLocal =>
+        withNewLocal(t.errVar.name, watpe.RefType.anyref) { exceptionLocal =>
           instrs += wa.ANY_CONVERT_EXTERN
           instrs += wa.LOCAL_SET(exceptionLocal)
           genTree(t.handler, expectedType)
@@ -2113,7 +2113,7 @@ private class FunctionEmitter private (
      * if the given class is an ancestor of hijacked classes (which in practice
      * is only the case for j.l.Object).
      */
-    val instanceTyp = watpe.WasmRefType(genTypeName.forClass(n.className))
+    val instanceTyp = watpe.RefType(genTypeName.forClass(n.className))
     val localInstance = addSyntheticLocal(instanceTyp)
 
     markPosition(n)
@@ -2190,7 +2190,7 @@ private class FunctionEmitter private (
 
   private def genWrapAsThrowable(tree: WrapAsThrowable): Type = {
     val throwableClassType = ClassType(ThrowableClass)
-    val nonNullThrowableTyp = watpe.WasmRefType(genTypeName.ThrowableStruct)
+    val nonNullThrowableTyp = watpe.RefType(genTypeName.ThrowableStruct)
 
     val jsExceptionTyp =
       TypeTransformer.transformClassType(SpecialNames.JSExceptionClass)(ctx).toNonNullable
@@ -2203,13 +2203,13 @@ private class FunctionEmitter private (
       // if expr.isInstanceOf[Throwable], then br $done
       instrs += wa.BR_ON_CAST(
         doneLabel,
-        watpe.WasmRefType.anyref,
+        watpe.RefType.anyref,
         nonNullThrowableTyp
       )
 
       // otherwise, wrap in a new JavaScriptException
 
-      val exprLocal = addSyntheticLocal(watpe.WasmRefType.anyref)
+      val exprLocal = addSyntheticLocal(watpe.RefType.anyref)
       val instanceLocal = addSyntheticLocal(jsExceptionTyp)
 
       instrs += wa.LOCAL_SET(exprLocal)
@@ -2230,7 +2230,7 @@ private class FunctionEmitter private (
   }
 
   private def genUnwrapFromThrowable(tree: UnwrapFromThrowable): Type = {
-    instrs.block(watpe.WasmRefType.anyref) { doneLabel =>
+    instrs.block(watpe.RefType.anyref) { doneLabel =>
       genTree(tree.expr, ClassType(ThrowableClass))
 
       markPosition(tree)
@@ -2240,8 +2240,8 @@ private class FunctionEmitter private (
       // if !expr.isInstanceOf[js.JavaScriptException], then br $done
       instrs += wa.BR_ON_CAST_FAIL(
         doneLabel,
-        watpe.WasmRefType(genTypeName.ThrowableStruct),
-        watpe.WasmRefType(genTypeName.JSExceptionStruct)
+        watpe.RefType(genTypeName.ThrowableStruct),
+        watpe.RefType(genTypeName.JSExceptionStruct)
       )
 
       // otherwise, unwrap the JavaScriptException by reading its field
@@ -2363,12 +2363,12 @@ private class FunctionEmitter private (
         /* Here we need to implement the short-circuiting behavior, with a
          * condition based on the truthy value of the left-hand-side.
          */
-        val lhsLocal = addSyntheticLocal(watpe.WasmRefType.anyref)
+        val lhsLocal = addSyntheticLocal(watpe.RefType.anyref)
         genTree(tree.lhs, AnyType)
         markPosition(tree)
         instrs += wa.LOCAL_TEE(lhsLocal)
         instrs += wa.CALL(genFunctionName.jsIsTruthy)
-        instrs += wa.IF(wa.BlockType.ValueType(watpe.WasmRefType.anyref))
+        instrs += wa.IF(wa.BlockType.ValueType(watpe.RefType.anyref))
         if (tree.op == JSBinaryOp.||) {
           instrs += wa.LOCAL_GET(lhsLocal)
           instrs += wa.ELSE
@@ -2571,10 +2571,10 @@ private class FunctionEmitter private (
             ()
           case _ =>
             TypeTransformer.transformType(t.tpe)(ctx) match {
-              case watpe.WasmRefType.anyref =>
+              case watpe.RefType.anyref =>
                 // nothing to do
                 ()
-              case refType: watpe.WasmRefType =>
+              case refType: watpe.RefType =>
                 instrs += wa.REF_CAST(refType)
               case typ =>
                 throw new AssertionError(s"Unexpected result type for reference array: $typ")
@@ -2634,7 +2634,7 @@ private class FunctionEmitter private (
       closureFuncName,
       enclosingClassName = None,
       Some(tree.captureParams),
-      receiverTyp = if (!hasThis) None else Some(watpe.WasmRefType.anyref),
+      receiverTyp = if (!hasThis) None else Some(watpe.RefType.anyref),
       tree.params,
       tree.restParam,
       tree.body,
@@ -2677,7 +2677,7 @@ private class FunctionEmitter private (
 
     markPosition(t)
 
-    instrs += wa.REF_CAST(watpe.WasmRefType(genTypeName.ObjectStruct))
+    instrs += wa.REF_CAST(watpe.RefType(genTypeName.ObjectStruct))
     instrs += wa.LOCAL_TEE(expr)
     instrs += wa.REF_AS_NOT_NULL // cloneFunction argument is not nullable
 
@@ -2697,7 +2697,7 @@ private class FunctionEmitter private (
       case ClassType(className) =>
         val info = ctx.getClassInfo(className)
         if (!info.isInterface) // if it's interface, no need to cast from j.l.Object
-          instrs += wa.REF_CAST(watpe.WasmRefType(genTypeName.forClass(className)))
+          instrs += wa.REF_CAST(watpe.RefType(genTypeName.forClass(className)))
       case _ =>
         throw new IllegalArgumentException(
           s"Clone result type must be a class type, but is ${t.tpe}"
@@ -2993,7 +2993,7 @@ private class FunctionEmitter private (
    */
 
   /** This object namespaces everything related to unwinding, so that we don't pollute too much the
-    * overall internal scope of `WasmExpressionBuilder`.
+    * overall internal scope of `ExpressionBuilder`.
     */
   private object unwinding {
 
@@ -3051,16 +3051,16 @@ private class FunctionEmitter private (
 
     /** Information about an enclosing `TryFinally` block. */
     private final class TryFinallyEntry(val depth: Int) {
-      private var _crossInfo: Option[(wanme.WasmLocalName, wanme.WasmLabelName)] = None
+      private var _crossInfo: Option[(wanme.LocalName, wanme.LabelName)] = None
 
       def isInside(labeledEntry: LabeledEntry): Boolean =
         this.depth > labeledEntry.depth
 
       def wasCrossed: Boolean = _crossInfo.isDefined
 
-      def requireCrossInfo(): (wanme.WasmLocalName, wanme.WasmLabelName) = {
+      def requireCrossInfo(): (wanme.LocalName, wanme.LabelName) = {
         _crossInfo.getOrElse {
-          val info = (addSyntheticLocal(watpe.WasmInt32), instrs.genLabel())
+          val info = (addSyntheticLocal(watpe.Int32), instrs.genLabel())
           _crossInfo = Some(info)
           info
         }
@@ -3077,7 +3077,7 @@ private class FunctionEmitter private (
       /** The regular label for this `Labeled` block, used for `Return`s that do not cross a
         * `TryFinally`.
         */
-      val regularWasmLabel: wanme.WasmLabelName = instrs.genLabel()
+      val regularWasmLabel: wanme.LabelName = instrs.genLabel()
 
       /** The destination tag allocated to this label, used by the `finally` blocks to keep
         * propagating to the right destination.
@@ -3088,16 +3088,16 @@ private class FunctionEmitter private (
 
       /** The locals in which to store the result of the label if we have to cross a `try..finally`.
         */
-      private var resultLocals: List[wanme.WasmLocalName] = null
+      private var resultLocals: List[wanme.LocalName] = null
 
       /** An additional Wasm label that has a `[]` result, and which will get its result from the
         * `resultLocal` instead of expecting it on the stack.
         */
-      private var crossLabel: wanme.WasmLabelName = null
+      private var crossLabel: wanme.LabelName = null
 
       def wasCrossUsed: Boolean = destinationTag != 0
 
-      def requireCrossInfo(): (Int, List[wanme.WasmLocalName], wanme.WasmLabelName) = {
+      def requireCrossInfo(): (Int, List[wanme.LocalName], wanme.LabelName) = {
         if (destinationTag == 0) {
           destinationTag = allocateDestinationTag()
           val resultTypes = TypeTransformer.transformResultType(expectedType)(ctx)
@@ -3193,7 +3193,7 @@ private class FunctionEmitter private (
       markPosition(t)
 
       instrs.block() { doneLabel =>
-        instrs.block(watpe.WasmRefType.exnref) { catchLabel =>
+        instrs.block(watpe.RefType.exnref) { catchLabel =>
           /* Remember the position in the instruction stream, in case we need
            * to come back and insert the wa.BLOCK for the cross handling.
            */
@@ -3243,7 +3243,7 @@ private class FunctionEmitter private (
           }
 
           // on success, push a `null_ref exn` on the stack
-          instrs += wa.REF_NULL(watpe.WasmHeapType.Exn)
+          instrs += wa.REF_NULL(watpe.HeapType.Exn)
         } // end block $catch
 
         // finally block (during which we leave the `(ref null exn)` on the stack)
@@ -3259,7 +3259,7 @@ private class FunctionEmitter private (
           /* If the `exnref` is non-null, rethrow it.
            * Otherwise, stay within the `$done` block.
            */
-          instrs.block(Sig(List(watpe.WasmRefType.exnref), Nil)) { exnrefIsNullLabel =>
+          instrs.block(Sig(List(watpe.RefType.exnref), Nil)) { exnrefIsNullLabel =>
             instrs += wa.BR_ON_NULL(exnrefIsNullLabel)
             instrs += wa.THROW_REF
           }
@@ -3280,7 +3280,7 @@ private class FunctionEmitter private (
            * are outside of the next try..finally in line go to the latter;
            * for other `Labeled`'s, we go to their cross label.
            */
-          val brTableDests: List[(Int, wanme.WasmLabelName)] = possibleTargetEntries.map {
+          val brTableDests: List[(Int, wanme.LabelName)] = possibleTargetEntries.map {
             targetEntry =>
               val (destinationTag, _, crossLabel) = targetEntry.requireCrossInfo()
               val label = nextTryFinallyEntry.filter(_.isInside(targetEntry)) match {
@@ -3310,8 +3310,8 @@ private class FunctionEmitter private (
     }
 
     private def emitBRTable(
-        dests: List[(Int, wanme.WasmLabelName)],
-        defaultLabel: wanme.WasmLabelName
+        dests: List[(Int, wanme.LabelName)],
+        defaultLabel: wanme.LabelName
     ): Unit = {
       dests match {
         case Nil =>
