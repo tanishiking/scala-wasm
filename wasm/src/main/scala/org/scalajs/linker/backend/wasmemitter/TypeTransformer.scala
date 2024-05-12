@@ -1,12 +1,9 @@
 package org.scalajs.linker.backend.wasmemitter
 
-import org.scalajs.ir.ClassKind
-import org.scalajs.ir.{Types => IRTypes}
-import org.scalajs.ir.{Trees => IRTrees}
-import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.Names._
+import org.scalajs.ir.Types._
 
-import org.scalajs.linker.backend.webassembly._
-import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.{Types => watpe}
 
 import VarGen._
 
@@ -22,60 +19,57 @@ object TypeTransformer {
     * @see
     *   https://webassembly.github.io/spec/core/syntax/types.html#result-types
     */
-  def transformResultType(
-      t: IRTypes.Type
-  )(implicit ctx: WasmContext): List[Types.WasmType] =
+  def transformResultType(t: Type)(implicit ctx: WasmContext): List[watpe.WasmType] = {
     t match {
-      case IRTypes.NoType      => Nil
-      case IRTypes.NothingType => Nil
-      case _                   => List(transformType(t))
+      case NoType      => Nil
+      case NothingType => Nil
+      case _           => List(transformType(t))
     }
+  }
 
   /** Transforms a value type to a unique Wasm type.
     *
     * This method cannot be used for `void` and `nothing`, since they have no corresponding Wasm
     * value type.
     */
-  def transformType(t: IRTypes.Type)(implicit ctx: WasmContext): Types.WasmType =
+  def transformType(t: Type)(implicit ctx: WasmContext): watpe.WasmType = {
     t match {
-      case IRTypes.AnyType => Types.WasmRefType.anyref
+      case AnyType => watpe.WasmRefType.anyref
 
-      case tpe: IRTypes.ArrayType =>
-        Types.WasmRefType.nullable(genTypeName.forArrayClass(tpe.arrayTypeRef))
-      case IRTypes.ClassType(className) => transformClassType(className)
-      case IRTypes.RecordType(fields)   => ???
-      case IRTypes.StringType | IRTypes.UndefType =>
-        Types.WasmRefType.any
-      case p: IRTypes.PrimTypeWithRef => transformPrimType(p)
+      case tpe: ArrayType =>
+        watpe.WasmRefType.nullable(genTypeName.forArrayClass(tpe.arrayTypeRef))
+
+      case ClassType(className)   => transformClassType(className)
+      case RecordType(fields)     => ???
+      case StringType | UndefType => watpe.WasmRefType.any
+      case p: PrimTypeWithRef     => transformPrimType(p)
     }
-
-  def transformClassType(
-      className: IRNames.ClassName
-  )(implicit ctx: WasmContext): Types.WasmRefType = {
-    val info = ctx.getClassInfo(className)
-    if (info.isAncestorOfHijackedClass)
-      Types.WasmRefType.anyref
-    else if (info.isInterface)
-      Types.WasmRefType.nullable(genTypeName.ObjectStruct)
-    else
-      Types.WasmRefType.nullable(genTypeName.forClass(className))
   }
 
-  private def transformPrimType(
-      t: IRTypes.PrimTypeWithRef
-  ): Types.WasmType =
-    t match {
-      case IRTypes.BooleanType => Types.WasmInt32
-      case IRTypes.ByteType    => Types.WasmInt32
-      case IRTypes.ShortType   => Types.WasmInt32
-      case IRTypes.IntType     => Types.WasmInt32
-      case IRTypes.CharType    => Types.WasmInt32
-      case IRTypes.LongType    => Types.WasmInt64
-      case IRTypes.FloatType   => Types.WasmFloat32
-      case IRTypes.DoubleType  => Types.WasmFloat64
-      case IRTypes.NullType    => Types.WasmRefType.nullref
+  def transformClassType(className: ClassName)(implicit ctx: WasmContext): watpe.WasmRefType = {
+    val info = ctx.getClassInfo(className)
+    if (info.isAncestorOfHijackedClass)
+      watpe.WasmRefType.anyref
+    else if (info.isInterface)
+      watpe.WasmRefType.nullable(genTypeName.ObjectStruct)
+    else
+      watpe.WasmRefType.nullable(genTypeName.forClass(className))
+  }
 
-      case IRTypes.NoType | IRTypes.NothingType =>
+  private def transformPrimType(t: PrimTypeWithRef): watpe.WasmType = {
+    t match {
+      case BooleanType => watpe.WasmInt32
+      case ByteType    => watpe.WasmInt32
+      case ShortType   => watpe.WasmInt32
+      case IntType     => watpe.WasmInt32
+      case CharType    => watpe.WasmInt32
+      case LongType    => watpe.WasmInt64
+      case FloatType   => watpe.WasmFloat32
+      case DoubleType  => watpe.WasmFloat64
+      case NullType    => watpe.WasmRefType.nullref
+
+      case NoType | NothingType =>
         throw new IllegalArgumentException(s"${t.show()} does not have a corresponding Wasm type")
     }
+  }
 }
