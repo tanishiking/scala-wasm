@@ -16,7 +16,9 @@ import org.scalajs.linker.standard.LinkedTopLevelExport
 import org.scalajs.linker.standard.LinkedClass
 
 import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Instructions._
 import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Modules._
 import org.scalajs.linker.backend.webassembly.Types._
 
 import VarGen._
@@ -159,17 +161,17 @@ final class WasmContext {
   }
 
   def getConstantStringInstr(str: String): List[WasmInstr] =
-    getConstantStringDataInstr(str) :+ WasmInstr.CALL(genFunctionName.stringLiteral)
+    getConstantStringDataInstr(str) :+ CALL(genFunctionName.stringLiteral)
 
-  def getConstantStringDataInstr(str: String): List[WasmInstr.I32_CONST] = {
+  def getConstantStringDataInstr(str: String): List[I32_CONST] = {
     val data = addConstantStringGlobal(str)
     List(
-      WasmInstr.I32_CONST(data.offset),
+      I32_CONST(data.offset),
       // Assuming that the stringLiteral method will instantiate the
       // constant string from the data section using "array.newData $i16Array ..."
       // The length of the array should be equal to the length of the WTF-16 encoded string
-      WasmInstr.I32_CONST(str.length()),
-      WasmInstr.I32_CONST(data.constantStringIndex)
+      I32_CONST(str.length()),
+      I32_CONST(data.constantStringIndex)
     )
   }
 
@@ -192,9 +194,9 @@ final class WasmContext {
     )
   }
 
-  def refFuncWithDeclaration(name: WasmFunctionName): WasmInstr.REF_FUNC = {
+  def refFuncWithDeclaration(name: WasmFunctionName): REF_FUNC = {
     addFuncDeclaration(name)
-    WasmInstr.REF_FUNC(name)
+    REF_FUNC(name)
   }
 
   def assignBuckets(classes: List[LinkedClass]): Unit =

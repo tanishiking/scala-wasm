@@ -5,9 +5,10 @@ import scala.collection.mutable
 import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.Position
 
+import Instructions._
 import Names._
+import Modules._
 import Types.WasmType
-import WasmInstr._
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,
@@ -343,7 +344,7 @@ final class FunctionBuilder(
       /* If it is a stack-polymorphic instruction, dead-code eliminate until the
        * end of the current block.
        */
-      if (instr.isInstanceOf[WasmInstr.StackPolymorphicInstr]) {
+      if (instr.isInstanceOf[StackPolymorphicInstr]) {
         var nestingLevel = 0
 
         while (nestingLevel >= 0 && iter.hasNext) {

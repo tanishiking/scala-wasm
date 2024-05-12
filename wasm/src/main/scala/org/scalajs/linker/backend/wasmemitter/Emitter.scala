@@ -11,6 +11,8 @@ import org.scalajs.linker.standard._
 import org.scalajs.linker.standard.ModuleSet.ModuleID
 
 import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Instructions._
+import org.scalajs.linker.backend.webassembly.Modules._
 import org.scalajs.linker.backend.webassembly.Types._
 
 import org.scalajs.logging.Logger
@@ -96,8 +98,8 @@ final class Emitter(config: Emitter.Config) {
         WasmRefType(genTypeName.anyArray),
         WasmExpr(
           List(
-            WasmInstr.I32_CONST(stringPoolCount),
-            WasmInstr.ARRAY_NEW_DEFAULT(genTypeName.anyArray)
+            I32_CONST(stringPoolCount),
+            ARRAY_NEW_DEFAULT(genTypeName.anyArray)
           )
         ),
         isMutable = false
@@ -113,8 +115,6 @@ final class Emitter(config: Emitter.Config) {
       classesWithStaticInit: List[ClassName],
       topLevelExportDefs: List[LinkedTopLevelExport]
   )(implicit ctx: WasmContext): Unit = {
-    import WasmInstr._
-
     implicit val pos = Position.NoPosition
 
     val fb = new FunctionBuilder(ctx.moduleBuilder, genFunctionName.start, pos)
@@ -128,13 +128,13 @@ final class Emitter(config: Emitter.Config) {
 
       interfaces.foreach { iface =>
         val idx = ctx.getItableIdx(iface)
-        instrs += WasmInstr.GLOBAL_GET(genGlobalName.forITable(className))
-        instrs += WasmInstr.I32_CONST(idx)
+        instrs += GLOBAL_GET(genGlobalName.forITable(className))
+        instrs += I32_CONST(idx)
 
         for (method <- iface.tableEntries)
           instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += WasmInstr.STRUCT_NEW(genTypeName.forITable(iface.name))
-        instrs += WasmInstr.ARRAY_SET(genTypeName.itables)
+        instrs += STRUCT_NEW(genTypeName.forITable(iface.name))
+        instrs += ARRAY_SET(genTypeName.itables)
       }
     }
 
@@ -161,8 +161,8 @@ final class Emitter(config: Emitter.Config) {
     // Initialize the JS private field symbols
 
     for (fieldName <- ctx.getAllJSPrivateFieldNames()) {
-      instrs += WasmInstr.CALL(genFunctionName.newSymbol)
-      instrs += WasmInstr.GLOBAL_SET(genGlobalName.forJSPrivateField(fieldName))
+      instrs += CALL(genFunctionName.newSymbol)
+      instrs += GLOBAL_SET(genGlobalName.forJSPrivateField(fieldName))
     }
 
     // Emit the static initializers
@@ -173,7 +173,7 @@ final class Emitter(config: Emitter.Config) {
         className,
         StaticInitializerName
       )
-      instrs += WasmInstr.CALL(funcName)
+      instrs += CALL(funcName)
     }
 
     // Initialize the top-level exports that require it
@@ -206,7 +206,7 @@ final class Emitter(config: Emitter.Config) {
       def genCallStatic(className: ClassName, methodName: MethodName): Unit = {
         val functionName =
           genFunctionName.forMethod(IRTrees.MemberNamespace.PublicStatic, className, methodName)
-        instrs += WasmInstr.CALL(functionName)
+        instrs += CALL(functionName)
       }
 
       ModuleInitializerImpl.fromInitializer(init) match {
@@ -256,7 +256,7 @@ final class Emitter(config: Emitter.Config) {
        * introduce these declarations.
        */
       val exprs = funcDeclarations.map { name =>
-        WasmExpr(List(WasmInstr.REF_FUNC(name)))
+        WasmExpr(List(REF_FUNC(name)))
       }
       ctx.moduleBuilder.addElement(
         WasmElement(WasmRefType.funcref, exprs, WasmElement.Mode.Declarative)

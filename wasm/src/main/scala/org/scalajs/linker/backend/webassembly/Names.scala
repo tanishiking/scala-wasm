@@ -1,5 +1,9 @@
 package org.scalajs.linker.backend.webassembly
 
+/** Abstract representation of WebAssembly indices as names.
+  *
+  * See [[https://webassembly.github.io/gc/core/syntax/modules.html#indices]]
+  */
 object Names {
   sealed abstract class WasmName {
     val name: String

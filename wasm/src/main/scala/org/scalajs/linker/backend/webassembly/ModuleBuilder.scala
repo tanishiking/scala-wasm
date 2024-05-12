@@ -3,6 +3,7 @@ package org.scalajs.linker.backend.webassembly
 import scala.collection.mutable
 
 import Names._
+import Modules._
 
 final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionSignatureProvider) {
   import ModuleBuilder._

@@ -11,10 +11,10 @@ import org.scalajs.linker.interface.unstable.RuntimeClassNameMapperImpl
 import org.scalajs.linker.standard.{CoreSpec, LinkedClass, LinkedTopLevelExport}
 
 import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Instructions._
 import org.scalajs.linker.backend.webassembly.Names._
-import org.scalajs.linker.backend.webassembly.Names.WasmTypeName._
+import org.scalajs.linker.backend.webassembly.Modules._
 import org.scalajs.linker.backend.webassembly.Types._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 import EmbeddedConstants._
 import SWasmGen._

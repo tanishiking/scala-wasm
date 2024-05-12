@@ -5,7 +5,7 @@ import org.scalajs.ir.Trees.JSNativeLoadSpec
 import org.scalajs.ir.Types._
 
 import org.scalajs.linker.backend.webassembly._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
+import org.scalajs.linker.backend.webassembly.Instructions._
 
 import VarGen._
 

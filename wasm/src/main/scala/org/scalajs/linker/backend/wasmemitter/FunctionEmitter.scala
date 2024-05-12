@@ -12,9 +12,10 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 
 import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Instructions._
 import org.scalajs.linker.backend.webassembly.Names._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
-import org.scalajs.linker.backend.webassembly.{WasmFunctionSignature => Sig}
+import org.scalajs.linker.backend.webassembly.Modules._
+import org.scalajs.linker.backend.webassembly.Modules.{WasmFunctionSignature => Sig}
 
 import EmbeddedConstants._
 import SWasmGen._
@@ -987,19 +988,19 @@ private class FunctionEmitter private (
       fb.markPosition(l)
 
       l match {
-        case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) 1 else 0)
-        case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(v)
-        case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(v)
-        case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(v)
+        case IRTrees.BooleanLiteral(v) => instrs += I32_CONST(if (v) 1 else 0)
+        case IRTrees.ByteLiteral(v)    => instrs += I32_CONST(v)
+        case IRTrees.ShortLiteral(v)   => instrs += I32_CONST(v)
+        case IRTrees.IntLiteral(v)     => instrs += I32_CONST(v)
+        case IRTrees.CharLiteral(v)    => instrs += I32_CONST(v)
+        case IRTrees.LongLiteral(v)    => instrs += I64_CONST(v)
+        case IRTrees.FloatLiteral(v)   => instrs += F32_CONST(v)
+        case IRTrees.DoubleLiteral(v)  => instrs += F64_CONST(v)
 
         case v: IRTrees.Undefined =>
           instrs += GLOBAL_GET(genGlobalName.undef)
         case v: IRTrees.Null =>
-          instrs += WasmInstr.REF_NULL(Types.WasmHeapType.None)
+          instrs += REF_NULL(Types.WasmHeapType.None)
 
         case v: IRTrees.StringLiteral =>
           instrs ++= ctx.getConstantStringInstr(v.value)

@@ -5,13 +5,11 @@ import org.scalajs.ir.{Types => IRTypes}
 import org.scalajs.ir.{Names => IRNames}
 import org.scalajs.ir.{ClassKind, Position}
 
-import org.scalajs.linker.standard.LinkedClass
-
 import org.scalajs.linker.backend.webassembly._
+import org.scalajs.linker.backend.webassembly.Instructions._
 import org.scalajs.linker.backend.webassembly.Names._
-import org.scalajs.linker.backend.webassembly.Names.WasmTypeName._
+import org.scalajs.linker.backend.webassembly.Modules._
 import org.scalajs.linker.backend.webassembly.Types._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
 
 import EmbeddedConstants._
 import VarGen._

@@ -1,8 +1,9 @@
 package org.scalajs.linker.backend.webassembly
 
+import Instructions._
 import Names._
+import Modules._
 import Types._
-import WasmInstr._
 
 class WasmTextWriter {
   import WasmTextWriter._
@@ -325,7 +326,7 @@ class WasmTextWriter {
 
   private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
     instr match {
-      case WasmInstr.PositionMark(_) =>
+      case PositionMark(_) =>
         // ignore
         ()
 

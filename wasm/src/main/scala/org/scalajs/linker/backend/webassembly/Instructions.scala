@@ -1,15 +1,18 @@
 package org.scalajs.linker.backend.webassembly
-// https://webassembly.github.io/spec/core/syntax/instructions.html
 
 import org.scalajs.ir.Position
 
-import Types._
 import Names._
-import Names.WasmTypeName._
+import Types._
 
-sealed abstract class WasmInstr(val mnemonic: String, val opcode: Int)
+/** WebAssembly instructions.
+  *
+  * @see
+  *   [[https://webassembly.github.io/spec/core/syntax/instructions.html]]
+  */
+object Instructions {
+  sealed abstract class WasmInstr(val mnemonic: String, val opcode: Int)
 
-object WasmInstr {
   // Semantic categories of instructions
 
   /** A stack-polymorphic instruction. */

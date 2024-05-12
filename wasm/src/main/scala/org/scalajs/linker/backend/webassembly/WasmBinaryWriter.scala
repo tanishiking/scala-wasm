@@ -5,9 +5,10 @@ import scala.annotation.tailrec
 import org.scalajs.ir.Position
 import org.scalajs.linker.backend.javascript.SourceMapWriter
 
+import Instructions._
 import Names._
+import Modules._
 import Types._
-import WasmInstr.{BlockType, END}
 
 class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   import WasmBinaryWriter._
@@ -337,7 +338,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
 
   private def writeInstr(buf: Buffer, instr: WasmInstr): Unit = {
     instr match {
-      case WasmInstr.PositionMark(pos) =>
+      case PositionMark(pos) =>
         emitPosition(buf, pos)
 
       case _ =>
@@ -356,7 +357,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
         writeInstrImmediates(buf, instr)
 
         instr match {
-          case instr: WasmInstr.StructuredLabeledInstr =>
+          case instr: StructuredLabeledInstr =>
             // We must register even the `None` labels, because they contribute to relative numbering
             labelsInScope ::= instr.label
           case END =>
@@ -368,8 +369,6 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 
   private def writeInstrImmediates(buf: Buffer, instr: WasmInstr): Unit = {
-    import WasmInstr._
-
     def writeBrOnCast(
         labelIdx: WasmLabelName,
         from: WasmRefType,

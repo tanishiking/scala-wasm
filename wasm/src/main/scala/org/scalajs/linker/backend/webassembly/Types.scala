@@ -1,8 +1,12 @@
 package org.scalajs.linker.backend.webassembly
 
 import Names._
-import Names.WasmTypeName._
 
+/** WebAssembly types.
+  *
+  * @see
+  *   [[https://webassembly.github.io/gc/core/syntax/types.html]]
+  */
 object Types {
   sealed trait WasmStorageType
 
