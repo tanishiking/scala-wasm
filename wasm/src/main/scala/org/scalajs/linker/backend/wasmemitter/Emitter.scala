@@ -1,8 +1,7 @@
 package org.scalajs.linker.backend.wasmemitter
 
 import org.scalajs.ir.Names._
-import org.scalajs.ir.{Types => IRTypes}
-import org.scalajs.ir.{Trees => IRTrees}
+import org.scalajs.ir.Types._
 import org.scalajs.ir.Position
 
 import org.scalajs.linker.interface._
@@ -10,10 +9,10 @@ import org.scalajs.linker.interface.unstable._
 import org.scalajs.linker.standard._
 import org.scalajs.linker.standard.ModuleSet.ModuleID
 
-import org.scalajs.linker.backend.webassembly._
-import org.scalajs.linker.backend.webassembly.Instructions._
-import org.scalajs.linker.backend.webassembly.Modules._
-import org.scalajs.linker.backend.webassembly.Types._
+import org.scalajs.linker.backend.webassembly.FunctionBuilder
+import org.scalajs.linker.backend.webassembly.{Instructions => wa}
+import org.scalajs.linker.backend.webassembly.{Modules => wamod}
+import org.scalajs.linker.backend.webassembly.{Types => watpe}
 
 import org.scalajs.logging.Logger
 
@@ -91,15 +90,17 @@ final class Emitter(config: Emitter.Config) {
 
     // string
     val (stringPool, stringPoolCount) = ctx.getFinalStringPool()
-    ctx.moduleBuilder.addData(WasmData(genDataName.string, stringPool, WasmData.Mode.Passive))
+    ctx.moduleBuilder.addData(
+      wamod.WasmData(genDataName.string, stringPool, wamod.WasmData.Mode.Passive)
+    )
     ctx.addGlobal(
-      WasmGlobal(
+      wamod.WasmGlobal(
         genGlobalName.stringLiteralCache,
-        WasmRefType(genTypeName.anyArray),
-        WasmExpr(
+        watpe.WasmRefType(genTypeName.anyArray),
+        wamod.WasmExpr(
           List(
-            I32_CONST(stringPoolCount),
-            ARRAY_NEW_DEFAULT(genTypeName.anyArray)
+            wa.I32_CONST(stringPoolCount),
+            wa.ARRAY_NEW_DEFAULT(genTypeName.anyArray)
           )
         ),
         isMutable = false
@@ -115,6 +116,8 @@ final class Emitter(config: Emitter.Config) {
       classesWithStaticInit: List[ClassName],
       topLevelExportDefs: List[LinkedTopLevelExport]
   )(implicit ctx: WasmContext): Unit = {
+    import org.scalajs.ir.Trees._
+
     implicit val pos = Position.NoPosition
 
     val fb = new FunctionBuilder(ctx.moduleBuilder, genFunctionName.start, pos)
@@ -128,13 +131,13 @@ final class Emitter(config: Emitter.Config) {
 
       interfaces.foreach { iface =>
         val idx = ctx.getItableIdx(iface)
-        instrs += GLOBAL_GET(genGlobalName.forITable(className))
-        instrs += I32_CONST(idx)
+        instrs += wa.GLOBAL_GET(genGlobalName.forITable(className))
+        instrs += wa.I32_CONST(idx)
 
         for (method <- iface.tableEntries)
           instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += STRUCT_NEW(genTypeName.forITable(iface.name))
-        instrs += ARRAY_SET(genTypeName.itables)
+        instrs += wa.STRUCT_NEW(genTypeName.forITable(iface.name))
+        instrs += wa.ARRAY_SET(genTypeName.itables)
       }
     }
 
@@ -148,53 +151,53 @@ final class Emitter(config: Emitter.Config) {
         // Use getClassInfoOption in case the reachability analysis got rid of those interfaces
         interfaceInfo <- ctx.getClassInfoOption(interfaceName)
       } {
-        instrs += GLOBAL_GET(globalName)
-        instrs += I32_CONST(ctx.getItableIdx(interfaceInfo))
+        instrs += wa.GLOBAL_GET(globalName)
+        instrs += wa.I32_CONST(ctx.getItableIdx(interfaceInfo))
 
         for (method <- interfaceInfo.tableEntries)
           instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += STRUCT_NEW(genTypeName.forITable(interfaceName))
-        instrs += ARRAY_SET(genTypeName.itables)
+        instrs += wa.STRUCT_NEW(genTypeName.forITable(interfaceName))
+        instrs += wa.ARRAY_SET(genTypeName.itables)
       }
     }
 
     // Initialize the JS private field symbols
 
     for (fieldName <- ctx.getAllJSPrivateFieldNames()) {
-      instrs += CALL(genFunctionName.newSymbol)
-      instrs += GLOBAL_SET(genGlobalName.forJSPrivateField(fieldName))
+      instrs += wa.CALL(genFunctionName.newSymbol)
+      instrs += wa.GLOBAL_SET(genGlobalName.forJSPrivateField(fieldName))
     }
 
     // Emit the static initializers
 
     for (className <- classesWithStaticInit) {
       val funcName = genFunctionName.forMethod(
-        IRTrees.MemberNamespace.StaticConstructor,
+        MemberNamespace.StaticConstructor,
         className,
         StaticInitializerName
       )
-      instrs += CALL(funcName)
+      instrs += wa.CALL(funcName)
     }
 
     // Initialize the top-level exports that require it
 
     for (tle <- topLevelExportDefs) {
       tle.tree match {
-        case IRTrees.TopLevelJSClassExportDef(_, exportName) =>
-          instrs += CALL(genFunctionName.loadJSClass(tle.owningClass))
-          instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
-        case IRTrees.TopLevelModuleExportDef(_, exportName) =>
-          instrs += CALL(genFunctionName.loadModule(tle.owningClass))
-          instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
-        case IRTrees.TopLevelMethodExportDef(_, methodDef) =>
+        case TopLevelJSClassExportDef(_, exportName) =>
+          instrs += wa.CALL(genFunctionName.loadJSClass(tle.owningClass))
+          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
+        case TopLevelModuleExportDef(_, exportName) =>
+          instrs += wa.CALL(genFunctionName.loadModule(tle.owningClass))
+          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
+        case TopLevelMethodExportDef(_, methodDef) =>
           // We only need initialization if there is a restParam
           if (methodDef.restParam.isDefined) {
             instrs += ctx.refFuncWithDeclaration(genFunctionName.forExport(tle.exportName))
-            instrs += I32_CONST(methodDef.args.size)
-            instrs += CALL(genFunctionName.closureRestNoData)
-            instrs += GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
+            instrs += wa.I32_CONST(methodDef.args.size)
+            instrs += wa.CALL(genFunctionName.closureRestNoData)
+            instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
           }
-        case IRTrees.TopLevelFieldExportDef(_, _, _) =>
+        case TopLevelFieldExportDef(_, _, _) =>
           // Nothing to do
           ()
       }
@@ -205,27 +208,27 @@ final class Emitter(config: Emitter.Config) {
     moduleInitializers.foreach { init =>
       def genCallStatic(className: ClassName, methodName: MethodName): Unit = {
         val functionName =
-          genFunctionName.forMethod(IRTrees.MemberNamespace.PublicStatic, className, methodName)
-        instrs += CALL(functionName)
+          genFunctionName.forMethod(MemberNamespace.PublicStatic, className, methodName)
+        instrs += wa.CALL(functionName)
       }
 
       ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
           // vtable of Array[String]
-          instrs += GLOBAL_GET(genGlobalName.forVTable(BoxedStringClass))
-          instrs += I32_CONST(1)
-          instrs += CALL(genFunctionName.arrayTypeData)
+          instrs += wa.GLOBAL_GET(genGlobalName.forVTable(BoxedStringClass))
+          instrs += wa.I32_CONST(1)
+          instrs += wa.CALL(genFunctionName.arrayTypeData)
 
           // itable of Array[String]
-          instrs += GLOBAL_GET(genGlobalName.arrayClassITable)
+          instrs += wa.GLOBAL_GET(genGlobalName.arrayClassITable)
 
           // underlying array of args
           args.foreach(arg => instrs ++= ctx.getConstantStringInstr(arg))
-          instrs += ARRAY_NEW_FIXED(genTypeName.anyArray, args.size)
+          instrs += wa.ARRAY_NEW_FIXED(genTypeName.anyArray, args.size)
 
           // array object
-          val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(BoxedStringClass), 1)
-          instrs += STRUCT_NEW(genTypeName.forArrayClass(stringArrayTypeRef))
+          val stringArrayTypeRef = ArrayTypeRef(ClassRef(BoxedStringClass), 1)
+          instrs += wa.STRUCT_NEW(genTypeName.forArrayClass(stringArrayTypeRef))
 
           // call
           genCallStatic(className, encodedMainMethodName)
@@ -256,10 +259,10 @@ final class Emitter(config: Emitter.Config) {
        * introduce these declarations.
        */
       val exprs = funcDeclarations.map { name =>
-        WasmExpr(List(REF_FUNC(name)))
+        wamod.WasmExpr(List(wa.REF_FUNC(name)))
       }
       ctx.moduleBuilder.addElement(
-        WasmElement(WasmRefType.funcref, exprs, WasmElement.Mode.Declarative)
+        wamod.WasmElement(watpe.WasmRefType.funcref, exprs, wamod.WasmElement.Mode.Declarative)
       )
     }
   }
@@ -315,7 +318,7 @@ object Emitter {
   }
 
   final class Result(
-      val wasmModule: WasmModule,
+      val wasmModule: wamod.WasmModule,
       val loaderContent: Array[Byte],
       val jsFileContent: String
   )
