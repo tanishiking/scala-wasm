@@ -310,7 +310,9 @@ object Instructions {
     */
   case object REF_IS_NULL extends WasmSimpleInstr("ref.is_null", 0xD1)
 
-  /** creates a reference to a given function. `ref.func $x : [] -> [funcref]` (iff $x : func $t)
+  /** creates a reference to a given function.
+    *
+    * `ref.func $$x : [] -> [funcref]` (iff $$x : func $$t)
     */
   case class REF_FUNC(i: WasmFunctionName) extends WasmFuncInstr("ref.func", 0xD2, i)
 

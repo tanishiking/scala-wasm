@@ -343,8 +343,11 @@ object VarGen {
         *     `"[X"`, for example, `"[I"` for `Array[Int]`.
         *   - `Array[pack.Cls]` where `Cls` is a class is `"[Lpack.Cls;"`.
         *   - `Array[nestedArray]` where `nestedArray` is an array type with name `nested` is
-        *     `"[nested"`, for example `"[[I"` for `Array[Array[Int]]` and `"[[Ljava.lang.String;"`
-        *     for `Array[Array[String]]`.
+        *     `"[nested"`, for example `"⟦I"` for `Array[Array[Int]]` and `"⟦Ljava.lang.String;"`
+        *     for `Array[Array[String]]`.¹
+        *
+        * ¹ We use the Unicode character `⟦` to represent two consecutive `[` characters in order
+        * not to confuse Scaladoc.
         */
       val name = WasmFieldName("name")
 
