@@ -1,9 +1,9 @@
 package org.scalajs.linker.backend.wasmemitter
 
-import org.scalajs.ir.{Trees => IRTrees}
-import org.scalajs.ir.{Types => IRTypes}
-import org.scalajs.ir.{Names => IRNames}
-import org.scalajs.ir.{ClassKind, Position}
+import org.scalajs.ir.Names._
+import org.scalajs.ir.Trees.{JSUnaryOp, JSBinaryOp, MemberNamespace}
+import org.scalajs.ir.Types._
+import org.scalajs.ir.Position
 
 import org.scalajs.linker.backend.webassembly._
 import org.scalajs.linker.backend.webassembly.Instructions._
@@ -227,15 +227,15 @@ object CoreWasmLib {
     import genFieldName.typeData._
 
     val primRefsWithTypeData = List(
-      IRTypes.VoidRef -> KindVoid,
-      IRTypes.BooleanRef -> KindBoolean,
-      IRTypes.CharRef -> KindChar,
-      IRTypes.ByteRef -> KindByte,
-      IRTypes.ShortRef -> KindShort,
-      IRTypes.IntRef -> KindInt,
-      IRTypes.LongRef -> KindLong,
-      IRTypes.FloatRef -> KindFloat,
-      IRTypes.DoubleRef -> KindDouble
+      VoidRef -> KindVoid,
+      BooleanRef -> KindBoolean,
+      CharRef -> KindChar,
+      ByteRef -> KindByte,
+      ShortRef -> KindShort,
+      IntRef -> KindInt,
+      LongRef -> KindLong,
+      FloatRef -> KindFloat,
+      DoubleRef -> KindDouble
     )
 
     val typeDataTypeName = genTypeName.typeData
@@ -283,7 +283,7 @@ object CoreWasmLib {
   }
 
   private def genBoxedZeroGlobals()(implicit ctx: WasmContext): Unit = {
-    val primTypesWithBoxClasses: List[(WasmGlobalName, IRNames.ClassName, WasmInstr)] = List(
+    val primTypesWithBoxClasses: List[(WasmGlobalName, ClassName, WasmInstr)] = List(
       (genGlobalName.bZeroChar, SpecialNames.CharBoxClass, I32_CONST(0)),
       (genGlobalName.bZeroLong, SpecialNames.LongBoxClass, I64_CONST(0))
     )
@@ -326,7 +326,6 @@ object CoreWasmLib {
 
   private def genHelperImports()(implicit ctx: WasmContext): Unit = {
     import WasmRefType.anyref
-    import IRTypes._
 
     def addHelperImport(
         name: WasmFunctionName,
@@ -455,7 +454,7 @@ object CoreWasmLib {
 
     for ((op, name) <- genFunctionName.jsBinaryOps) {
       val resultType =
-        if (op == IRTrees.JSBinaryOp.=== || op == IRTrees.JSBinaryOp.!==) WasmInt32
+        if (op == JSBinaryOp.=== || op == JSBinaryOp.!==) WasmInt32
         else anyref
       addHelperImport(name, List(anyref, anyref), List(resultType))
     }
@@ -796,7 +795,7 @@ object CoreWasmLib {
 
     // classInstance := newDefault$java.lang.Class()
     // leave it on the stack for the constructor call
-    instrs += CALL(genFunctionName.newDefault(IRNames.ClassClass))
+    instrs += CALL(genFunctionName.newDefault(ClassClass))
     instrs += LOCAL_TEE(classInstanceLocal)
 
     /* The JS object containing metadata to pass as argument to the `jl.Class` constructor.
@@ -819,7 +818,7 @@ object CoreWasmLib {
     instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
     instrs += I32_CONST(KindLastPrimitive)
     instrs += I32_LE_U
-    instrs += CALL(genFunctionName.box(IRTypes.BooleanRef))
+    instrs += CALL(genFunctionName.box(BooleanRef))
     instrs += CALL(genFunctionName.jsObjectPush)
     // "isArrayClass": (typeData.kind == KindArray)
     instrs ++= ctx.getConstantStringInstr("isArrayClass")
@@ -827,7 +826,7 @@ object CoreWasmLib {
     instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
     instrs += I32_CONST(KindArray)
     instrs += I32_EQ
-    instrs += CALL(genFunctionName.box(IRTypes.BooleanRef))
+    instrs += CALL(genFunctionName.box(BooleanRef))
     instrs += CALL(genFunctionName.jsObjectPush)
     // "isInterface": (typeData.kind == KindInterface)
     instrs ++= ctx.getConstantStringInstr("isInterface")
@@ -835,7 +834,7 @@ object CoreWasmLib {
     instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
     instrs += I32_CONST(KindInterface)
     instrs += I32_EQ
-    instrs += CALL(genFunctionName.box(IRTypes.BooleanRef))
+    instrs += CALL(genFunctionName.box(BooleanRef))
     instrs += CALL(genFunctionName.jsObjectPush)
     // "isInstance": closure(isInstance, typeData)
     instrs ++= ctx.getConstantStringInstr("isInstance")
@@ -872,8 +871,8 @@ object CoreWasmLib {
     // Call java.lang.Class::<init>(dataObject)
     instrs += CALL(
       genFunctionName.forMethod(
-        IRTrees.MemberNamespace.Constructor,
-        IRNames.ClassClass,
+        MemberNamespace.Constructor,
+        ClassClass,
         SpecialNames.ClassCtor
       )
     )
@@ -933,7 +932,7 @@ object CoreWasmLib {
      * we do for other classes.
      */
     val strictAncestors =
-      List(IRNames.CloneableClass, IRNames.SerializableClass, IRNames.ObjectClass)
+      List(CloneableClass, SerializableClass, ObjectClass)
         .filter(name => ctx.getClassInfoOption(name).exists(_.hasRuntimeTypeInfo))
 
     val fb = newFunctionBuilder(genFunctionName.arrayTypeData)
@@ -984,32 +983,32 @@ object CoreWasmLib {
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
         }(
           List(KindBoolean) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.BooleanRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(BooleanRef))
           },
           List(KindChar) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.CharRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(CharRef))
           },
           List(KindByte) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.ByteRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(ByteRef))
           },
           List(KindShort) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.ShortRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(ShortRef))
           },
           List(KindInt) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.IntRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IntRef))
           },
           List(KindLong) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.LongRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(LongRef))
           },
           List(KindFloat) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.FloatRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(FloatRef))
           },
           List(KindDouble) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(IRTypes.DoubleRef))
+            instrs += ctx.refFuncWithDeclaration(genFunctionName.clone(DoubleRef))
           }
         ) { () =>
           instrs += ctx.refFuncWithDeclaration(
-            genFunctionName.clone(IRTypes.ClassRef(IRNames.ObjectClass))
+            genFunctionName.clone(ClassRef(ObjectClass))
           )
         }
 
@@ -1019,7 +1018,7 @@ object CoreWasmLib {
         // reflectiveProxies
         instrs += ARRAY_NEW_FIXED(genTypeName.reflectiveProxies, 0) // TODO
 
-        val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
+        val objectClassInfo = ctx.getClassInfo(ObjectClass)
         instrs ++= objectClassInfo.tableEntries.map { methodName =>
           ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryName)
         }
@@ -1069,7 +1068,7 @@ object CoreWasmLib {
     import genFieldIdx.typeData._
 
     val typeDataType = WasmRefType(genTypeName.typeData)
-    val objectRefType = WasmRefType(genTypeName.forClass(IRNames.ObjectClass))
+    val objectRefType = WasmRefType(genTypeName.forClass(ObjectClass))
 
     val fb = newFunctionBuilder(genFunctionName.isInstance)
     val typeDataParam = fb.addParam("typeData", typeDataType)
@@ -1103,7 +1102,7 @@ object CoreWasmLib {
       },
       List(KindBoxedBoolean) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.BooleanRef))
+        instrs += CALL(genFunctionName.typeTest(BooleanRef))
       },
       List(KindBoxedCharacter) -> { () =>
         instrs += LOCAL_GET(valueParam)
@@ -1112,15 +1111,15 @@ object CoreWasmLib {
       },
       List(KindBoxedByte) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.ByteRef))
+        instrs += CALL(genFunctionName.typeTest(ByteRef))
       },
       List(KindBoxedShort) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.ShortRef))
+        instrs += CALL(genFunctionName.typeTest(ShortRef))
       },
       List(KindBoxedInteger) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.IntRef))
+        instrs += CALL(genFunctionName.typeTest(IntRef))
       },
       List(KindBoxedLong) -> { () =>
         instrs += LOCAL_GET(valueParam)
@@ -1129,11 +1128,11 @@ object CoreWasmLib {
       },
       List(KindBoxedFloat) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.FloatRef))
+        instrs += CALL(genFunctionName.typeTest(FloatRef))
       },
       List(KindBoxedDouble) -> { () =>
         instrs += LOCAL_GET(valueParam)
-        instrs += CALL(genFunctionName.typeTest(IRTypes.DoubleRef))
+        instrs += CALL(genFunctionName.typeTest(DoubleRef))
       },
       List(KindBoxedString) -> { () =>
         instrs += LOCAL_GET(valueParam)
@@ -1245,7 +1244,7 @@ object CoreWasmLib {
         instrs += RETURN
       }
       instrs += STRUCT_GET(
-        genTypeName.forClass(IRNames.ObjectClass),
+        genTypeName.forClass(ObjectClass),
         genFieldIdx.objStruct.vtable
       )
 
@@ -1489,7 +1488,7 @@ object CoreWasmLib {
     instrs += LOCAL_GET(lengthsParam)
     instrs ++= ctx.getConstantStringInstr("length")
     instrs += CALL(genFunctionName.jsSelect)
-    instrs += CALL(genFunctionName.unbox(IRTypes.IntRef))
+    instrs += CALL(genFunctionName.unbox(IntRef))
     instrs += LOCAL_TEE(lengthsLenLocal)
 
     // lengthsValues := array.new<i32Array> lengthsLen
@@ -1515,7 +1514,7 @@ object CoreWasmLib {
       instrs += LOCAL_GET(iLocal)
       instrs += REF_I31
       instrs += CALL(genFunctionName.jsSelect)
-      instrs += CALL(genFunctionName.unbox(IRTypes.IntRef))
+      instrs += CALL(genFunctionName.unbox(IntRef))
 
       instrs += ARRAY_SET(genTypeName.i32Array)
 
@@ -1559,7 +1558,7 @@ object CoreWasmLib {
     val intValueLocal = fb.addLocal("intValue", WasmInt32)
     val ourObjectLocal = fb.addLocal("ourObject", WasmRefType(genTypeName.ObjectStruct))
 
-    def getHijackedClassTypeDataInstr(className: IRNames.ClassName): WasmInstr =
+    def getHijackedClassTypeDataInstr(className: ClassName): WasmInstr =
       GLOBAL_GET(genGlobalName.forVTable(className))
 
     instrs.block(WasmRefType.nullable(genTypeName.ClassStruct)) { nonNullClassOfLabel =>
@@ -1581,11 +1580,11 @@ object CoreWasmLib {
           }(
             // case JSValueTypeFalse, JSValueTypeTrue => typeDataOf[jl.Boolean]
             List(JSValueTypeFalse, JSValueTypeTrue) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedBooleanClass)
+              instrs += getHijackedClassTypeDataInstr(BoxedBooleanClass)
             },
             // case JSValueTypeString => typeDataOf[jl.String]
             List(JSValueTypeString) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedStringClass)
+              instrs += getHijackedClassTypeDataInstr(BoxedStringClass)
             },
             // case JSValueTypeNumber => ...
             List(JSValueTypeNumber) -> { () =>
@@ -1595,7 +1594,7 @@ object CoreWasmLib {
 
               // doubleValue := unboxDouble(value)
               instrs += LOCAL_GET(valueParam)
-              instrs += CALL(genFunctionName.unbox(IRTypes.DoubleRef))
+              instrs += CALL(genFunctionName.unbox(DoubleRef))
               instrs += LOCAL_TEE(doubleValueLocal)
 
               // intValue := doubleValue.toInt
@@ -1618,7 +1617,7 @@ object CoreWasmLib {
                 instrs += I32_EQ
                 instrs.ifThenElse(typeDataType) {
                   // then it is a Byte
-                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedByteClass)
+                  instrs += getHijackedClassTypeDataInstr(BoxedByteClass)
                 } {
                   // else, if intValue.toShort.toInt == intValue
                   instrs += LOCAL_GET(intValueLocal)
@@ -1627,10 +1626,10 @@ object CoreWasmLib {
                   instrs += I32_EQ
                   instrs.ifThenElse(typeDataType) {
                     // then it is a Short
-                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedShortClass)
+                    instrs += getHijackedClassTypeDataInstr(BoxedShortClass)
                   } {
                     // else, it is an Integer
-                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedIntegerClass)
+                    instrs += getHijackedClassTypeDataInstr(BoxedIntegerClass)
                   }
                 }
               } {
@@ -1644,7 +1643,7 @@ object CoreWasmLib {
                 instrs += F64_EQ
                 instrs.ifThenElse(typeDataType) {
                   // then it is a Float
-                  instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
+                  instrs += getHijackedClassTypeDataInstr(BoxedFloatClass)
                 } {
                   // else, if it is NaN
                   instrs += LOCAL_GET(doubleValueLocal)
@@ -1652,17 +1651,17 @@ object CoreWasmLib {
                   instrs += F64_NE
                   instrs.ifThenElse(typeDataType) {
                     // then it is a Float
-                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedFloatClass)
+                    instrs += getHijackedClassTypeDataInstr(BoxedFloatClass)
                   } {
                     // else, it is a Double
-                    instrs += getHijackedClassTypeDataInstr(IRNames.BoxedDoubleClass)
+                    instrs += getHijackedClassTypeDataInstr(BoxedDoubleClass)
                   }
                 }
               }
             },
             // case JSValueTypeUndefined => typeDataOf[jl.Void]
             List(JSValueTypeUndefined) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(IRNames.BoxedUnitClass)
+              instrs += getHijackedClassTypeDataInstr(BoxedUnitClass)
             }
           ) { () =>
             // case _ (JSValueTypeOther) => return null
@@ -1681,16 +1680,16 @@ object CoreWasmLib {
         instrs += LOCAL_TEE(ourObjectLocal)
         instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.CharBoxClass)))
         instrs.ifThenElse(typeDataType) {
-          instrs += getHijackedClassTypeDataInstr(IRNames.BoxedCharacterClass)
+          instrs += getHijackedClassTypeDataInstr(BoxedCharacterClass)
         } {
           instrs += LOCAL_GET(ourObjectLocal)
           instrs += REF_TEST(WasmRefType(genTypeName.forClass(SpecialNames.LongBoxClass)))
           instrs.ifThenElse(typeDataType) {
-            instrs += getHijackedClassTypeDataInstr(IRNames.BoxedLongClass)
+            instrs += getHijackedClassTypeDataInstr(BoxedLongClass)
           } {
             instrs += LOCAL_GET(ourObjectLocal)
             instrs += STRUCT_GET(
-              genTypeName.forClass(IRNames.ObjectClass),
+              genTypeName.forClass(ObjectClass),
               genFieldIdx.objStruct.vtable
             )
           }
@@ -1763,14 +1762,14 @@ object CoreWasmLib {
      */
 
     val primRefsWithArrayTypes = List(
-      IRTypes.BooleanRef -> KindBoolean,
-      IRTypes.CharRef -> KindChar,
-      IRTypes.ByteRef -> KindByte,
-      IRTypes.ShortRef -> KindShort,
-      IRTypes.IntRef -> KindInt,
-      IRTypes.LongRef -> KindLong,
-      IRTypes.FloatRef -> KindFloat,
-      IRTypes.DoubleRef -> KindDouble
+      BooleanRef -> KindBoolean,
+      CharRef -> KindChar,
+      ByteRef -> KindByte,
+      ShortRef -> KindShort,
+      IntRef -> KindInt,
+      LongRef -> KindLong,
+      FloatRef -> KindFloat,
+      DoubleRef -> KindDouble
     )
 
     // Load the vtable and itable or the resulting array on the stack
@@ -1804,7 +1803,7 @@ object CoreWasmLib {
       // case KindPrim => array.new_default underlyingPrimArray; struct.new PrimArray
       primRefsWithArrayTypes.map { case (primRef, kind) =>
         List(kind) -> { () =>
-          val arrayTypeRef = IRTypes.ArrayTypeRef(primRef, 1)
+          val arrayTypeRef = ArrayTypeRef(primRef, 1)
           instrs += ARRAY_NEW_DEFAULT(genTypeName.underlyingOf(arrayTypeRef))
           instrs += STRUCT_NEW(genTypeName.forArrayClass(arrayTypeRef))
           () // required for correct type inference
@@ -1817,7 +1816,7 @@ object CoreWasmLib {
       instrs += LOCAL_TEE(lenLocal)
 
       // underlying := array.new_default anyArray
-      val arrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(IRNames.ObjectClass), 1)
+      val arrayTypeRef = ArrayTypeRef(ClassRef(ObjectClass), 1)
       instrs += ARRAY_NEW_DEFAULT(genTypeName.underlyingOf(arrayTypeRef))
       instrs += LOCAL_SET(underlyingLocal)
 
@@ -1892,7 +1891,7 @@ object CoreWasmLib {
     * involved. For `Boolean` and `Void`, we hard-code a copy here.
     */
   private def genIdentityHashCode()(implicit ctx: WasmContext): Unit = {
-    import IRTrees.MemberNamespace.Public
+    import MemberNamespace.Public
     import SpecialNames.hashCodeMethodName
     import genFieldIdx.typeData._
 
@@ -1943,15 +1942,15 @@ object CoreWasmLib {
         List(JSValueTypeString) -> { () =>
           instrs += LOCAL_GET(objNonNullLocal)
           instrs += CALL(
-            genFunctionName.forMethod(Public, IRNames.BoxedStringClass, hashCodeMethodName)
+            genFunctionName.forMethod(Public, BoxedStringClass, hashCodeMethodName)
           )
           instrs += RETURN
         },
         List(JSValueTypeNumber) -> { () =>
           instrs += LOCAL_GET(objNonNullLocal)
-          instrs += CALL(genFunctionName.unbox(IRTypes.DoubleRef))
+          instrs += CALL(genFunctionName.unbox(DoubleRef))
           instrs += CALL(
-            genFunctionName.forMethod(Public, IRNames.BoxedDoubleClass, hashCodeMethodName)
+            genFunctionName.forMethod(Public, BoxedDoubleClass, hashCodeMethodName)
           )
           instrs += RETURN
         },
@@ -1970,7 +1969,7 @@ object CoreWasmLib {
             instrs += CALL(genFunctionName.symbolDescription)
             instrs += BR_ON_NULL(descriptionIsNullLabel)
             instrs += CALL(
-              genFunctionName.forMethod(Public, IRNames.BoxedStringClass, hashCodeMethodName)
+              genFunctionName.forMethod(Public, BoxedStringClass, hashCodeMethodName)
             )
             instrs += RETURN
           }
@@ -2098,15 +2097,15 @@ object CoreWasmLib {
 
   private def genArrayCloneFunctions()(implicit ctx: WasmContext): Unit = {
     val baseRefs = List(
-      IRTypes.BooleanRef,
-      IRTypes.CharRef,
-      IRTypes.ByteRef,
-      IRTypes.ShortRef,
-      IRTypes.IntRef,
-      IRTypes.LongRef,
-      IRTypes.FloatRef,
-      IRTypes.DoubleRef,
-      IRTypes.ClassRef(IRNames.ObjectClass)
+      BooleanRef,
+      CharRef,
+      ByteRef,
+      ShortRef,
+      IntRef,
+      LongRef,
+      FloatRef,
+      DoubleRef,
+      ClassRef(ObjectClass)
     )
 
     for (baseRef <- baseRefs)
@@ -2114,9 +2113,7 @@ object CoreWasmLib {
   }
 
   /** Generates the clone function for the array class with the given base. */
-  private def genArrayCloneFunction(
-      baseRef: IRTypes.NonArrayTypeRef
-  )(implicit ctx: WasmContext): Unit = {
+  private def genArrayCloneFunction(baseRef: NonArrayTypeRef)(implicit ctx: WasmContext): Unit = {
     val fb = newFunctionBuilder(genFunctionName.clone(baseRef))
     val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
     fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
@@ -2124,7 +2121,7 @@ object CoreWasmLib {
 
     val instrs = fb
 
-    val arrayTypeRef = IRTypes.ArrayTypeRef(baseRef, 1)
+    val arrayTypeRef = ArrayTypeRef(baseRef, 1)
 
     val arrayStructTypeName = genTypeName.forArrayClass(arrayTypeRef)
     val arrayClassType = WasmRefType(arrayStructTypeName)
