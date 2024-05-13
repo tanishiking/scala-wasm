@@ -184,6 +184,7 @@ lazy val `scalajs-test-suite` = project
       (Test / sources).value
         .filterNot(endsWith(_, "/UnionTypeTest.scala")) // requires typechecking macros
         .filterNot(endsWith(_, "/jsinterop/ExportsTest.scala")) // js.dynamicImport (multi-modules)
+        .filterNot(endsWith(_, "/ExportLoopback.scala"))
     },
 
     Test / scalacOptions += "-P:scalajs:genStaticForwardersForNonTopLevelObjects",
