@@ -1109,14 +1109,11 @@ class ClassEmitter(coreSpec: CoreSpec) {
       resultType = AnyType
     )
 
-    if (method.restParam.isEmpty) {
-      ctx.addExport(wamod.Export.Function(exportedName, functionName))
-    } else {
-      /* We cannot directly export the function. We will create a closure
-       * wrapper in the start function and export that instead.
-       */
-      genDelayedTopLevelExport(exportedName)
-    }
+    /* We cannot directly export the function because it would not be considered
+     * a `function`. Instead, we will explicitly create a closure wrapper in the
+     * start function and export that instead.
+     */
+    genDelayedTopLevelExport(exportedName)
   }
 
   private def transformTopLevelFieldExportDef(

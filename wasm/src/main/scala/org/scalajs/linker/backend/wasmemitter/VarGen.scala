@@ -153,7 +153,9 @@ object VarGen {
     val closureThis = make("closureThis")
     val closureRest = make("closureRest")
     val closureThisRest = make("closureThisRest")
-    val closureRestNoData = make("closureRestNoData")
+
+    val makeExportedDef = make("makeExportedDef")
+    val makeExportedDefRest = make("makeExportedDefRest")
 
     val stringLength = make("stringLength")
     val stringCharAt = make("stringCharAt")

@@ -190,13 +190,14 @@ final class Emitter(config: Emitter.Config) {
           instrs += wa.CALL(genFunctionName.loadModule(tle.owningClass))
           instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case TopLevelMethodExportDef(_, methodDef) =>
-          // We only need initialization if there is a restParam
+          instrs += ctx.refFuncWithDeclaration(genFunctionName.forExport(tle.exportName))
           if (methodDef.restParam.isDefined) {
-            instrs += ctx.refFuncWithDeclaration(genFunctionName.forExport(tle.exportName))
             instrs += wa.I32_CONST(methodDef.args.size)
-            instrs += wa.CALL(genFunctionName.closureRestNoData)
-            instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
+            instrs += wa.CALL(genFunctionName.makeExportedDefRest)
+          } else {
+            instrs += wa.CALL(genFunctionName.makeExportedDef)
           }
+          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case TopLevelFieldExportDef(_, _, _) =>
           // Nothing to do
           ()
