@@ -49,6 +49,7 @@ object CoreWasmLib {
   def genPostClasses()(implicit ctx: WasmContext): Unit = {
     genArrayClassTypes()
 
+    genBoxedZeroGlobals()
     genArrayClassGlobals()
   }
 
@@ -169,6 +170,8 @@ object CoreWasmLib {
     }
 
     addGlobalHelperImport(genGlobalName.undef, WasmRefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.bFalse, WasmRefType.any, isMutable = false)
+    addGlobalHelperImport(genGlobalName.bZero, WasmRefType.any, isMutable = false)
     addGlobalHelperImport(genGlobalName.emptyString, WasmRefType.any, isMutable = false)
     addGlobalHelperImport(genGlobalName.idHashCodeMap, WasmRefType.extern, isMutable = false)
   }
@@ -225,6 +228,32 @@ object CoreWasmLib {
         WasmGlobal(
           genGlobalName.forVTable(primRef),
           WasmRefType(genTypeName.typeData),
+          WasmExpr(instrs),
+          isMutable = false
+        )
+      )
+    }
+  }
+
+  private def genBoxedZeroGlobals()(implicit ctx: WasmContext): Unit = {
+    val primTypesWithBoxClasses: List[(WasmGlobalName, IRNames.ClassName, WasmInstr)] = List(
+      (genGlobalName.bZeroChar, SpecialNames.CharBoxClass, I32_CONST(0)),
+      (genGlobalName.bZeroLong, SpecialNames.LongBoxClass, I64_CONST(0))
+    )
+
+    for ((globalName, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
+      val boxStruct = genTypeName.forClass(boxClassName)
+      val instrs: List[WasmInstr] = List(
+        GLOBAL_GET(genGlobalName.forVTable(boxClassName)),
+        GLOBAL_GET(genGlobalName.forITable(boxClassName)),
+        zeroValueInstr,
+        STRUCT_NEW(boxStruct)
+      )
+
+      ctx.addGlobal(
+        WasmGlobal(
+          globalName,
+          WasmRefType(boxStruct),
           WasmExpr(instrs),
           isMutable = false
         )
@@ -387,12 +416,12 @@ object CoreWasmLib {
     addHelperImport(genFunctionName.newSymbol, Nil, List(anyref))
     addHelperImport(
       genFunctionName.createJSClass,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func),
+      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref),
       List(WasmRefType.any)
     )
     addHelperImport(
       genFunctionName.createJSClassRest,
-      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, WasmInt32),
+      List(anyref, anyref, WasmRefType.func, WasmRefType.func, WasmRefType.func, anyref, WasmInt32),
       List(WasmRefType.any)
     )
     addHelperImport(
