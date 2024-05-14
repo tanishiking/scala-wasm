@@ -308,11 +308,12 @@ const scalaJSHelpers = {
   },
 }
 
-export async function load(wasmFileURL, importedModules) {
+export async function load(wasmFileURL, importedModules, exportSetters) {
   const myScalaJSHelpers = { ...scalaJSHelpers, idHashCodeMap: new WeakMap() };
   const importsObj = {
     "__scalaJSHelpers": myScalaJSHelpers,
     "__scalaJSImports": importedModules,
+    "__scalaJSExportSetters": exportSetters,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;
@@ -326,24 +327,7 @@ export async function load(wasmFileURL, importedModules) {
   } else {
     wasmModulePromise = WebAssembly.instantiateStreaming(fetch(resolvedURL), importsObj);
   }
-  const wasmModule = await wasmModulePromise;
-  const exports = wasmModule.instance.exports;
-
-  const userExports = Object.create(null);
-  for (const exportName of Object.getOwnPropertyNames(exports)) {
-    const exportValue = exports[exportName];
-    if (exportValue instanceof WebAssembly.Global) {
-      Object.defineProperty(userExports, exportName, {
-        configurable: true,
-        enumerable: true,
-        get: () => exportValue.value,
-      });
-    } else {
-      userExports[exportName] = exportValue;
-    }
-  }
-  Object.freeze(userExports);
-  return userExports;
+  await wasmModulePromise;
 }
     """
   }

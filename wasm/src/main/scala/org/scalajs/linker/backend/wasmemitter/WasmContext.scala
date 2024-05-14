@@ -410,6 +410,7 @@ object WasmContext {
       val hasRuntimeTypeInfo: Boolean,
       val jsNativeLoadSpec: Option[JSNativeLoadSpec],
       val jsNativeMembers: Map[MethodName, JSNativeLoadSpec],
+      val staticFieldMirrors: Map[FieldName, List[String]],
       private var _itableIdx: Int
   ) {
     private val fieldIdxByName: Map[FieldName, Int] =

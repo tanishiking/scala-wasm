@@ -182,13 +182,12 @@ final class Emitter(config: Emitter.Config) {
     // Initialize the top-level exports that require it
 
     for (tle <- topLevelExportDefs) {
+      // Load the (initial) exported value on the stack
       tle.tree match {
         case TopLevelJSClassExportDef(_, exportName) =>
           instrs += wa.CALL(genFunctionName.loadJSClass(tle.owningClass))
-          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case TopLevelModuleExportDef(_, exportName) =>
           instrs += wa.CALL(genFunctionName.loadModule(tle.owningClass))
-          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
         case TopLevelMethodExportDef(_, methodDef) =>
           instrs += ctx.refFuncWithDeclaration(genFunctionName.forExport(tle.exportName))
           if (methodDef.restParam.isDefined) {
@@ -197,11 +196,17 @@ final class Emitter(config: Emitter.Config) {
           } else {
             instrs += wa.CALL(genFunctionName.makeExportedDef)
           }
-          instrs += wa.GLOBAL_SET(genGlobalName.forTopLevelExport(tle.exportName))
-        case TopLevelFieldExportDef(_, _, _) =>
-          // Nothing to do
-          ()
+        case TopLevelFieldExportDef(_, _, fieldIdent) =>
+          /* Usually redundant, but necessary if the static field is never
+           * explicitly set and keeps its default (zero) value instead. In that
+           * case this initial call is required to publish that zero value (as
+           * opposed to the default `undefined` value of the JS `let`).
+           */
+          instrs += wa.GLOBAL_GET(genGlobalName.forStaticField(fieldIdent.name))
       }
+
+      // Call the export setter
+      instrs += wa.CALL(genFunctionName.forTopLevelExportSetter(tle.exportName))
     }
 
     // Emit the module initializers
@@ -283,24 +288,27 @@ final class Emitter(config: Emitter.Config) {
       (moduleImport, item)
     }).unzip
 
-    /* TODO This is not correct for exported *vars*, since they won't receive
-     * updates from mutations after loading.
-     */
-    val reExportStats = for {
+    val (exportDecls, exportSetters) = (for {
       exportName <- module.topLevelExports.map(_.exportName)
     } yield {
-      s"export let $exportName = __exports.$exportName;"
-    }
+      val identName = s"exported$exportName"
+      val decl = s"let $identName;\nexport { $identName as $exportName };"
+      val setter = s"  $exportName: (x) => $identName = x,"
+      (decl, setter)
+    }).unzip
 
     s"""
       |${moduleImports.mkString("\n")}
       |
       |import { load as __load } from './${config.loaderModuleName}';
-      |const __exports = await __load('./${wasmFileName}', {
-      |${importedModulesItems.mkString("\n")}
-      |});
       |
-      |${reExportStats.mkString("\n")}
+      |${exportDecls.mkString("\n")}
+      |
+      |await __load('./${wasmFileName}', {
+      |${importedModulesItems.mkString("\n")}
+      |}, {
+      |${exportSetters.mkString("\n")}
+      |});
     """.stripMargin.trim() + "\n"
   }
 }

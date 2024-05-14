@@ -460,8 +460,19 @@ private class FunctionEmitter private (
         }
 
       case sel: SelectStatic =>
+        val fieldName = sel.field.name
+        val globalName = genGlobalName.forStaticField(fieldName)
+
         genTree(t.rhs, sel.tpe)
-        instrs += wa.GLOBAL_SET(genGlobalName.forStaticField(sel.field.name))
+        instrs += wa.GLOBAL_SET(globalName)
+
+        // Update top-level export mirrors
+        val classInfo = ctx.getClassInfo(fieldName.className)
+        val mirrors = classInfo.staticFieldMirrors.getOrElse(fieldName, Nil)
+        for (exportedName <- mirrors) {
+          instrs += wa.GLOBAL_GET(globalName)
+          instrs += wa.CALL(genFunctionName.forTopLevelExportSetter(exportedName))
+        }
 
       case sel: ArraySelect =>
         genTreeAuto(sel.array)

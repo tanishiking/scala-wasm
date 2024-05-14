@@ -33,9 +33,6 @@ object VarGen {
     def forStaticField(fieldName: IRFieldName): GlobalName =
       GlobalName(s"static.${fieldName.nameString}")
 
-    def forTopLevelExport(exportName: String): GlobalName =
-      GlobalName(s"export.$exportName")
-
     def forJSPrivateField(fieldName: IRFieldName): GlobalName =
       GlobalName(s"jspfield.${fieldName.nameString}")
 
@@ -103,6 +100,8 @@ object VarGen {
 
     def forExport(exportedName: String): FunctionName =
       make("export", exportedName)
+    def forTopLevelExportSetter(exportedName: String): FunctionName =
+      make("setexport", exportedName)
 
     def loadModule(clazz: ClassName): FunctionName =
       make("loadModule", clazz.nameString)
