@@ -22,6 +22,42 @@ object CoreWasmLib {
 
   private implicit val noPos: Position = Position.NoPosition
 
+  /** Fields of the `typeData` struct definition.
+    *
+    * They are accessible as a public list because they must be repeated in every vtable type
+    * definition.
+    *
+    * @see
+    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
+    */
+  val typeDataStructFields: List[WasmStructField] = {
+    import genFieldName.typeData._
+    import WasmRefType.nullable
+    List(
+      WasmStructField(nameOffset, WasmInt32, isMutable = false),
+      WasmStructField(nameSize, WasmInt32, isMutable = false),
+      WasmStructField(nameStringIndex, WasmInt32, isMutable = false),
+      WasmStructField(kind, WasmInt32, isMutable = false),
+      WasmStructField(specialInstanceTypes, WasmInt32, isMutable = false),
+      WasmStructField(strictAncestors, nullable(genTypeName.typeDataArray), isMutable = false),
+      WasmStructField(componentType, nullable(genTypeName.typeData), isMutable = false),
+      WasmStructField(name, WasmRefType.anyref, isMutable = true),
+      WasmStructField(classOfValue, nullable(genTypeName.ClassStruct), isMutable = true),
+      WasmStructField(arrayOf, nullable(genTypeName.ObjectVTable), isMutable = true),
+      WasmStructField(cloneFunction, nullable(genTypeName.cloneFunctionType), isMutable = false),
+      WasmStructField(
+        isJSClassInstance,
+        nullable(genTypeName.isJSClassInstanceFuncType),
+        isMutable = false
+      ),
+      WasmStructField(
+        reflectiveProxies,
+        WasmRefType(genTypeName.reflectiveProxies),
+        isMutable = false
+      )
+    )
+  }
+
   /** Generates definitions that must come *before* the code generated for regular classes.
     *
     * This notably includes the `typeData` definitions, since the vtable of `jl.Object` is a subtype
@@ -67,6 +103,19 @@ object CoreWasmLib {
 
   private def genCoreTypesInRecType()(implicit ctx: WasmContext): Unit = {
     ctx.mainRecType.addSubType(
+      genTypeName.cloneFunctionType,
+      WasmFunctionType(
+        List(WasmRefType(genTypeName.ObjectStruct)),
+        List(WasmRefType(genTypeName.ObjectStruct))
+      )
+    )
+
+    ctx.mainRecType.addSubType(
+      genTypeName.isJSClassInstanceFuncType,
+      WasmFunctionType(List(WasmRefType.anyref), List(WasmInt32))
+    )
+
+    ctx.mainRecType.addSubType(
       genTypeName.typeDataArray,
       WasmArrayType(WasmFieldType(WasmRefType(genTypeName.typeData), isMutable = false))
     )
@@ -84,7 +133,7 @@ object CoreWasmLib {
         genTypeName.typeData,
         isFinal = false,
         None,
-        WasmStructType(ctx.typeDataStructFields)
+        WasmStructType(typeDataStructFields)
       )
     )
 
@@ -148,7 +197,7 @@ object CoreWasmLib {
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
     val exceptionSig = WasmFunctionSignature(List(WasmRefType.externref), Nil)
-    val typeName = ctx.addFunctionType(exceptionSig)
+    val typeName = ctx.moduleBuilder.signatureToTypeName(exceptionSig)
     ctx.moduleBuilder.addImport(
       WasmImport(
         "__scalaJSHelpers",
@@ -287,7 +336,7 @@ object CoreWasmLib {
         results: List[WasmType]
     ): Unit = {
       val sig = WasmFunctionSignature(params, results)
-      val typeName = ctx.addFunctionType(sig)
+      val typeName = ctx.moduleBuilder.signatureToTypeName(sig)
       ctx.moduleBuilder.addImport(
         WasmImport("__scalaJSHelpers", name.name, WasmImportDesc.Func(name, typeName))
       )
@@ -932,7 +981,7 @@ object CoreWasmLib {
         instrs += REF_NULL(WasmHeapType.None) // arrayOf
 
         // clone
-        instrs.switch(WasmRefType(ctx.cloneFunctionTypeName)) { () =>
+        instrs.switch(WasmRefType(genTypeName.cloneFunctionType)) { () =>
           instrs += LOCAL_GET(typeDataParam)
           instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.kindIdx)
         }(
@@ -1104,7 +1153,7 @@ object CoreWasmLib {
           instrs += BR_ON_NULL(isJSClassInstanceIsNull)
 
           // Call the function
-          instrs += CALL_REF(ctx.isJSClassInstanceFuncTypeName)
+          instrs += CALL_REF(genTypeName.isJSClassInstanceFuncType)
           instrs += RETURN
         }
         instrs += DROP // drop `value` which was left on the stack
@@ -2073,7 +2122,7 @@ object CoreWasmLib {
     val fb = newFunctionBuilder(genFunctionName.clone(baseRef))
     val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
     fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
-    fb.setFunctionType(ctx.cloneFunctionTypeName)
+    fb.setFunctionType(genTypeName.cloneFunctionType)
 
     val instrs = fb
 

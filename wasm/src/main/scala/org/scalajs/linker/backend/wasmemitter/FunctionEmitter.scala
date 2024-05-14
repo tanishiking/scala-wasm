@@ -47,7 +47,7 @@ object FunctionEmitter {
       restParam: Option[IRTrees.ParamDef],
       body: IRTrees.Tree,
       resultType: IRTypes.Type
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): Unit = {
+  )(implicit ctx: WasmContext, pos: Position): Unit = {
     val emitter = prepareEmitter(
       functionName,
       enclosingClassName,
@@ -69,7 +69,7 @@ object FunctionEmitter {
       enclosingClassName: IRNames.ClassName,
       jsClassCaptures: List[IRTrees.ParamDef],
       ctor: IRTrees.JSConstructorDef
-  )(implicit ctx: TypeDefinableWasmContext): Unit = {
+  )(implicit ctx: WasmContext): Unit = {
     implicit val pos = ctor.pos
 
     val allCtorParams = ctor.args ::: ctor.restParam.toList
@@ -148,7 +148,7 @@ object FunctionEmitter {
       receiverTyp: Option[Types.WasmType],
       paramDefs: List[IRTrees.ParamDef],
       resultTypes: List[Types.WasmType]
-  )(implicit ctx: TypeDefinableWasmContext, pos: Position): FunctionEmitter = {
+  )(implicit ctx: WasmContext, pos: Position): FunctionEmitter = {
     val fb = new FunctionBuilder(ctx.moduleBuilder, functionName, pos)
 
     def addCaptureLikeParamListAndMakeEnv(
@@ -250,7 +250,7 @@ object FunctionEmitter {
 }
 
 private class FunctionEmitter private (
-    ctx: TypeDefinableWasmContext,
+    ctx: WasmContext,
     val fb: FunctionBuilder,
     enclosingClassName: Option[IRNames.ClassName],
     _newTargetStorage: Option[FunctionEmitter.VarStorage.Local],
@@ -2668,7 +2668,7 @@ private class FunctionEmitter private (
       genFieldIdx.typeData.cloneFunctionIdx
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
-    instrs += CALL_REF(ctx.cloneFunctionTypeName)
+    instrs += CALL_REF(genTypeName.cloneFunctionType)
 
     t.tpe match {
       case ClassType(className) =>

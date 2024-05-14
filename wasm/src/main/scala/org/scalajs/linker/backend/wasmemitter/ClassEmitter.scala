@@ -143,7 +143,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       )
       val xParam = fb.addParam("x", WasmRefType.anyref)
       fb.setResultType(WasmInt32)
-      fb.setFunctionType(ctx.isJSClassInstanceFuncTypeName)
+      fb.setFunctionType(genTypeName.isJSClassInstanceFuncType)
 
       val instrs = fb
 
@@ -373,7 +373,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       case None    => genTypeName.typeData
       case Some(s) => genTypeName.forVTable(s)
     }
-    val structType = WasmStructType(ctx.typeDataStructFields ::: vtableFields)
+    val structType = WasmStructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
     val subType = WasmSubType(typeName, isFinal = false, Some(superType), structType)
     ctx.mainRecType.addSubType(subType)
     typeName
@@ -533,7 +533,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
     val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
     fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
-    fb.setFunctionType(ctx.cloneFunctionTypeName)
+    fb.setFunctionType(genTypeName.cloneFunctionType)
 
     val instrs = fb
 

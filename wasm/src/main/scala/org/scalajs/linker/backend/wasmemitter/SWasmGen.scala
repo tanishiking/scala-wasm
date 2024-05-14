@@ -50,7 +50,7 @@ object SWasmGen {
   }
 
   def genLoadJSConstructor(fb: FunctionBuilder, className: ClassName)(implicit
-      ctx: TypeDefinableWasmContext
+      ctx: WasmContext
   ): Unit = {
     val info = ctx.getClassInfo(className)
 
@@ -65,7 +65,7 @@ object SWasmGen {
   }
 
   def genLoadJSFromSpec(fb: FunctionBuilder, loadSpec: JSNativeLoadSpec)(implicit
-      ctx: TypeDefinableWasmContext
+      ctx: WasmContext
   ): Unit = {
     def genFollowPath(path: List[String]): Unit = {
       for (prop <- path) {

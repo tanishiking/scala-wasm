@@ -23,4 +23,7 @@ object SpecialNames {
   val JSExceptionField = FieldName(JSExceptionClass, SimpleFieldName("exception"))
 
   val hashCodeMethodName = MethodName("hashCode", Nil, IntRef)
+
+  /** A unique simple method name to map all method *signatures* into `MethodName`s. */
+  val normalizedSimpleMethodName = SimpleMethodName("m")
 }

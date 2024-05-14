@@ -500,7 +500,11 @@ object VarGen {
 
     def forFunction(idx: Int): WasmTypeName = WasmTypeName(s"f.$idx")
 
-    def forRecFunction(idx: Int): WasmTypeName = WasmTypeName(s"recf.$idx")
+    val cloneFunctionType = WasmTypeName("cloneFuncType")
+    val isJSClassInstanceFuncType = WasmTypeName("isJSClassInstanceFuncType")
+
+    def forTableFunctionType(methodName: MethodName): WasmTypeName =
+      WasmTypeName("m." + methodName.nameString)
   }
 
   object genTagName {
