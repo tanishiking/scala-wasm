@@ -2,87 +2,82 @@ package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
-import org.scalajs.ir.{Trees => IRTrees}
 import org.scalajs.ir.Position
 
+import Instructions._
 import Names._
-import Types.WasmType
-import WasmInstr._
+import Modules._
+import Types.Type
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,
-    val functionName: WasmFunctionName,
+    val functionName: FunctionName,
     functionPos: Position
 ) {
   import FunctionBuilder._
 
   private var labelIdx = 0
 
-  private val params = mutable.ListBuffer.empty[WasmLocal]
-  private val locals = mutable.ListBuffer.empty[WasmLocal]
-  private var resultTypes: List[WasmType] = Nil
+  private val params = mutable.ListBuffer.empty[Local]
+  private val locals = mutable.ListBuffer.empty[Local]
+  private var resultTypes: List[Type] = Nil
 
-  private var specialFunctionType: Option[WasmTypeName] = None
+  private var specialFunctionType: Option[TypeName] = None
 
   /** The instructions buffer. */
-  private val instrs: mutable.ListBuffer[WasmInstr] = mutable.ListBuffer.empty
+  private val instrs: mutable.ListBuffer[Instr] = mutable.ListBuffer.empty
 
-  def setFunctionType(typ: WasmTypeName): Unit =
+  def setFunctionType(typ: TypeName): Unit =
     specialFunctionType = Some(typ)
 
-  def setResultTypes(typs: List[WasmType]): Unit =
+  def setResultTypes(typs: List[Type]): Unit =
     resultTypes = typs
 
-  def setResultType(typ: WasmType): Unit =
+  def setResultType(typ: Type): Unit =
     setResultTypes(typ :: Nil)
 
-  def addParam(name: WasmLocalName, typ: WasmType): WasmLocalName = {
-    params += WasmLocal(name, typ, isParameter = true)
+  def addParam(name: LocalName, typ: Type): LocalName = {
+    params += Local(name, typ, isParameter = true)
     name
   }
 
-  def addParam(name: String, typ: WasmType): WasmLocalName =
-    addParam(WasmLocalName(name), typ)
+  def addParam(name: String, typ: Type): LocalName =
+    addParam(LocalName(name), typ)
 
-  def genLabel(): WasmLabelName = {
-    val label = WasmLabelName(labelIdx.toString())
+  def genLabel(): LabelName = {
+    val label = LabelName(labelIdx.toString())
     labelIdx += 1
     label
   }
 
-  def addLocal(name: WasmLocalName, typ: WasmType): WasmLocalName = {
-    locals += WasmLocal(name, typ, isParameter = false)
+  def addLocal(name: LocalName, typ: Type): LocalName = {
+    locals += Local(name, typ, isParameter = false)
     name
   }
 
-  def addLocal(name: String, typ: WasmType): WasmLocalName =
-    addLocal(WasmLocalName(name), typ)
-
-  // Position handling
-
-  def markPosition(tree: IRTrees.Tree): Unit =
-    instrs += PositionMark(tree.pos)
+  def addLocal(name: String, typ: Type): LocalName =
+    addLocal(LocalName(name), typ)
 
   // Instructions
 
-  def +=(instr: WasmInstr): Unit =
+  def +=(instr: Instr): Unit =
     instrs += instr
 
-  def ++=(instrs: Iterable[WasmInstr]): Unit =
+  def ++=(instrs: Iterable[Instr]): Unit =
     this.instrs ++= instrs
 
   def markCurrentInstructionIndex(): InstructionIndex =
     new InstructionIndex(instrs.size)
 
-  def insert(index: InstructionIndex, instr: WasmInstr): Unit =
+  def insert(index: InstructionIndex, instr: Instr): Unit =
     instrs.insert(index.value, instr)
 
   // Helpers to build structured control flow
 
-  def sigToBlockType(sig: WasmFunctionSignature): BlockType = sig match {
-    case WasmFunctionSignature(Nil, Nil) =>
+  def sigToBlockType(sig: FunctionSignature): BlockType = sig match {
+    case FunctionSignature(Nil, Nil) =>
       BlockType.ValueType()
-    case WasmFunctionSignature(Nil, resultType :: Nil) =>
+    case FunctionSignature(Nil, resultType :: Nil) =>
       BlockType.ValueType(resultType)
     case _ =>
       BlockType.FunctionType(moduleBuilder.signatureToTypeName(sig))
@@ -96,14 +91,14 @@ final class FunctionBuilder(
     instrs += END
   }
 
-  def ifThenElse(resultType: WasmType)(thenp: => Unit)(elsep: => Unit): Unit =
+  def ifThenElse(resultType: Type)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType(resultType))(thenp)(elsep)
 
-  def ifThenElse(sig: WasmFunctionSignature)(thenp: => Unit)(elsep: => Unit): Unit =
+  def ifThenElse(sig: FunctionSignature)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(sigToBlockType(sig))(thenp)(elsep)
 
-  def ifThenElse(resultTypes: List[WasmType])(thenp: => Unit)(elsep: => Unit): Unit =
-    ifThenElse(WasmFunctionSignature(Nil, resultTypes))(thenp)(elsep)
+  def ifThenElse(resultTypes: List[Type])(thenp: => Unit)(elsep: => Unit): Unit =
+    ifThenElse(FunctionSignature(Nil, resultTypes))(thenp)(elsep)
 
   def ifThenElse()(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType())(thenp)(elsep)
@@ -114,16 +109,16 @@ final class FunctionBuilder(
     instrs += END
   }
 
-  def ifThen(sig: WasmFunctionSignature)(thenp: => Unit): Unit =
+  def ifThen(sig: FunctionSignature)(thenp: => Unit): Unit =
     ifThen(sigToBlockType(sig))(thenp)
 
-  def ifThen(resultTypes: List[WasmType])(thenp: => Unit): Unit =
-    ifThen(WasmFunctionSignature(Nil, resultTypes))(thenp)
+  def ifThen(resultTypes: List[Type])(thenp: => Unit): Unit =
+    ifThen(FunctionSignature(Nil, resultTypes))(thenp)
 
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
 
-  def block[A](blockType: BlockType)(body: WasmLabelName => A): A = {
+  def block[A](blockType: BlockType)(body: LabelName => A): A = {
     val label = genLabel()
     instrs += BLOCK(blockType, Some(label))
     val result = body(label)
@@ -131,19 +126,19 @@ final class FunctionBuilder(
     result
   }
 
-  def block[A](resultType: WasmType)(body: WasmLabelName => A): A =
+  def block[A](resultType: Type)(body: LabelName => A): A =
     block(BlockType.ValueType(resultType))(body)
 
-  def block[A]()(body: WasmLabelName => A): A =
+  def block[A]()(body: LabelName => A): A =
     block(BlockType.ValueType())(body)
 
-  def block[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
+  def block[A](sig: FunctionSignature)(body: LabelName => A): A =
     block(sigToBlockType(sig))(body)
 
-  def block[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
-    block(WasmFunctionSignature(Nil, resultTypes))(body)
+  def block[A](resultTypes: List[Type])(body: LabelName => A): A =
+    block(FunctionSignature(Nil, resultTypes))(body)
 
-  def loop[A](blockType: BlockType)(body: WasmLabelName => A): A = {
+  def loop[A](blockType: BlockType)(body: LabelName => A): A = {
     val label = genLabel()
     instrs += LOOP(blockType, Some(label))
     val result = body(label)
@@ -151,17 +146,17 @@ final class FunctionBuilder(
     result
   }
 
-  def loop[A](resultType: WasmType)(body: WasmLabelName => A): A =
+  def loop[A](resultType: Type)(body: LabelName => A): A =
     loop(BlockType.ValueType(resultType))(body)
 
-  def loop[A]()(body: WasmLabelName => A): A =
+  def loop[A]()(body: LabelName => A): A =
     loop(BlockType.ValueType())(body)
 
-  def loop[A](sig: WasmFunctionSignature)(body: WasmLabelName => A): A =
+  def loop[A](sig: FunctionSignature)(body: LabelName => A): A =
     loop(sigToBlockType(sig))(body)
 
-  def loop[A](resultTypes: List[WasmType])(body: WasmLabelName => A): A =
-    loop(WasmFunctionSignature(Nil, resultTypes))(body)
+  def loop[A](resultTypes: List[Type])(body: LabelName => A): A =
+    loop(FunctionSignature(Nil, resultTypes))(body)
 
   def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
     loop() { loopLabel =>
@@ -180,17 +175,17 @@ final class FunctionBuilder(
     result
   }
 
-  def tryTable[A](resultType: WasmType)(clauses: List[CatchClause])(body: => A): A =
+  def tryTable[A](resultType: Type)(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType(resultType))(clauses)(body)
 
   def tryTable[A]()(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType())(clauses)(body)
 
-  def tryTable[A](sig: WasmFunctionSignature)(clauses: List[CatchClause])(body: => A): A =
+  def tryTable[A](sig: FunctionSignature)(clauses: List[CatchClause])(body: => A): A =
     tryTable(sigToBlockType(sig))(clauses)(body)
 
-  def tryTable[A](resultTypes: List[WasmType])(clauses: List[CatchClause])(body: => A): A =
-    tryTable(WasmFunctionSignature(Nil, resultTypes))(clauses)(body)
+  def tryTable[A](resultTypes: List[Type])(clauses: List[CatchClause])(body: => A): A =
+    tryTable(FunctionSignature(Nil, resultTypes))(clauses)(body)
 
   /** Builds a `switch` over a scrutinee using a `br_table` instruction.
     *
@@ -217,8 +212,8 @@ final class FunctionBuilder(
     *   must consume at least all the results of the scrutinee.
     */
   def switch(
-      scrutineeSig: WasmFunctionSignature,
-      clauseSig: WasmFunctionSignature
+      scrutineeSig: FunctionSignature,
+      clauseSig: FunctionSignature
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
     val clauseLabels = clauses.map(_ => genLabel())
 
@@ -226,7 +221,7 @@ final class FunctionBuilder(
     val numCases = clauses.map(_._1.max).max + 1
     if (numCases >= 128)
       throw new IllegalArgumentException(s"Too many cases for switch: $numCases")
-    val dispatchVector = new Array[WasmLabelName](numCases)
+    val dispatchVector = new Array[LabelName](numCases)
     for {
       (clause, clauseLabel) <- clauses.zip(clauseLabels)
       caseValue <- clause._1
@@ -244,11 +239,11 @@ final class FunctionBuilder(
     )
     val (doneBlockType, clauseBlockType) = {
       val clauseParamsComingFromAbove = clauseSig.params.drop(scrutineeSig.results.size)
-      val doneBlockSig = WasmFunctionSignature(
+      val doneBlockSig = FunctionSignature(
         clauseParamsComingFromAbove ::: scrutineeSig.params,
         clauseSig.results
       )
-      val clauseBlockSig = WasmFunctionSignature(
+      val clauseBlockSig = FunctionSignature(
         clauseParamsComingFromAbove ::: scrutineeSig.params,
         clauseSig.params
       )
@@ -282,37 +277,37 @@ final class FunctionBuilder(
   }
 
   def switch(
-      clauseSig: WasmFunctionSignature
+      clauseSig: FunctionSignature
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(WasmFunctionSignature.NilToNil, clauseSig)(scrutinee)(clauses: _*)(default)
+    switch(FunctionSignature.NilToNil, clauseSig)(scrutinee)(clauses: _*)(default)
   }
 
   def switch(
-      resultType: WasmType
+      resultType: Type
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(WasmFunctionSignature(Nil, List(resultType)))(scrutinee)(clauses: _*)(default)
+    switch(FunctionSignature(Nil, List(resultType)))(scrutinee)(clauses: _*)(default)
   }
 
   def switch()(
       scrutinee: () => Unit
   )(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(WasmFunctionSignature.NilToNil)(scrutinee)(clauses: _*)(default)
+    switch(FunctionSignature.NilToNil)(scrutinee)(clauses: _*)(default)
   }
 
   // Final result
 
-  def buildAndAddToModule(): WasmFunction = {
+  def buildAndAddToModule(): Function = {
     val functionTypeName = specialFunctionType.getOrElse {
-      val sig = WasmFunctionSignature(params.toList.map(_.typ), resultTypes)
+      val sig = FunctionSignature(params.toList.map(_.typ), resultTypes)
       moduleBuilder.signatureToTypeName(sig)
     }
 
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
-    val expr = WasmExpr(dcedInstrs)
+    val expr = Expr(dcedInstrs)
     val allLocals = params.prependToList(locals.toList)
     val func =
-      WasmFunction(functionName, functionTypeName, allLocals, resultTypes, expr, functionPos)
+      Function(functionName, functionTypeName, allLocals, resultTypes, expr, functionPos)
     moduleBuilder.addFunction(func)
     func
   }
@@ -331,8 +326,8 @@ final class FunctionBuilder(
     * `StructuredLabeledInstr`s during that process, must jump over them. That means we need to
     * track the level of nesting at which we are.
     */
-  private def localDeadCodeEliminationOfInstrs(): List[WasmInstr] = {
-    val resultBuilder = List.newBuilder[WasmInstr]
+  private def localDeadCodeEliminationOfInstrs(): List[Instr] = {
+    val resultBuilder = List.newBuilder[Instr]
 
     val iter = instrs.iterator
     while (iter.hasNext) {
@@ -343,7 +338,7 @@ final class FunctionBuilder(
       /* If it is a stack-polymorphic instruction, dead-code eliminate until the
        * end of the current block.
        */
-      if (instr.isInstanceOf[WasmInstr.StackPolymorphicInstr]) {
+      if (instr.isInstanceOf[StackPolymorphicInstr]) {
         var nestingLevel = 0
 
         while (nestingLevel >= 0 && iter.hasNext) {

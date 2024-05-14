@@ -5,14 +5,14 @@ import org.scalajs.ir.Trees.JSNativeLoadSpec
 import org.scalajs.ir.Types._
 
 import org.scalajs.linker.backend.webassembly._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
+import org.scalajs.linker.backend.webassembly.Instructions._
 
 import VarGen._
 
 /** Scala.js-specific Wasm generators that are used across the board. */
 object SWasmGen {
 
-  def genZeroOf(tpe: Type)(implicit ctx: WasmContext): WasmInstr = {
+  def genZeroOf(tpe: Type)(implicit ctx: WasmContext): Instr = {
     tpe match {
       case BooleanType | CharType | ByteType | ShortType | IntType =>
         I32_CONST(0)
@@ -24,14 +24,14 @@ object SWasmGen {
       case UndefType  => GLOBAL_GET(genGlobalName.undef)
 
       case AnyType | ClassType(_) | ArrayType(_) | NullType =>
-        REF_NULL(Types.WasmHeapType.None)
+        REF_NULL(Types.HeapType.None)
 
       case NoType | NothingType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
     }
   }
 
-  def genBoxedZeroOf(tpe: Type)(implicit ctx: WasmContext): WasmInstr = {
+  def genBoxedZeroOf(tpe: Type)(implicit ctx: WasmContext): Instr = {
     tpe match {
       case BooleanType =>
         GLOBAL_GET(genGlobalName.bFalse)
@@ -42,7 +42,7 @@ object SWasmGen {
       case LongType =>
         GLOBAL_GET(genGlobalName.bZeroLong)
       case AnyType | ClassType(_) | ArrayType(_) | StringType | UndefType | NullType =>
-        REF_NULL(Types.WasmHeapType.None)
+        REF_NULL(Types.HeapType.None)
 
       case NoType | NothingType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")

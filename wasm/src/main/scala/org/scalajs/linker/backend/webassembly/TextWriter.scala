@@ -1,19 +1,20 @@
 package org.scalajs.linker.backend.webassembly
 
+import Instructions._
 import Names._
+import Modules._
 import Types._
-import WasmInstr._
 
-class WasmTextWriter {
-  import WasmTextWriter._
+class TextWriter {
+  import TextWriter._
 
-  def write(module: WasmModule): String = {
+  def write(module: Module): String = {
     implicit val b = new WatBuilder()
     writeModule(module)
     b.toString()
   }
 
-  private def writeModule(module: WasmModule)(implicit b: WatBuilder): Unit = {
+  private def writeModule(module: Module)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "module", {
         module.types.foreach(writeRecType)
@@ -29,7 +30,7 @@ class WasmTextWriter {
     )
   }
 
-  private def writeRecType(recType: WasmRecType)(implicit b: WatBuilder): Unit = {
+  private def writeRecType(recType: RecType)(implicit b: WatBuilder): Unit = {
     recType.subTypes match {
       case singleSubType :: Nil =>
         writeTypeDefinition(singleSubType)
@@ -42,12 +43,12 @@ class WasmTextWriter {
     }
   }
 
-  private def writeTypeDefinition(subType: WasmSubType)(implicit b: WatBuilder): Unit = {
+  private def writeTypeDefinition(subType: SubType)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "type", {
         b.appendName(subType.name)
         subType match {
-          case WasmSubType(_, true, None, compositeType) =>
+          case SubType(_, true, None, compositeType) =>
             writeCompositeType(compositeType)
           case _ =>
             b.sameLineList(
@@ -64,8 +65,8 @@ class WasmTextWriter {
     )
   }
 
-  private def writeCompositeType(t: WasmCompositeType)(implicit b: WatBuilder): Unit = {
-    def writeFieldType(fieldType: WasmFieldType): Unit = {
+  private def writeCompositeType(t: CompositeType)(implicit b: WatBuilder): Unit = {
+    def writeFieldType(fieldType: FieldType): Unit = {
       if (fieldType.isMutable)
         b.sameLineList(
           "mut", {
@@ -75,7 +76,7 @@ class WasmTextWriter {
       else writeType(fieldType.typ)
     }
 
-    def writeField(field: WasmStructField): Unit = {
+    def writeField(field: StructField): Unit = {
       b.sameLineList(
         "field", {
           b.appendName(field.name)
@@ -85,7 +86,7 @@ class WasmTextWriter {
     }
 
     t match {
-      case WasmFunctionType(params, results) =>
+      case FunctionType(params, results) =>
         b.sameLineList(
           "func", {
             params.foreach { ty =>
@@ -97,14 +98,14 @@ class WasmTextWriter {
           }
         )
 
-      case WasmArrayType(fieldType) =>
+      case ArrayType(fieldType) =>
         b.sameLineList(
           "array", {
             writeFieldType(fieldType)
           }
         )
 
-      case WasmStructType(fields) =>
+      case StructType(fields) =>
         b.sameLineList(
           "struct", {
             fields.foreach(writeField)
@@ -113,21 +114,21 @@ class WasmTextWriter {
     }
   }
 
-  private def writeImport(i: WasmImport)(implicit b: WatBuilder): Unit = {
+  private def writeImport(i: Import)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "import", {
         b.appendElement("\"" + i.module + "\"")
         b.appendElement("\"" + i.name + "\"")
 
         i.desc match {
-          case WasmImportDesc.Func(id, typeName) =>
+          case ImportDesc.Func(id, typeName) =>
             b.sameLineList(
               "func", {
                 b.appendName(id)
                 writeTypeUse(typeName)
               }
             )
-          case WasmImportDesc.Global(id, typ, isMutable) =>
+          case ImportDesc.Global(id, typ, isMutable) =>
             b.sameLineList(
               "global", {
                 b.appendName(id)
@@ -137,7 +138,7 @@ class WasmTextWriter {
                   writeType(typ)
               }
             )
-          case WasmImportDesc.Tag(id, typeName) =>
+          case ImportDesc.Tag(id, typeName) =>
             b.sameLineList(
               "tag", {
                 b.appendName(id)
@@ -149,15 +150,15 @@ class WasmTextWriter {
     )
   }
 
-  private def writeSig(params: List[WasmType], results: List[WasmType])(implicit
+  private def writeSig(params: List[Type], results: List[Type])(implicit
       b: WatBuilder
   ): Unit = {
     params.foreach(typ => b.sameLineList("param", writeType(typ)))
     results.foreach(typ => b.sameLineList("result", writeType(typ)))
   }
 
-  private def writeFunction(f: WasmFunction)(implicit b: WatBuilder): Unit = {
-    def writeParam(l: WasmLocal)(implicit b: WatBuilder): Unit = {
+  private def writeFunction(f: Function)(implicit b: WatBuilder): Unit = {
+    def writeParam(l: Local)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
           b.appendName(l.name)
@@ -166,7 +167,7 @@ class WasmTextWriter {
       )
     }
 
-    def writeLocal(l: WasmLocal)(implicit b: WatBuilder): Unit = {
+    def writeLocal(l: Local)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "local", {
           b.appendName(l.name)
@@ -194,7 +195,7 @@ class WasmTextWriter {
     )
   }
 
-  private def writeTag(tag: WasmTag)(implicit b: WatBuilder): Unit = {
+  private def writeTag(tag: Tag)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "tag", {
         b.appendName(tag.name)
@@ -203,7 +204,7 @@ class WasmTextWriter {
     )
   }
 
-  private def writeGlobal(g: WasmGlobal)(implicit b: WatBuilder) =
+  private def writeGlobal(g: Global)(implicit b: WatBuilder) =
     b.newLineList(
       "global", {
         b.appendName(g.name)
@@ -214,18 +215,18 @@ class WasmTextWriter {
       }
     )
 
-  private def writeExport(e: WasmExport)(implicit
+  private def writeExport(e: Export)(implicit
       b: WatBuilder
   ) = b.newLineList(
     "export", {
       b.appendElement("\"" + e.exportName + "\"")
       e match {
-        case WasmExport.Function(_, funcName) =>
+        case Export.Function(_, funcName) =>
           b.sameLineList(
             "func",
             { b.appendName(funcName) }
           )
-        case WasmExport.Global(_, globalName) =>
+        case Export.Global(_, globalName) =>
           b.sameLineList(
             "global",
             { b.appendName(globalName) }
@@ -234,7 +235,7 @@ class WasmTextWriter {
     }
   )
 
-  private def writeStart(startFunction: WasmFunctionName)(implicit b: WatBuilder): Unit = {
+  private def writeStart(startFunction: FunctionName)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "start", {
         b.appendName(startFunction)
@@ -242,12 +243,12 @@ class WasmTextWriter {
     )
   }
 
-  private def writeElement(element: WasmElement)(implicit b: WatBuilder): Unit = {
+  private def writeElement(element: Element)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "elem", {
         element.mode match {
-          case WasmElement.Mode.Passive     => ()
-          case WasmElement.Mode.Declarative => b.appendElement("declare")
+          case Element.Mode.Passive     => ()
+          case Element.Mode.Declarative => b.appendElement("declare")
         }
         writeType(element.typ)
         element.init.foreach { item =>
@@ -260,31 +261,31 @@ class WasmTextWriter {
     )
   }
 
-  private def writeData(data: WasmData)(implicit b: WatBuilder): Unit = {
+  private def writeData(data: Data)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "data", {
         b.appendName(data.name)
         data.mode match {
-          case WasmData.Mode.Passive => ()
+          case Data.Mode.Passive => ()
         }
         b.appendElement("\"" + data.bytes.map("\\%02x".format(_)).mkString + "\"")
       }
     )
   }
 
-  private def writeTypeUse(typeName: WasmTypeName)(implicit b: WatBuilder): Unit = {
+  private def writeTypeUse(typeName: TypeName)(implicit b: WatBuilder): Unit = {
     b.sameLineList("type", b.appendName(typeName))
   }
 
-  private def writeType(typ: WasmStorageType)(implicit b: WatBuilder): Unit = {
+  private def writeType(typ: StorageType)(implicit b: WatBuilder): Unit = {
     typ match {
-      case typ: WasmSimpleType => b.appendElement(typ.textName)
-      case typ: WasmPackedType => b.appendElement(typ.textName)
+      case typ: SimpleType => b.appendElement(typ.textName)
+      case typ: PackedType => b.appendElement(typ.textName)
 
-      case WasmRefType(true, heapType: WasmHeapType.AbsHeapType) =>
+      case RefType(true, heapType: HeapType.AbsHeapType) =>
         b.appendElement(heapType.nullableRefTextName)
 
-      case WasmRefType(nullable, heapType) =>
+      case RefType(nullable, heapType) =>
         b.sameLineList(
           "ref", {
             if (nullable)
@@ -295,10 +296,10 @@ class WasmTextWriter {
     }
   }
 
-  private def writeHeapType(heapType: WasmHeapType)(implicit b: WatBuilder): Unit = {
+  private def writeHeapType(heapType: HeapType)(implicit b: WatBuilder): Unit = {
     heapType match {
-      case WasmHeapType.Type(typeName)        => b.appendName(typeName)
-      case heapType: WasmHeapType.AbsHeapType => b.appendElement(heapType.textName)
+      case HeapType.Type(typeName)        => b.appendName(typeName)
+      case heapType: HeapType.AbsHeapType => b.appendElement(heapType.textName)
     }
   }
 
@@ -320,12 +321,12 @@ class WasmTextWriter {
     }
   }
 
-  private def writeLabelIdx(labelIdx: WasmLabelName)(implicit b: WatBuilder): Unit =
+  private def writeLabelIdx(labelIdx: LabelName)(implicit b: WatBuilder): Unit =
     b.appendName(labelIdx)
 
-  private def writeInstr(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+  private def writeInstr(instr: Instr)(implicit b: WatBuilder): Unit = {
     instr match {
-      case WasmInstr.PositionMark(_) =>
+      case PositionMark(_) =>
         // ignore
         ()
 
@@ -352,31 +353,31 @@ class WasmTextWriter {
     }
   }
 
-  private def writeInstrImmediates(instr: WasmInstr)(implicit b: WatBuilder): Unit = {
+  private def writeInstrImmediates(instr: Instr)(implicit b: WatBuilder): Unit = {
     instr match {
       // Convenience categories
 
-      case instr: WasmSimpleInstr =>
+      case instr: SimpleInstr =>
         ()
-      case instr: WasmBlockTypeLabeledInstr =>
+      case instr: BlockTypeLabeledInstr =>
         writeBlockType(instr.blockTypeArgument)
-      case instr: WasmLabelInstr =>
+      case instr: LabelInstr =>
         writeLabelIdx(instr.labelArgument)
-      case instr: WasmFuncInstr =>
+      case instr: FuncInstr =>
         b.appendName(instr.funcArgument)
-      case instr: WasmTypeInstr =>
+      case instr: TypeInstr =>
         b.appendName(instr.typeArgument)
-      case instr: WasmTagInstr =>
+      case instr: TagInstr =>
         b.appendName(instr.tagArgument)
-      case instr: WasmLocalInstr =>
+      case instr: LocalInstr =>
         b.appendName(instr.localArgument)
-      case instr: WasmGlobalInstr =>
+      case instr: GlobalInstr =>
         b.appendName(instr.globalArgument)
-      case instr: WasmHeapTypeInstr =>
+      case instr: HeapTypeInstr =>
         writeHeapType(instr.heapTypeArgument)
-      case instr: WasmRefTypeInstr =>
+      case instr: RefTypeInstr =>
         writeType(instr.refTypeArgument)
-      case instr: WasmStructFieldInstr =>
+      case instr: StructFieldInstr =>
         b.appendName(instr.structTypeName)
         b.appendElement(instr.fieldIdx.value.toString())
 
@@ -429,7 +430,7 @@ class WasmTextWriter {
   }
 }
 
-object WasmTextWriter {
+object TextWriter {
   private class WatBuilder {
     private val builder = new StringBuilder
     private var level = 0
@@ -470,7 +471,7 @@ object WasmTextWriter {
       builder.append(value)
     }
 
-    def appendName(name: WasmName): Unit =
+    def appendName(name: Name): Unit =
       appendElement("$" + sanitizeWatIdentifier(name.name))
 
     /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */

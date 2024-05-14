@@ -76,7 +76,7 @@ final class WebAssemblyLinkerBackend(
 
     def maybeWriteWatFile(): Future[Unit] = {
       if (linkerConfig.prettyPrint) {
-        val textOutput = new WasmTextWriter().write(wasmModule)
+        val textOutput = new TextWriter().write(wasmModule)
         val textOutputBytes = textOutput.getBytes(StandardCharsets.UTF_8)
         outputImpl.writeFull(watFileName, ByteBuffer.wrap(textOutputBytes))
       } else {
@@ -95,7 +95,7 @@ final class WebAssemblyLinkerBackend(
 
         val smWriter =
           sourceMapWriter.createSourceMapWriter(wasmFileURI, linkerConfig.relativizeSourceMapBase)
-        val binaryOutput = new WasmBinaryWriter.WithSourceMap(
+        val binaryOutput = new BinaryWriter.WithSourceMap(
           wasmModule,
           emitDebugInfo,
           smWriter,
@@ -107,7 +107,7 @@ final class WebAssemblyLinkerBackend(
           outputImpl.writeFull(sourceMapFileName, sourceMapWriter.toByteBuffer())
         }
       } else {
-        val binaryOutput = new WasmBinaryWriter(wasmModule, emitDebugInfo).write()
+        val binaryOutput = new BinaryWriter(wasmModule, emitDebugInfo).write()
         outputImpl.writeFull(wasmFileName, ByteBuffer.wrap(binaryOutput))
       }
     }

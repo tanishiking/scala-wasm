@@ -4,17 +4,16 @@ import scala.annotation.switch
 
 import scala.collection.mutable
 
-import org.scalajs.ir.Types.ClassType
-import org.scalajs.ir.ClassKind
-import org.scalajs.ir.Position
-import org.scalajs.ir.{Trees => IRTrees}
-import org.scalajs.ir.{Types => IRTypes}
-import org.scalajs.ir.{Names => IRNames}
+import org.scalajs.ir.{ClassKind, Position}
+import org.scalajs.ir.Names._
+import org.scalajs.ir.Trees._
+import org.scalajs.ir.Types._
 
 import org.scalajs.linker.backend.webassembly._
-import org.scalajs.linker.backend.webassembly.Names._
-import org.scalajs.linker.backend.webassembly.WasmInstr._
-import org.scalajs.linker.backend.webassembly.{WasmFunctionSignature => Sig}
+import org.scalajs.linker.backend.webassembly.{Instructions => wa}
+import org.scalajs.linker.backend.webassembly.{Names => wanme}
+import org.scalajs.linker.backend.webassembly.{Types => watpe}
+import org.scalajs.linker.backend.webassembly.Modules.{FunctionSignature => Sig}
 
 import EmbeddedConstants._
 import SWasmGen._
@@ -39,14 +38,14 @@ object FunctionEmitter {
   private final val UseLegacyExceptionsForTryCatch = true
 
   def emitFunction(
-      functionName: WasmFunctionName,
-      enclosingClassName: Option[IRNames.ClassName],
-      captureParamDefs: Option[List[IRTrees.ParamDef]],
-      receiverTyp: Option[Types.WasmType],
-      paramDefs: List[IRTrees.ParamDef],
-      restParam: Option[IRTrees.ParamDef],
-      body: IRTrees.Tree,
-      resultType: IRTypes.Type
+      functionName: wanme.FunctionName,
+      enclosingClassName: Option[ClassName],
+      captureParamDefs: Option[List[ParamDef]],
+      receiverTyp: Option[watpe.Type],
+      paramDefs: List[ParamDef],
+      restParam: Option[ParamDef],
+      body: Tree,
+      resultType: Type
   )(implicit ctx: WasmContext, pos: Position): Unit = {
     val emitter = prepareEmitter(
       functionName,
@@ -63,12 +62,12 @@ object FunctionEmitter {
   }
 
   def emitJSConstructorFunctions(
-      preSuperStatsFunctionName: WasmFunctionName,
-      superArgsFunctionName: WasmFunctionName,
-      postSuperStatsFunctionName: WasmFunctionName,
-      enclosingClassName: IRNames.ClassName,
-      jsClassCaptures: List[IRTrees.ParamDef],
-      ctor: IRTrees.JSConstructorDef
+      preSuperStatsFunctionName: wanme.FunctionName,
+      superArgsFunctionName: wanme.FunctionName,
+      postSuperStatsFunctionName: wanme.FunctionName,
+      enclosingClassName: ClassName,
+      jsClassCaptures: List[ParamDef],
+      ctor: JSConstructorDef
   )(implicit ctx: WasmContext): Unit = {
     implicit val pos = ctor.pos
 
@@ -76,14 +75,14 @@ object FunctionEmitter {
     val ctorBody = ctor.body
 
     // Compute the pre-super environment
-    val preSuperDecls = ctorBody.beforeSuper.collect { case varDef: IRTrees.VarDef =>
+    val preSuperDecls = ctorBody.beforeSuper.collect { case varDef: VarDef =>
       varDef
     }
 
     // Build the `preSuperStats` function
     locally {
       val preSuperEnvStructTypeName = ctx.getClosureDataStructType(preSuperDecls.map(_.vtpe))
-      val preSuperEnvTyp = Types.WasmRefType(preSuperEnvStructTypeName)
+      val preSuperEnvTyp = watpe.RefType(preSuperEnvStructTypeName)
 
       val emitter = prepareEmitter(
         preSuperStatsFunctionName,
@@ -99,8 +98,8 @@ object FunctionEmitter {
       emitter.genBlockStats(ctorBody.beforeSuper) {
         // Build and return the preSuperEnv struct
         for (varDef <- preSuperDecls)
-          emitter.fb += LOCAL_GET(emitter.lookupLocalAssertLocalStorage(varDef.name.name))
-        emitter.fb += STRUCT_NEW(preSuperEnvStructTypeName)
+          emitter.fb += wa.LOCAL_GET(emitter.lookupLocalAssertLocalStorage(varDef.name.name))
+        emitter.fb += wa.STRUCT_NEW(preSuperEnvStructTypeName)
       }
 
       emitter.fb.buildAndAddToModule()
@@ -116,9 +115,9 @@ object FunctionEmitter {
         hasNewTarget = true,
         receiverTyp = None,
         allCtorParams,
-        List(Types.WasmRefType.anyref) // a js.Array
+        List(watpe.RefType.anyref) // a js.Array
       )
-      emitter.genBody(IRTrees.JSArrayConstr(ctorBody.superCall.args), IRTypes.AnyType)
+      emitter.genBody(JSArrayConstr(ctorBody.superCall.args), AnyType)
       emitter.fb.buildAndAddToModule()
     }
 
@@ -130,30 +129,30 @@ object FunctionEmitter {
         Some(jsClassCaptures),
         Some(preSuperDecls),
         hasNewTarget = true,
-        receiverTyp = Some(Types.WasmRefType.anyref),
+        receiverTyp = Some(watpe.RefType.anyref),
         allCtorParams,
-        List(Types.WasmRefType.anyref)
+        List(watpe.RefType.anyref)
       )
-      emitter.genBody(IRTrees.Block(ctorBody.afterSuper), IRTypes.AnyType)
+      emitter.genBody(Block(ctorBody.afterSuper), AnyType)
       emitter.fb.buildAndAddToModule()
     }
   }
 
   private def prepareEmitter(
-      functionName: WasmFunctionName,
-      enclosingClassName: Option[IRNames.ClassName],
-      captureParamDefs: Option[List[IRTrees.ParamDef]],
-      preSuperVarDefs: Option[List[IRTrees.VarDef]],
+      functionName: wanme.FunctionName,
+      enclosingClassName: Option[ClassName],
+      captureParamDefs: Option[List[ParamDef]],
+      preSuperVarDefs: Option[List[VarDef]],
       hasNewTarget: Boolean,
-      receiverTyp: Option[Types.WasmType],
-      paramDefs: List[IRTrees.ParamDef],
-      resultTypes: List[Types.WasmType]
+      receiverTyp: Option[watpe.Type],
+      paramDefs: List[ParamDef],
+      resultTypes: List[watpe.Type]
   )(implicit ctx: WasmContext, pos: Position): FunctionEmitter = {
     val fb = new FunctionBuilder(ctx.moduleBuilder, functionName, pos)
 
     def addCaptureLikeParamListAndMakeEnv(
         captureParamName: String,
-        captureLikes: Option[List[(IRNames.LocalName, IRTypes.Type)]]
+        captureLikes: Option[List[(LocalName, Type)]]
     ): Env = {
       captureLikes match {
         case None =>
@@ -161,12 +160,12 @@ object FunctionEmitter {
 
         case Some(captureLikes) =>
           val dataStructTypeName = ctx.getClosureDataStructType(captureLikes.map(_._2))
-          val param = fb.addParam(captureParamName, Types.WasmRefType(dataStructTypeName))
+          val param = fb.addParam(captureParamName, watpe.RefType(dataStructTypeName))
           val env: Env = captureLikes.zipWithIndex.map { case (captureLike, idx) =>
             val storage = VarStorage.StructField(
               param,
               dataStructTypeName,
-              WasmFieldIdx(idx)
+              wanme.FieldIdx(idx)
             )
             captureLike._1 -> storage
           }.toMap
@@ -187,7 +186,7 @@ object FunctionEmitter {
     val newTargetStorage = if (!hasNewTarget) {
       None
     } else {
-      val newTargetParam = fb.addParam(newTargetLocalName, Types.WasmRefType.anyref)
+      val newTargetParam = fb.addParam(newTargetLocalName, watpe.RefType.anyref)
       Some(VarStorage.Local(newTargetParam))
     }
 
@@ -218,41 +217,41 @@ object FunctionEmitter {
     )
   }
 
-  private val ObjectRef = IRTypes.ClassRef(IRNames.ObjectClass)
-  private val BoxedStringRef = IRTypes.ClassRef(IRNames.BoxedStringClass)
-  private val toStringMethodName = IRNames.MethodName("toString", Nil, BoxedStringRef)
-  private val equalsMethodName = IRNames.MethodName("equals", List(ObjectRef), IRTypes.BooleanRef)
-  private val compareToMethodName = IRNames.MethodName("compareTo", List(ObjectRef), IRTypes.IntRef)
+  private val ObjectRef = ClassRef(ObjectClass)
+  private val BoxedStringRef = ClassRef(BoxedStringClass)
+  private val toStringMethodName = MethodName("toString", Nil, BoxedStringRef)
+  private val equalsMethodName = MethodName("equals", List(ObjectRef), BooleanRef)
+  private val compareToMethodName = MethodName("compareTo", List(ObjectRef), IntRef)
 
-  private val CharSequenceClass = IRNames.ClassName("java.lang.CharSequence")
-  private val ComparableClass = IRNames.ClassName("java.lang.Comparable")
-  private val JLNumberClass = IRNames.ClassName("java.lang.Number")
+  private val CharSequenceClass = ClassName("java.lang.CharSequence")
+  private val ComparableClass = ClassName("java.lang.Comparable")
+  private val JLNumberClass = ClassName("java.lang.Number")
 
-  private val newTargetLocalName = WasmLocalName("new.target")
-  private val receiverLocalName = WasmLocalName("___<this>")
+  private val newTargetLocalName = wanme.LocalName("new.target")
+  private val receiverLocalName = wanme.LocalName("___<this>")
 
-  private def localNameFromIR(name: IRNames.LocalName): WasmLocalName =
-    WasmLocalName(name.nameString)
+  private def localNameFromIR(name: LocalName): wanme.LocalName =
+    wanme.LocalName(name.nameString)
 
   private sealed abstract class VarStorage
 
   private object VarStorage {
-    final case class Local(idx: WasmLocalName) extends VarStorage
+    final case class Local(idx: wanme.LocalName) extends VarStorage
 
     final case class StructField(
-        structIdx: WasmLocalName,
-        structTypeName: WasmTypeName,
-        fieldIdx: WasmFieldIdx
+        structIdx: wanme.LocalName,
+        structTypeName: wanme.TypeName,
+        fieldIdx: wanme.FieldIdx
     ) extends VarStorage
   }
 
-  private type Env = Map[IRNames.LocalName, VarStorage]
+  private type Env = Map[LocalName, VarStorage]
 }
 
 private class FunctionEmitter private (
     ctx: WasmContext,
     val fb: FunctionBuilder,
-    enclosingClassName: Option[IRNames.ClassName],
+    enclosingClassName: Option[ClassName],
     _newTargetStorage: Option[FunctionEmitter.VarStorage.Local],
     _receiverStorage: Option[FunctionEmitter.VarStorage.Local],
     paramsEnv: FunctionEmitter.Env
@@ -271,8 +270,8 @@ private class FunctionEmitter private (
   private def receiverStorage: VarStorage.Local =
     _receiverStorage.getOrElse(throw new Error("Cannot access to the receiver in this context."))
 
-  private def withNewLocal[A](name: IRNames.LocalName, typ: Types.WasmType)(
-      body: WasmLocalName => A
+  private def withNewLocal[A](name: LocalName, typ: watpe.Type)(
+      body: wanme.LocalName => A
   ): A = {
     val savedEnv = currentEnv
     val local = fb.addLocal(localNameFromIR(name), typ)
@@ -281,7 +280,7 @@ private class FunctionEmitter private (
     finally currentEnv = savedEnv
   }
 
-  private def lookupLocal(name: IRNames.LocalName): VarStorage = {
+  private def lookupLocal(name: LocalName): VarStorage = {
     currentEnv.getOrElse(
       name, {
         throw new AssertionError(s"Cannot find binding for '${name.nameString}'")
@@ -289,136 +288,138 @@ private class FunctionEmitter private (
     )
   }
 
-  private def lookupLocalAssertLocalStorage(name: IRNames.LocalName): WasmLocalName = {
+  private def lookupLocalAssertLocalStorage(name: LocalName): wanme.LocalName = {
     (lookupLocal(name): @unchecked) match {
       case VarStorage.Local(local) => local
     }
   }
 
-  private def addSyntheticLocal(typ: Types.WasmType): WasmLocalName = {
-    val name = WasmLocalName(s"local___$nextSyntheticLocalIndex")
+  private def addSyntheticLocal(typ: watpe.Type): wanme.LocalName = {
+    val name = wanme.LocalName(s"local___$nextSyntheticLocalIndex")
     nextSyntheticLocalIndex += 1
     fb.addLocal(name, typ)
   }
 
-  private def genInnerFuncName(): WasmFunctionName = {
-    val innerName = WasmFunctionName(fb.functionName.name + "__c" + innerFuncIdx)
+  private def genInnerFuncName(): wanme.FunctionName = {
+    val innerName = wanme.FunctionName(fb.functionName.name + "__c" + innerFuncIdx)
     innerFuncIdx += 1
     innerName
   }
 
-  def genBody(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit =
+  private def markPosition(tree: Tree): Unit =
+    instrs += wa.PositionMark(tree.pos)
+
+  def genBody(tree: Tree, expectedType: Type): Unit =
     genTree(tree, expectedType)
 
-  def genTrees(trees: List[IRTrees.Tree], expectedTypes: List[IRTypes.Type]): Unit = {
+  def genTrees(trees: List[Tree], expectedTypes: List[Type]): Unit = {
     for ((tree, expectedType) <- trees.zip(expectedTypes))
       genTree(tree, expectedType)
   }
 
-  def genTreeAuto(tree: IRTrees.Tree): Unit =
+  def genTreeAuto(tree: Tree): Unit =
     genTree(tree, tree.tpe)
 
-  def genTree(tree: IRTrees.Tree, expectedType: IRTypes.Type): Unit = {
-    val generatedType: IRTypes.Type = tree match {
-      case t: IRTrees.Literal             => genLiteral(t, expectedType)
-      case t: IRTrees.UnaryOp             => genUnaryOp(t)
-      case t: IRTrees.BinaryOp            => genBinaryOp(t)
-      case t: IRTrees.VarRef              => genVarRef(t)
-      case t: IRTrees.LoadModule          => genLoadModule(t)
-      case t: IRTrees.StoreModule         => genStoreModule(t)
-      case t: IRTrees.This                => genThis(t)
-      case t: IRTrees.ApplyStatically     => genApplyStatically(t)
-      case t: IRTrees.Apply               => genApply(t)
-      case t: IRTrees.ApplyStatic         => genApplyStatic(t)
-      case t: IRTrees.ApplyDynamicImport  => genApplyDynamicImport(t)
-      case t: IRTrees.IsInstanceOf        => genIsInstanceOf(t)
-      case t: IRTrees.AsInstanceOf        => genAsInstanceOf(t)
-      case t: IRTrees.GetClass            => genGetClass(t)
-      case t: IRTrees.Block               => genBlock(t, expectedType)
-      case t: IRTrees.Labeled             => unwinding.genLabeled(t, expectedType)
-      case t: IRTrees.Return              => unwinding.genReturn(t)
-      case t: IRTrees.Select              => genSelect(t)
-      case t: IRTrees.SelectStatic        => genSelectStatic(t)
-      case t: IRTrees.Assign              => genAssign(t)
-      case t: IRTrees.VarDef              => genVarDef(t)
-      case t: IRTrees.New                 => genNew(t)
-      case t: IRTrees.If                  => genIf(t, expectedType)
-      case t: IRTrees.While               => genWhile(t)
-      case t: IRTrees.ForIn               => genForIn(t)
-      case t: IRTrees.TryCatch            => genTryCatch(t, expectedType)
-      case t: IRTrees.TryFinally          => unwinding.genTryFinally(t, expectedType)
-      case t: IRTrees.Throw               => genThrow(t)
-      case t: IRTrees.Match               => genMatch(t, expectedType)
-      case t: IRTrees.Debugger            => IRTypes.NoType // ignore
-      case t: IRTrees.Skip                => IRTypes.NoType
-      case t: IRTrees.Clone               => genClone(t)
-      case t: IRTrees.IdentityHashCode    => genIdentityHashCode(t)
-      case t: IRTrees.WrapAsThrowable     => genWrapAsThrowable(t)
-      case t: IRTrees.UnwrapFromThrowable => genUnwrapFromThrowable(t)
+  def genTree(tree: Tree, expectedType: Type): Unit = {
+    val generatedType: Type = tree match {
+      case t: Literal             => genLiteral(t, expectedType)
+      case t: UnaryOp             => genUnaryOp(t)
+      case t: BinaryOp            => genBinaryOp(t)
+      case t: VarRef              => genVarRef(t)
+      case t: LoadModule          => genLoadModule(t)
+      case t: StoreModule         => genStoreModule(t)
+      case t: This                => genThis(t)
+      case t: ApplyStatically     => genApplyStatically(t)
+      case t: Apply               => genApply(t)
+      case t: ApplyStatic         => genApplyStatic(t)
+      case t: ApplyDynamicImport  => genApplyDynamicImport(t)
+      case t: IsInstanceOf        => genIsInstanceOf(t)
+      case t: AsInstanceOf        => genAsInstanceOf(t)
+      case t: GetClass            => genGetClass(t)
+      case t: Block               => genBlock(t, expectedType)
+      case t: Labeled             => unwinding.genLabeled(t, expectedType)
+      case t: Return              => unwinding.genReturn(t)
+      case t: Select              => genSelect(t)
+      case t: SelectStatic        => genSelectStatic(t)
+      case t: Assign              => genAssign(t)
+      case t: VarDef              => genVarDef(t)
+      case t: New                 => genNew(t)
+      case t: If                  => genIf(t, expectedType)
+      case t: While               => genWhile(t)
+      case t: ForIn               => genForIn(t)
+      case t: TryCatch            => genTryCatch(t, expectedType)
+      case t: TryFinally          => unwinding.genTryFinally(t, expectedType)
+      case t: Throw               => genThrow(t)
+      case t: Match               => genMatch(t, expectedType)
+      case t: Debugger            => NoType // ignore
+      case t: Skip                => NoType
+      case t: Clone               => genClone(t)
+      case t: IdentityHashCode    => genIdentityHashCode(t)
+      case t: WrapAsThrowable     => genWrapAsThrowable(t)
+      case t: UnwrapFromThrowable => genUnwrapFromThrowable(t)
 
       // JavaScript expressions
-      case t: IRTrees.JSNew                => genJSNew(t)
-      case t: IRTrees.JSSelect             => genJSSelect(t)
-      case t: IRTrees.JSFunctionApply      => genJSFunctionApply(t)
-      case t: IRTrees.JSMethodApply        => genJSMethodApply(t)
-      case t: IRTrees.JSImportCall         => genJSImportCall(t)
-      case t: IRTrees.JSImportMeta         => genJSImportMeta(t)
-      case t: IRTrees.LoadJSConstructor    => genLoadJSConstructor(t)
-      case t: IRTrees.LoadJSModule         => genLoadJSModule(t)
-      case t: IRTrees.SelectJSNativeMember => genSelectJSNativeMember(t)
-      case t: IRTrees.JSDelete             => genJSDelete(t)
-      case t: IRTrees.JSUnaryOp            => genJSUnaryOp(t)
-      case t: IRTrees.JSBinaryOp           => genJSBinaryOp(t)
-      case t: IRTrees.JSArrayConstr        => genJSArrayConstr(t)
-      case t: IRTrees.JSObjectConstr       => genJSObjectConstr(t)
-      case t: IRTrees.JSGlobalRef          => genJSGlobalRef(t)
-      case t: IRTrees.JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
-      case t: IRTrees.JSLinkingInfo        => genJSLinkingInfo(t)
-      case t: IRTrees.Closure              => genClosure(t)
+      case t: JSNew                => genJSNew(t)
+      case t: JSSelect             => genJSSelect(t)
+      case t: JSFunctionApply      => genJSFunctionApply(t)
+      case t: JSMethodApply        => genJSMethodApply(t)
+      case t: JSImportCall         => genJSImportCall(t)
+      case t: JSImportMeta         => genJSImportMeta(t)
+      case t: LoadJSConstructor    => genLoadJSConstructor(t)
+      case t: LoadJSModule         => genLoadJSModule(t)
+      case t: SelectJSNativeMember => genSelectJSNativeMember(t)
+      case t: JSDelete             => genJSDelete(t)
+      case t: JSUnaryOp            => genJSUnaryOp(t)
+      case t: JSBinaryOp           => genJSBinaryOp(t)
+      case t: JSArrayConstr        => genJSArrayConstr(t)
+      case t: JSObjectConstr       => genJSObjectConstr(t)
+      case t: JSGlobalRef          => genJSGlobalRef(t)
+      case t: JSTypeOfGlobalRef    => genJSTypeOfGlobalRef(t)
+      case t: JSLinkingInfo        => genJSLinkingInfo(t)
+      case t: Closure              => genClosure(t)
 
       // array
-      case t: IRTrees.ArrayLength => genArrayLength(t)
-      case t: IRTrees.NewArray    => genNewArray(t)
-      case t: IRTrees.ArraySelect => genArraySelect(t)
-      case t: IRTrees.ArrayValue  => genArrayValue(t)
+      case t: ArrayLength => genArrayLength(t)
+      case t: NewArray    => genNewArray(t)
+      case t: ArraySelect => genArraySelect(t)
+      case t: ArrayValue  => genArrayValue(t)
 
       // Non-native JS classes
-      case t: IRTrees.CreateJSClass     => genCreateJSClass(t)
-      case t: IRTrees.JSPrivateSelect   => genJSPrivateSelect(t)
-      case t: IRTrees.JSSuperSelect     => genJSSuperSelect(t)
-      case t: IRTrees.JSSuperMethodCall => genJSSuperMethodCall(t)
-      case t: IRTrees.JSNewTarget       => genJSNewTarget(t)
+      case t: CreateJSClass     => genCreateJSClass(t)
+      case t: JSPrivateSelect   => genJSPrivateSelect(t)
+      case t: JSSuperSelect     => genJSSuperSelect(t)
+      case t: JSSuperMethodCall => genJSSuperMethodCall(t)
+      case t: JSNewTarget       => genJSNewTarget(t)
 
-      case _: IRTrees.RecordSelect | _: IRTrees.RecordValue | _: IRTrees.Transient |
-          _: IRTrees.JSSuperConstructorCall =>
+      case _: RecordSelect | _: RecordValue | _: Transient | _: JSSuperConstructorCall =>
         throw new AssertionError(s"Invalid tree: $tree")
     }
 
     genAdapt(generatedType, expectedType)
   }
 
-  private def genAdapt(generatedType: IRTypes.Type, expectedType: IRTypes.Type): Unit = {
+  private def genAdapt(generatedType: Type, expectedType: Type): Unit = {
     (generatedType, expectedType) match {
       case _ if generatedType == expectedType =>
         ()
-      case (IRTypes.NothingType, _) =>
+      case (NothingType, _) =>
         ()
-      case (_, IRTypes.NoType) =>
-        instrs += DROP
-      case (primType: IRTypes.PrimTypeWithRef, _) =>
+      case (_, NoType) =>
+        instrs += wa.DROP
+      case (primType: PrimTypeWithRef, _) =>
         // box
         primType match {
-          case IRTypes.NullType =>
+          case NullType =>
             ()
-          case IRTypes.CharType =>
+          case CharType =>
             /* `char` and `long` are opaque to JS in the Scala.js semantics.
              * We implement them with real Wasm classes following the correct
              * vtable. Upcasting wraps a primitive into the corresponding class.
              */
-            genBox(IRTypes.CharType, SpecialNames.CharBoxClass)
-          case IRTypes.LongType =>
-            genBox(IRTypes.LongType, SpecialNames.LongBoxClass)
-          case IRTypes.NoType | IRTypes.NothingType =>
+            genBox(CharType, SpecialNames.CharBoxClass)
+          case LongType =>
+            genBox(LongType, SpecialNames.LongBoxClass)
+          case NoType | NothingType =>
             throw new AssertionError(s"Unexpected adaptation from $primType to $expectedType")
           case _ =>
             /* Calls a `bX` helper. Most of them are of the form
@@ -428,16 +429,16 @@ private class FunctionEmitter private (
              * asks the JS host to turn a primitive `i32` into its generic
              * representation, which we can store in an `anyref`.
              */
-            instrs += CALL(genFunctionName.box(primType.primRef))
+            instrs += wa.CALL(genFunctionName.box(primType.primRef))
         }
       case _ =>
         ()
     }
   }
 
-  private def genAssign(t: IRTrees.Assign): IRTypes.Type = {
+  private def genAssign(t: Assign): Type = {
     t.lhs match {
-      case sel: IRTrees.Select =>
+      case sel: Select =>
         val className = sel.field.name.className
         val classInfo = ctx.getClassInfo(className)
 
@@ -449,117 +450,117 @@ private class FunctionEmitter private (
            * However we necessarily have a `null` receiver if we reach this
            * point, so we can trap as NPE.
            */
-          instrs += UNREACHABLE
+          instrs += wa.UNREACHABLE
         } else {
           val fieldName = genFieldName.forClassInstanceField(sel.field.name)
           val idx = ctx.getClassInfo(className).getFieldIdx(sel.field.name)
 
           genTree(t.rhs, t.lhs.tpe)
-          instrs += STRUCT_SET(genTypeName.forClass(className), idx)
+          instrs += wa.STRUCT_SET(genTypeName.forClass(className), idx)
         }
 
-      case sel: IRTrees.SelectStatic =>
+      case sel: SelectStatic =>
         genTree(t.rhs, sel.tpe)
-        instrs += GLOBAL_SET(genGlobalName.forStaticField(sel.field.name))
+        instrs += wa.GLOBAL_SET(genGlobalName.forStaticField(sel.field.name))
 
-      case sel: IRTrees.ArraySelect =>
+      case sel: ArraySelect =>
         genTreeAuto(sel.array)
         sel.array.tpe match {
-          case IRTypes.ArrayType(arrayTypeRef) =>
+          case ArrayType(arrayTypeRef) =>
             // Get the underlying array; implicit trap on null
-            instrs += STRUCT_GET(
+            instrs += wa.STRUCT_GET(
               genTypeName.forArrayClass(arrayTypeRef),
               genFieldIdx.objStruct.uniqueRegularField
             )
-            genTree(sel.index, IRTypes.IntType)
+            genTree(sel.index, IntType)
             genTree(t.rhs, sel.tpe)
-            instrs += ARRAY_SET(genTypeName.underlyingOf(arrayTypeRef))
-          case IRTypes.NothingType =>
+            instrs += wa.ARRAY_SET(genTypeName.underlyingOf(arrayTypeRef))
+          case NothingType =>
             // unreachable
             ()
-          case IRTypes.NullType =>
-            instrs += UNREACHABLE
+          case NullType =>
+            instrs += wa.UNREACHABLE
           case _ =>
             throw new IllegalArgumentException(
               s"ArraySelect.array must be an array type, but has type ${sel.array.tpe}"
             )
         }
 
-      case sel: IRTrees.JSPrivateSelect =>
-        genTree(sel.qualifier, IRTypes.AnyType)
-        instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(sel.field.name))
-        genTree(t.rhs, IRTypes.AnyType)
-        instrs += CALL(genFunctionName.jsSelectSet)
+      case sel: JSPrivateSelect =>
+        genTree(sel.qualifier, AnyType)
+        instrs += wa.GLOBAL_GET(genGlobalName.forJSPrivateField(sel.field.name))
+        genTree(t.rhs, AnyType)
+        instrs += wa.CALL(genFunctionName.jsSelectSet)
 
-      case assign: IRTrees.JSSelect =>
-        genTree(assign.qualifier, IRTypes.AnyType)
-        genTree(assign.item, IRTypes.AnyType)
-        genTree(t.rhs, IRTypes.AnyType)
-        instrs += CALL(genFunctionName.jsSelectSet)
+      case assign: JSSelect =>
+        genTree(assign.qualifier, AnyType)
+        genTree(assign.item, AnyType)
+        genTree(t.rhs, AnyType)
+        instrs += wa.CALL(genFunctionName.jsSelectSet)
 
-      case assign: IRTrees.JSSuperSelect =>
-        genTree(assign.superClass, IRTypes.AnyType)
-        genTree(assign.receiver, IRTypes.AnyType)
-        genTree(assign.item, IRTypes.AnyType)
-        genTree(t.rhs, IRTypes.AnyType)
-        instrs += CALL(genFunctionName.jsSuperSet)
+      case assign: JSSuperSelect =>
+        genTree(assign.superClass, AnyType)
+        genTree(assign.receiver, AnyType)
+        genTree(assign.item, AnyType)
+        genTree(t.rhs, AnyType)
+        instrs += wa.CALL(genFunctionName.jsSuperSet)
 
-      case assign: IRTrees.JSGlobalRef =>
+      case assign: JSGlobalRef =>
         instrs ++= ctx.getConstantStringInstr(assign.name)
-        genTree(t.rhs, IRTypes.AnyType)
-        instrs += CALL(genFunctionName.jsGlobalRefSet)
+        genTree(t.rhs, AnyType)
+        instrs += wa.CALL(genFunctionName.jsGlobalRefSet)
 
-      case ref: IRTrees.VarRef =>
+      case ref: VarRef =>
         lookupLocal(ref.ident.name) match {
           case VarStorage.Local(local) =>
             genTree(t.rhs, t.lhs.tpe)
-            instrs += LOCAL_SET(local)
+            instrs += wa.LOCAL_SET(local)
           case VarStorage.StructField(structLocal, structTypeName, fieldIdx) =>
-            instrs += LOCAL_GET(structLocal)
+            instrs += wa.LOCAL_GET(structLocal)
             genTree(t.rhs, t.lhs.tpe)
-            instrs += STRUCT_SET(structTypeName, fieldIdx)
+            instrs += wa.STRUCT_SET(structTypeName, fieldIdx)
         }
 
-      case assign: IRTrees.RecordSelect =>
+      case assign: RecordSelect =>
         throw new AssertionError(s"Invalid tree: $t")
     }
 
-    IRTypes.NoType
+    NoType
   }
 
-  private def genApply(t: IRTrees.Apply): IRTypes.Type = {
+  private def genApply(t: Apply): Type = {
     t.receiver.tpe match {
-      case IRTypes.NothingType =>
-        genTree(t.receiver, IRTypes.NothingType)
+      case NothingType =>
+        genTree(t.receiver, NothingType)
         // nothing else to do; this is unreachable
-        IRTypes.NothingType
+        NothingType
 
-      case IRTypes.NullType =>
-        genTree(t.receiver, IRTypes.NullType)
-        instrs += UNREACHABLE // trap
-        IRTypes.NothingType
+      case NullType =>
+        genTree(t.receiver, NullType)
+        instrs += wa.UNREACHABLE // trap
+        NothingType
 
       case _ if t.method.name.isReflectiveProxy =>
         genReflectiveCall(t)
 
       case _ =>
         val receiverClassName = t.receiver.tpe match {
-          case prim: IRTypes.PrimType  => IRTypes.PrimTypeToBoxedClass(prim)
-          case IRTypes.ClassType(cls)  => cls
-          case IRTypes.AnyType         => IRNames.ObjectClass
-          case IRTypes.ArrayType(_)    => IRNames.ObjectClass
-          case tpe: IRTypes.RecordType => throw new AssertionError(s"Invalid receiver type $tpe")
+          case prim: PrimType  => PrimTypeToBoxedClass(prim)
+          case ClassType(cls)  => cls
+          case AnyType         => ObjectClass
+          case ArrayType(_)    => ObjectClass
+          case tpe: RecordType => throw new AssertionError(s"Invalid receiver type $tpe")
         }
         val receiverClassInfo = ctx.getClassInfo(receiverClassName)
 
         val canUseStaticallyResolved = {
           receiverClassInfo.kind == ClassKind.HijackedClass ||
-          t.receiver.tpe.isInstanceOf[IRTypes.ArrayType] ||
+          t.receiver.tpe.isInstanceOf[ArrayType] ||
           receiverClassInfo.resolvedMethodInfos.get(t.method.name).exists(_.isEffectivelyFinal)
         }
         if (canUseStaticallyResolved) {
           genApplyStatically(
-            IRTrees.ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(
+            ApplyStatically(t.flags, t.receiver, receiverClassName, t.method, t.args)(
               t.tpe
             )(
               t.pos
@@ -571,42 +572,42 @@ private class FunctionEmitter private (
     }
   }
 
-  private def genReflectiveCall(t: IRTrees.Apply): IRTypes.Type = {
+  private def genReflectiveCall(t: Apply): Type = {
     assert(t.method.name.isReflectiveProxy)
     val receiverLocalForDispatch =
-      addSyntheticLocal(Types.WasmRefType.any)
+      addSyntheticLocal(watpe.RefType.any)
 
     val proxyId = ctx.getReflectiveProxyId(t.method.name)
     val funcTypeName = ctx.tableFunctionType(t.method.name)
 
-    instrs.block(Types.WasmRefType.anyref) { done =>
-      instrs.block(Types.WasmRefType.any) { labelNotOurObject =>
+    instrs.block(watpe.RefType.anyref) { done =>
+      instrs.block(watpe.RefType.any) { labelNotOurObject =>
         // arguments
-        genTree(t.receiver, IRTypes.AnyType)
-        instrs += REF_AS_NOT_NULL
-        instrs += LOCAL_TEE(receiverLocalForDispatch)
+        genTree(t.receiver, AnyType)
+        instrs += wa.REF_AS_NOT_NULL
+        instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
         genArgs(t.args, t.method.name)
 
         // Looks up the method to be (reflectively) called
-        instrs += LOCAL_GET(receiverLocalForDispatch)
-        instrs += BR_ON_CAST_FAIL(
+        instrs += wa.LOCAL_GET(receiverLocalForDispatch)
+        instrs += wa.BR_ON_CAST_FAIL(
           labelNotOurObject,
-          Types.WasmRefType.any,
-          Types.WasmRefType(genTypeName.ObjectStruct)
+          watpe.RefType.any,
+          watpe.RefType(genTypeName.ObjectStruct)
         )
-        instrs += STRUCT_GET(
-          genTypeName.forClass(IRNames.ObjectClass),
+        instrs += wa.STRUCT_GET(
+          genTypeName.forClass(ObjectClass),
           genFieldIdx.objStruct.vtable
         )
-        instrs += I32_CONST(proxyId)
+        instrs += wa.I32_CONST(proxyId)
         // `searchReflectiveProxy`: [typeData, i32] -> [(ref func)]
-        instrs += CALL(genFunctionName.searchReflectiveProxy)
+        instrs += wa.CALL(genFunctionName.searchReflectiveProxy)
 
-        instrs += REF_CAST(Types.WasmRefType(Types.WasmHeapType(funcTypeName)))
-        instrs += CALL_REF(funcTypeName)
-        instrs += BR(done)
+        instrs += wa.REF_CAST(watpe.RefType(watpe.HeapType(funcTypeName)))
+        instrs += wa.CALL_REF(funcTypeName)
+        instrs += wa.BR(done)
       } // labelNotFound
-      instrs += UNREACHABLE
+      instrs += wa.UNREACHABLE
       // TODO? reflective call on primitive types
       t.tpe
     }
@@ -619,9 +620,9 @@ private class FunctionEmitter private (
     * primitive-based dispatch if the receiver's type is an ancestor of a hijacked class.
     */
   private def genApplyWithDispatch(
-      t: IRTrees.Apply,
-      receiverClassInfo: WasmContext.WasmClassInfo
-  ): IRTypes.Type = {
+      t: Apply,
+      receiverClassInfo: WasmContext.ClassInfo
+  ): Type = {
     implicit val pos: Position = t.pos
 
     val receiverClassName = receiverClassInfo.name
@@ -634,11 +635,11 @@ private class FunctionEmitter private (
      * This is used in the code paths where we have already ruled out `null`
      * values and primitive values (that implement hijacked classes).
      */
-    val refTypeForDispatch: Types.WasmRefType = {
+    val refTypeForDispatch: watpe.RefType = {
       if (receiverClassInfo.isInterface)
-        Types.WasmRefType(genTypeName.ObjectStruct)
+        watpe.RefType(genTypeName.ObjectStruct)
       else
-        Types.WasmRefType(genTypeName.forClass(receiverClassName))
+        watpe.RefType(genTypeName.forClass(receiverClassName))
     }
 
     // A local for a copy of the receiver that we will use to resolve dispatch
@@ -649,20 +650,20 @@ private class FunctionEmitter private (
      */
     def genReceiverNotNull(): Unit = {
       genTreeAuto(t.receiver)
-      instrs += REF_AS_NOT_NULL
+      instrs += wa.REF_AS_NOT_NULL
     }
 
     /* Generates a resolved call to a method of a hijacked class.
      * Before this code gen, the stack must contain the receiver and the args.
      * After this code gen, the stack contains the result.
      */
-    def genHijackedClassCall(hijackedClass: IRNames.ClassName): Unit = {
+    def genHijackedClassCall(hijackedClass: ClassName): Unit = {
       val funcName = genFunctionName.forMethod(
-        IRTrees.MemberNamespace.Public,
+        MemberNamespace.Public,
         hijackedClass,
         t.method.name
       )
-      instrs += CALL(funcName)
+      instrs += wa.CALL(funcName)
     }
 
     if (!receiverClassInfo.hasInstances) {
@@ -674,11 +675,11 @@ private class FunctionEmitter private (
        * cannot emit the corresponding vtable/itable calls.
        */
       genTreeAuto(t.receiver)
-      instrs += UNREACHABLE // NPE
+      instrs += wa.UNREACHABLE // NPE
     } else if (!receiverClassInfo.isAncestorOfHijackedClass) {
       // Standard dispatch codegen
       genReceiverNotNull()
-      instrs += LOCAL_TEE(receiverLocalForDispatch)
+      instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
       genArgs(t.args, t.method.name)
       genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
     } else {
@@ -709,11 +710,11 @@ private class FunctionEmitter private (
       val resultTyp = TypeTransformer.transformResultType(t.tpe)(ctx)
 
       instrs.block(resultTyp) { labelDone =>
-        def pushArgs(argsLocals: List[WasmLocalName]): Unit =
-          argsLocals.foreach(argLocal => instrs += LOCAL_GET(argLocal))
+        def pushArgs(argsLocals: List[wanme.LocalName]): Unit =
+          argsLocals.foreach(argLocal => instrs += wa.LOCAL_GET(argLocal))
 
         // First try the case where the value is one of our objects
-        val argsLocals = instrs.block(Types.WasmRefType.any) { labelNotOurObject =>
+        val argsLocals = instrs.block(watpe.RefType.any) { labelNotOurObject =>
           // Load receiver and arguments and store them in temporary variables
           genReceiverNotNull()
           val argsLocals = if (t.args.isEmpty) {
@@ -723,26 +724,26 @@ private class FunctionEmitter private (
              */
             Nil
           } else {
-            val receiverLocal = addSyntheticLocal(Types.WasmRefType.any)
+            val receiverLocal = addSyntheticLocal(watpe.RefType.any)
 
-            instrs += LOCAL_SET(receiverLocal)
-            val argsLocals: List[WasmLocalName] =
+            instrs += wa.LOCAL_SET(receiverLocal)
+            val argsLocals: List[wanme.LocalName] =
               for ((arg, typeRef) <- t.args.zip(t.method.name.paramTypeRefs)) yield {
                 val typ = ctx.inferTypeFromTypeRef(typeRef)
                 genTree(arg, typ)
                 val localName = addSyntheticLocal(TypeTransformer.transformType(typ)(ctx))
-                instrs += LOCAL_SET(localName)
+                instrs += wa.LOCAL_SET(localName)
                 localName
               }
-            instrs += LOCAL_GET(receiverLocal)
+            instrs += wa.LOCAL_GET(receiverLocal)
             argsLocals
           }
 
-          instrs += BR_ON_CAST_FAIL(labelNotOurObject, Types.WasmRefType.any, refTypeForDispatch)
-          instrs += LOCAL_TEE(receiverLocalForDispatch)
+          instrs += wa.BR_ON_CAST_FAIL(labelNotOurObject, watpe.RefType.any, refTypeForDispatch)
+          instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
           pushArgs(argsLocals)
           genTableDispatch(receiverClassInfo, t.method.name, receiverLocalForDispatch)
-          instrs += BR(labelDone)
+          instrs += wa.BR(labelDone)
 
           argsLocals
         } // end block labelNotOurObject
@@ -762,16 +763,16 @@ private class FunctionEmitter private (
         if (t.method.name == toStringMethodName) {
           // By spec, toString() is special
           assert(argsLocals.isEmpty)
-          instrs += CALL(genFunctionName.jsValueToString)
+          instrs += wa.CALL(genFunctionName.jsValueToString)
         } else if (receiverClassName == JLNumberClass) {
           // the value must be a `number`, hence we can unbox to `double`
-          genUnbox(IRTypes.DoubleType)
+          genUnbox(DoubleType)
           pushArgs(argsLocals)
-          genHijackedClassCall(IRNames.BoxedDoubleClass)
+          genHijackedClassCall(BoxedDoubleClass)
         } else if (receiverClassName == CharSequenceClass) {
           // the value must be a `string`; it already has the right type
           pushArgs(argsLocals)
-          genHijackedClassCall(IRNames.BoxedStringClass)
+          genHijackedClassCall(BoxedStringClass)
         } else if (t.method.name == compareToMethodName) {
           /* The only method of jl.Comparable. Here the value can be a boolean,
            * a number or a string. We use `jsValueType` to dispatch to Wasm-side
@@ -779,36 +780,36 @@ private class FunctionEmitter private (
            */
           assert(argsLocals.size == 1)
 
-          val receiverLocal = addSyntheticLocal(Types.WasmRefType.any)
-          instrs += LOCAL_TEE(receiverLocal)
+          val receiverLocal = addSyntheticLocal(watpe.RefType.any)
+          instrs += wa.LOCAL_TEE(receiverLocal)
 
-          val jsValueTypeLocal = addSyntheticLocal(Types.WasmInt32)
-          instrs += CALL(genFunctionName.jsValueType)
-          instrs += LOCAL_TEE(jsValueTypeLocal)
+          val jsValueTypeLocal = addSyntheticLocal(watpe.Int32)
+          instrs += wa.CALL(genFunctionName.jsValueType)
+          instrs += wa.LOCAL_TEE(jsValueTypeLocal)
 
-          instrs.switch(Sig(List(Types.WasmInt32), Nil), Sig(Nil, List(Types.WasmInt32))) { () =>
+          instrs.switch(Sig(List(watpe.Int32), Nil), Sig(Nil, List(watpe.Int32))) { () =>
             // scrutinee is already on the stack
           }(
             // case JSValueTypeFalse | JSValueTypeTrue =>
             List(JSValueTypeFalse, JSValueTypeTrue) -> { () =>
               // the jsValueTypeLocal is the boolean value, thanks to the chosen encoding
-              instrs += LOCAL_GET(jsValueTypeLocal)
+              instrs += wa.LOCAL_GET(jsValueTypeLocal)
               pushArgs(argsLocals)
-              genHijackedClassCall(IRNames.BoxedBooleanClass)
+              genHijackedClassCall(BoxedBooleanClass)
             },
             // case JSValueTypeString =>
             List(JSValueTypeString) -> { () =>
-              instrs += LOCAL_GET(receiverLocal)
+              instrs += wa.LOCAL_GET(receiverLocal)
               // no need to unbox for string
               pushArgs(argsLocals)
-              genHijackedClassCall(IRNames.BoxedStringClass)
+              genHijackedClassCall(BoxedStringClass)
             }
           ) { () =>
             // case _ (JSValueTypeNumber) =>
-            instrs += LOCAL_GET(receiverLocal)
-            genUnbox(IRTypes.DoubleType)
+            instrs += wa.LOCAL_GET(receiverLocal)
+            genUnbox(DoubleType)
             pushArgs(argsLocals)
-            genHijackedClassCall(IRNames.BoxedDoubleClass)
+            genHijackedClassCall(BoxedDoubleClass)
           }
         } else {
           /* It must be a method of j.l.Object and it can be any value.
@@ -821,18 +822,18 @@ private class FunctionEmitter private (
           pushArgs(argsLocals)
           t.method.name match {
             case SpecialNames.hashCodeMethodName =>
-              instrs += CALL(genFunctionName.identityHashCode)
+              instrs += wa.CALL(genFunctionName.identityHashCode)
             case `equalsMethodName` =>
-              instrs += CALL(genFunctionName.is)
+              instrs += wa.CALL(genFunctionName.is)
             case _ =>
-              genHijackedClassCall(IRNames.ObjectClass)
+              genHijackedClassCall(ObjectClass)
           }
         }
       } // end block labelDone
     }
 
-    if (t.tpe == IRTypes.NothingType)
-      instrs += UNREACHABLE
+    if (t.tpe == NothingType)
+      instrs += wa.UNREACHABLE
 
     t.tpe
   }
@@ -848,30 +849,30 @@ private class FunctionEmitter private (
     * `unreachable` instruction when appropriate.
     */
   def genTableDispatch(
-      receiverClassInfo: WasmContext.WasmClassInfo,
-      methodName: IRNames.MethodName,
-      receiverLocalForDispatch: WasmLocalName
+      receiverClassInfo: WasmContext.ClassInfo,
+      methodName: MethodName,
+      receiverLocalForDispatch: wanme.LocalName
   ): Unit = {
     // Generates an itable-based dispatch.
     def genITableDispatch(): Unit = {
       val itableIdx = ctx.getItableIdx(receiverClassInfo)
       val methodIdx = receiverClassInfo.tableMethodInfos(methodName).tableIndex
 
-      instrs += LOCAL_GET(receiverLocalForDispatch)
-      instrs += STRUCT_GET(
+      instrs += wa.LOCAL_GET(receiverLocalForDispatch)
+      instrs += wa.STRUCT_GET(
         // receiver type should be upcasted into `Object` if it's interface
         // by TypeTransformer#transformType
-        genTypeName.forClass(IRNames.ObjectClass),
+        genTypeName.forClass(ObjectClass),
         genFieldIdx.objStruct.itables
       )
-      instrs += I32_CONST(itableIdx)
-      instrs += ARRAY_GET(genTypeName.itables)
-      instrs += REF_CAST(Types.WasmRefType(genTypeName.forITable(receiverClassInfo.name)))
-      instrs += STRUCT_GET(
+      instrs += wa.I32_CONST(itableIdx)
+      instrs += wa.ARRAY_GET(genTypeName.itables)
+      instrs += wa.REF_CAST(watpe.RefType(genTypeName.forITable(receiverClassInfo.name)))
+      instrs += wa.STRUCT_GET(
         genTypeName.forITable(receiverClassInfo.name),
-        WasmFieldIdx(methodIdx)
+        wanme.FieldIdx(methodIdx)
       )
-      instrs += CALL_REF(ctx.tableFunctionType(methodName))
+      instrs += wa.CALL_REF(ctx.tableFunctionType(methodName))
     }
 
     // Generates a vtable-based dispatch.
@@ -885,17 +886,17 @@ private class FunctionEmitter private (
       // struct.get $classType 0 ;; get vtable
       // struct.get $vtableType $methodIdx ;; get funcref
       // call.ref (type $funcType) ;; call funcref
-      instrs += LOCAL_GET(receiverLocalForDispatch)
-      instrs += REF_CAST(Types.WasmRefType(genTypeName.forClass(receiverClassName)))
-      instrs += STRUCT_GET(
+      instrs += wa.LOCAL_GET(receiverLocalForDispatch)
+      instrs += wa.REF_CAST(watpe.RefType(genTypeName.forClass(receiverClassName)))
+      instrs += wa.STRUCT_GET(
         genTypeName.forClass(receiverClassName),
         genFieldIdx.objStruct.vtable
       )
-      instrs += STRUCT_GET(
+      instrs += wa.STRUCT_GET(
         genTypeName.forVTable(receiverClassName),
         genFieldIdx.typeData.vtableMethodIdx(methodIdx)
       )
-      instrs += CALL_REF(ctx.tableFunctionType(methodName))
+      instrs += wa.CALL_REF(ctx.tableFunctionType(methodName))
     }
 
     if (receiverClassInfo.isInterface)
@@ -904,39 +905,39 @@ private class FunctionEmitter private (
       genVTableDispatch()
   }
 
-  private def genApplyStatically(t: IRTrees.ApplyStatically): IRTypes.Type = {
+  private def genApplyStatically(t: ApplyStatically): Type = {
     t.receiver.tpe match {
-      case IRTypes.NothingType =>
-        genTree(t.receiver, IRTypes.NothingType)
+      case NothingType =>
+        genTree(t.receiver, NothingType)
         // nothing else to do; this is unreachable
-        IRTypes.NothingType
+        NothingType
 
-      case IRTypes.NullType =>
-        genTree(t.receiver, IRTypes.NullType)
-        instrs += UNREACHABLE // trap
-        IRTypes.NothingType
+      case NullType =>
+        genTree(t.receiver, NullType)
+        instrs += wa.UNREACHABLE // trap
+        NothingType
 
       case _ =>
-        val namespace = IRTrees.MemberNamespace.forNonStaticCall(t.flags)
+        val namespace = MemberNamespace.forNonStaticCall(t.flags)
         val targetClassName = {
           val classInfo = ctx.getClassInfo(t.className)
-          if (!classInfo.isInterface && namespace == IRTrees.MemberNamespace.Public)
+          if (!classInfo.isInterface && namespace == MemberNamespace.Public)
             classInfo.resolvedMethodInfos(t.method.name).ownerClass
           else
             t.className
         }
 
-        IRTypes.BoxedClassToPrimType.get(targetClassName) match {
+        BoxedClassToPrimType.get(targetClassName) match {
           case None =>
-            genTree(t.receiver, IRTypes.ClassType(targetClassName))
-            instrs += REF_AS_NOT_NULL
+            genTree(t.receiver, ClassType(targetClassName))
+            instrs += wa.REF_AS_NOT_NULL
 
           case Some(primReceiverType) =>
             if (t.receiver.tpe == primReceiverType) {
               genTreeAuto(t.receiver)
             } else {
-              genTree(t.receiver, IRTypes.AnyType)
-              instrs += REF_AS_NOT_NULL
+              genTree(t.receiver, AnyType)
+              instrs += wa.REF_AS_NOT_NULL
               genUnbox(primReceiverType)(t.pos)
             }
         }
@@ -944,39 +945,39 @@ private class FunctionEmitter private (
         genArgs(t.args, t.method.name)
 
         val funcName = genFunctionName.forMethod(namespace, targetClassName, t.method.name)
-        instrs += CALL(funcName)
-        if (t.tpe == IRTypes.NothingType)
-          instrs += UNREACHABLE
+        instrs += wa.CALL(funcName)
+        if (t.tpe == NothingType)
+          instrs += wa.UNREACHABLE
         t.tpe
     }
   }
 
-  private def genApplyStatic(tree: IRTrees.ApplyStatic): IRTypes.Type = {
+  private def genApplyStatic(tree: ApplyStatic): Type = {
     genArgs(tree.args, tree.method.name)
-    val namespace = IRTrees.MemberNamespace.forStaticCall(tree.flags)
+    val namespace = MemberNamespace.forStaticCall(tree.flags)
     val funcName = genFunctionName.forMethod(namespace, tree.className, tree.method.name)
-    instrs += CALL(funcName)
-    if (tree.tpe == IRTypes.NothingType)
-      instrs += UNREACHABLE
+    instrs += wa.CALL(funcName)
+    if (tree.tpe == NothingType)
+      instrs += wa.UNREACHABLE
     tree.tpe
   }
 
-  private def genApplyDynamicImport(tree: IRTrees.ApplyDynamicImport): IRTypes.Type = {
+  private def genApplyDynamicImport(tree: ApplyDynamicImport): Type = {
     // As long as we do not support multiple modules, this cannot happen
     throw new AssertionError(
       s"Unexpected $tree at ${tree.pos}; multiple modules are not supported yet"
     )
   }
 
-  private def genArgs(args: List[IRTrees.Tree], methodName: IRNames.MethodName): Unit = {
+  private def genArgs(args: List[Tree], methodName: MethodName): Unit = {
     for ((arg, paramTypeRef) <- args.zip(methodName.paramTypeRefs)) {
       val paramType = ctx.inferTypeFromTypeRef(paramTypeRef)
       genTree(arg, paramType)
     }
   }
 
-  private def genLiteral(l: IRTrees.Literal, expectedType: IRTypes.Type): IRTypes.Type = {
-    if (expectedType == IRTypes.NoType) {
+  private def genLiteral(l: Literal, expectedType: Type): Type = {
+    if (expectedType == NoType) {
       /* Since all primitives are pure, we can always get rid of them.
        * This is mostly useful for the argument of `Return` nodes that target a
        * `Labeled` in statement position, since they must have a non-`void`
@@ -984,38 +985,38 @@ private class FunctionEmitter private (
        */
       expectedType
     } else {
-      fb.markPosition(l)
+      markPosition(l)
 
       l match {
-        case IRTrees.BooleanLiteral(v) => instrs += WasmInstr.I32_CONST(if (v) 1 else 0)
-        case IRTrees.ByteLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.ShortLiteral(v)   => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.IntLiteral(v)     => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.CharLiteral(v)    => instrs += WasmInstr.I32_CONST(v)
-        case IRTrees.LongLiteral(v)    => instrs += WasmInstr.I64_CONST(v)
-        case IRTrees.FloatLiteral(v)   => instrs += WasmInstr.F32_CONST(v)
-        case IRTrees.DoubleLiteral(v)  => instrs += WasmInstr.F64_CONST(v)
+        case BooleanLiteral(v) => instrs += wa.I32_CONST(if (v) 1 else 0)
+        case ByteLiteral(v)    => instrs += wa.I32_CONST(v)
+        case ShortLiteral(v)   => instrs += wa.I32_CONST(v)
+        case IntLiteral(v)     => instrs += wa.I32_CONST(v)
+        case CharLiteral(v)    => instrs += wa.I32_CONST(v)
+        case LongLiteral(v)    => instrs += wa.I64_CONST(v)
+        case FloatLiteral(v)   => instrs += wa.F32_CONST(v)
+        case DoubleLiteral(v)  => instrs += wa.F64_CONST(v)
 
-        case v: IRTrees.Undefined =>
-          instrs += GLOBAL_GET(genGlobalName.undef)
-        case v: IRTrees.Null =>
-          instrs += WasmInstr.REF_NULL(Types.WasmHeapType.None)
+        case v: Undefined =>
+          instrs += wa.GLOBAL_GET(genGlobalName.undef)
+        case v: Null =>
+          instrs += wa.REF_NULL(watpe.HeapType.None)
 
-        case v: IRTrees.StringLiteral =>
+        case v: StringLiteral =>
           instrs ++= ctx.getConstantStringInstr(v.value)
 
-        case v: IRTrees.ClassOf =>
+        case v: ClassOf =>
           v.typeRef match {
-            case typeRef: IRTypes.NonArrayTypeRef =>
+            case typeRef: NonArrayTypeRef =>
               genClassOfFromTypeData(getNonArrayTypeDataInstr(typeRef))
 
-            case typeRef: IRTypes.ArrayTypeRef =>
-              val typeDataType = Types.WasmRefType(genTypeName.typeData)
+            case typeRef: ArrayTypeRef =>
+              val typeDataType = watpe.RefType(genTypeName.typeData)
               val typeDataLocal = addSyntheticLocal(typeDataType)
 
               genLoadArrayTypeData(typeRef)
-              instrs += LOCAL_SET(typeDataLocal)
-              genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+              instrs += wa.LOCAL_SET(typeDataLocal)
+              genClassOfFromTypeData(wa.LOCAL_GET(typeDataLocal))
           }
       }
 
@@ -1023,156 +1024,154 @@ private class FunctionEmitter private (
     }
   }
 
-  private def getNonArrayTypeDataInstr(typeRef: IRTypes.NonArrayTypeRef): WasmInstr =
-    GLOBAL_GET(genGlobalName.forVTable(typeRef))
+  private def getNonArrayTypeDataInstr(typeRef: NonArrayTypeRef): wa.Instr =
+    wa.GLOBAL_GET(genGlobalName.forVTable(typeRef))
 
-  private def genLoadArrayTypeData(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
+  private def genLoadArrayTypeData(arrayTypeRef: ArrayTypeRef): Unit = {
     instrs += getNonArrayTypeDataInstr(arrayTypeRef.base)
-    instrs += I32_CONST(arrayTypeRef.dimensions)
-    instrs += CALL(genFunctionName.arrayTypeData)
+    instrs += wa.I32_CONST(arrayTypeRef.dimensions)
+    instrs += wa.CALL(genFunctionName.arrayTypeData)
   }
 
-  private def genClassOfFromTypeData(loadTypeDataInstr: WasmInstr): Unit = {
-    instrs.block(Types.WasmRefType(genTypeName.ClassStruct)) { nonNullLabel =>
+  private def genClassOfFromTypeData(loadTypeDataInstr: wa.Instr): Unit = {
+    instrs.block(watpe.RefType(genTypeName.ClassStruct)) { nonNullLabel =>
       // fast path first
       instrs += loadTypeDataInstr
-      instrs += STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
-      instrs += BR_ON_NON_NULL(nonNullLabel)
+      instrs += wa.STRUCT_GET(genTypeName.typeData, genFieldIdx.typeData.classOfIdx)
+      instrs += wa.BR_ON_NON_NULL(nonNullLabel)
       // slow path
       instrs += loadTypeDataInstr
-      instrs += CALL(genFunctionName.createClassOf)
+      instrs += wa.CALL(genFunctionName.createClassOf)
     }
   }
 
-  private def genSelect(sel: IRTrees.Select): IRTypes.Type = {
+  private def genSelect(sel: Select): Type = {
     val className = sel.field.name.className
     val classInfo = ctx.getClassInfo(className)
 
     // For Select, the receiver can never be a hijacked class, so we can use genTreeAuto
     genTreeAuto(sel.qualifier)
 
-    fb.markPosition(sel)
+    markPosition(sel)
 
     if (!classInfo.hasInstances) {
       /* The field may not exist in that case, and we cannot look it up.
        * However we necessarily have a `null` receiver if we reach this point,
        * so we can trap as NPE.
        */
-      instrs += UNREACHABLE
+      instrs += wa.UNREACHABLE
     } else {
       val fieldName = genFieldName.forClassInstanceField(sel.field.name)
       val idx = classInfo.getFieldIdx(sel.field.name)
 
-      instrs += STRUCT_GET(genTypeName.forClass(className), idx)
+      instrs += wa.STRUCT_GET(genTypeName.forClass(className), idx)
     }
 
     sel.tpe
   }
 
-  private def genSelectStatic(tree: IRTrees.SelectStatic): IRTypes.Type = {
-    fb.markPosition(tree)
-    instrs += GLOBAL_GET(genGlobalName.forStaticField(tree.field.name))
+  private def genSelectStatic(tree: SelectStatic): Type = {
+    markPosition(tree)
+    instrs += wa.GLOBAL_GET(genGlobalName.forStaticField(tree.field.name))
     tree.tpe
   }
 
-  private def genStoreModule(t: IRTrees.StoreModule): IRTypes.Type = {
+  private def genStoreModule(t: StoreModule): Type = {
     val className = enclosingClassName.getOrElse {
       throw new AssertionError(s"Cannot emit $t at ${t.pos} without enclosing class name")
     }
 
-    genTreeAuto(IRTrees.This()(IRTypes.ClassType(className))(t.pos))
+    genTreeAuto(This()(ClassType(className))(t.pos))
 
-    fb.markPosition(t)
-    instrs += GLOBAL_SET(genGlobalName.forModuleInstance(className))
-    IRTypes.NoType
+    markPosition(t)
+    instrs += wa.GLOBAL_SET(genGlobalName.forModuleInstance(className))
+    NoType
   }
 
   /** Push module class instance to the stack.
     *
-    * see: WasmBuilder.genLoadModuleFunc
+    * see: Builder.genLoadModuleFunc
     */
-  private def genLoadModule(t: IRTrees.LoadModule): IRTypes.Type = {
-    fb.markPosition(t)
-    instrs += CALL(genFunctionName.loadModule(t.className))
+  private def genLoadModule(t: LoadModule): Type = {
+    markPosition(t)
+    instrs += wa.CALL(genFunctionName.loadModule(t.className))
     t.tpe
   }
 
-  private def genUnaryOp(unary: IRTrees.UnaryOp): IRTypes.Type = {
-    import IRTrees.UnaryOp._
+  private def genUnaryOp(unary: UnaryOp): Type = {
+    import UnaryOp._
 
     genTreeAuto(unary.lhs)
 
-    fb.markPosition(unary)
+    markPosition(unary)
 
     (unary.op: @switch) match {
       case Boolean_! =>
-        instrs += I32_CONST(1)
-        instrs += I32_XOR
+        instrs += wa.I32_CONST(1)
+        instrs += wa.I32_XOR
 
       // Widening conversions
       case CharToInt | ByteToInt | ShortToInt =>
         () // these are no-ops because they are all represented as i32's with the right mathematical value
       case IntToLong =>
-        instrs += I64_EXTEND_I32_S
+        instrs += wa.I64_EXTEND_I32_S
       case IntToDouble =>
-        instrs += F64_CONVERT_I32_S
+        instrs += wa.F64_CONVERT_I32_S
       case FloatToDouble =>
-        instrs += F64_PROMOTE_F32
+        instrs += wa.F64_PROMOTE_F32
 
       // Narrowing conversions
       case IntToChar =>
-        instrs += I32_CONST(0xFFFF)
-        instrs += I32_AND
+        instrs += wa.I32_CONST(0xFFFF)
+        instrs += wa.I32_AND
       case IntToByte =>
-        instrs += I32_EXTEND8_S
+        instrs += wa.I32_EXTEND8_S
       case IntToShort =>
-        instrs += I32_EXTEND16_S
+        instrs += wa.I32_EXTEND16_S
       case LongToInt =>
-        instrs += I32_WRAP_I64
+        instrs += wa.I32_WRAP_I64
       case DoubleToInt =>
-        instrs += I32_TRUNC_SAT_F64_S
+        instrs += wa.I32_TRUNC_SAT_F64_S
       case DoubleToFloat =>
-        instrs += F32_DEMOTE_F64
+        instrs += wa.F32_DEMOTE_F64
 
       // Long <-> Double (neither widening nor narrowing)
       case LongToDouble =>
-        instrs += F64_CONVERT_I64_S
+        instrs += wa.F64_CONVERT_I64_S
       case DoubleToLong =>
-        instrs += I64_TRUNC_SAT_F64_S
+        instrs += wa.I64_TRUNC_SAT_F64_S
 
       // Long -> Float (neither widening nor narrowing), introduced in 1.6
       case LongToFloat =>
-        instrs += F32_CONVERT_I64_S
+        instrs += wa.F32_CONVERT_I64_S
 
       // String.length, introduced in 1.11
       case String_length =>
-        instrs += CALL(genFunctionName.stringLength)
+        instrs += wa.CALL(genFunctionName.stringLength)
     }
 
     unary.tpe
   }
 
-  private def genBinaryOp(binary: IRTrees.BinaryOp): IRTypes.Type = {
-    import IRTrees.BinaryOp
-
-    def genLongShiftOp(shiftInstr: WasmInstr): IRTypes.Type = {
-      genTree(binary.lhs, IRTypes.LongType)
-      genTree(binary.rhs, IRTypes.IntType)
-      fb.markPosition(binary)
-      instrs += I64_EXTEND_I32_S
+  private def genBinaryOp(binary: BinaryOp): Type = {
+    def genLongShiftOp(shiftInstr: wa.Instr): Type = {
+      genTree(binary.lhs, LongType)
+      genTree(binary.rhs, IntType)
+      markPosition(binary)
+      instrs += wa.I64_EXTEND_I32_S
       instrs += shiftInstr
-      IRTypes.LongType
+      LongType
     }
 
     def genThrowArithmeticException(): Unit = {
       implicit val pos = binary.pos
-      val divisionByZeroEx = IRTrees.Throw(
-        IRTrees.New(
-          IRNames.ArithmeticExceptionClass,
-          IRTrees.MethodIdent(
-            IRNames.MethodName.constructor(List(IRTypes.ClassRef(IRNames.BoxedStringClass)))
+      val divisionByZeroEx = Throw(
+        New(
+          ArithmeticExceptionClass,
+          MethodIdent(
+            MethodName.constructor(List(ClassRef(BoxedStringClass)))
           ),
-          List(IRTrees.StringLiteral("/ by zero "))
+          List(StringLiteral("/ by zero "))
         )
       )
       genThrow(divisionByZeroEx)
@@ -1181,10 +1180,10 @@ private class FunctionEmitter private (
     def genDivModByConstant[T](
         isDiv: Boolean,
         rhsValue: T,
-        const: T => WasmInstr,
-        sub: WasmInstr,
-        mainOp: WasmInstr
-    )(implicit num: Numeric[T]): IRTypes.Type = {
+        const: T => wa.Instr,
+        sub: wa.Instr,
+        mainOp: wa.Instr
+    )(implicit num: Numeric[T]): Type = {
       /* When we statically know the value of the rhs, we can avoid the
        * dynamic tests for division by zero and overflow. This is quite
        * common in practice.
@@ -1194,24 +1193,24 @@ private class FunctionEmitter private (
 
       if (rhsValue == num.zero) {
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary)
+        markPosition(binary)
         genThrowArithmeticException()
-        IRTypes.NothingType
+        NothingType
       } else if (isDiv && rhsValue == num.fromInt(-1)) {
         /* MinValue / -1 overflows; it traps in Wasm but we need to wrap.
          * We rewrite as `0 - lhs` so that we do not need any test.
          */
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += const(num.zero)
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += sub
         tpe
       } else {
         genTree(binary.lhs, tpe)
-        fb.markPosition(binary.rhs)
+        markPosition(binary.rhs)
         instrs += const(rhsValue)
-        fb.markPosition(binary)
+        markPosition(binary)
         instrs += mainOp
         tpe
       }
@@ -1219,12 +1218,12 @@ private class FunctionEmitter private (
 
     def genDivMod[T](
         isDiv: Boolean,
-        const: T => WasmInstr,
-        eqz: WasmInstr,
-        eq: WasmInstr,
-        sub: WasmInstr,
-        mainOp: WasmInstr
-    )(implicit num: Numeric[T]): IRTypes.Type = {
+        const: T => wa.Instr,
+        eqz: wa.Instr,
+        eq: wa.Instr,
+        sub: wa.Instr,
+        mainOp: wa.Instr
+    )(implicit num: Numeric[T]): Type = {
       /* Here we perform the same steps as in the static case, but using
        * value tests at run-time.
        */
@@ -1235,11 +1234,11 @@ private class FunctionEmitter private (
       val lhsLocal = addSyntheticLocal(wasmTyp)
       val rhsLocal = addSyntheticLocal(wasmTyp)
       genTree(binary.lhs, tpe)
-      instrs += LOCAL_SET(lhsLocal)
+      instrs += wa.LOCAL_SET(lhsLocal)
       genTree(binary.rhs, tpe)
-      instrs += LOCAL_TEE(rhsLocal)
+      instrs += wa.LOCAL_TEE(rhsLocal)
 
-      fb.markPosition(binary)
+      markPosition(binary)
 
       instrs += eqz
       instrs.ifThen() {
@@ -1247,24 +1246,24 @@ private class FunctionEmitter private (
       }
       if (isDiv) {
         // Handle the MinValue / -1 corner case
-        instrs += LOCAL_GET(rhsLocal)
+        instrs += wa.LOCAL_GET(rhsLocal)
         instrs += const(num.fromInt(-1))
         instrs += eq
         instrs.ifThenElse(wasmTyp) {
           // 0 - lhs
           instrs += const(num.zero)
-          instrs += LOCAL_GET(lhsLocal)
+          instrs += wa.LOCAL_GET(lhsLocal)
           instrs += sub
         } {
           // lhs / rhs
-          instrs += LOCAL_GET(lhsLocal)
-          instrs += LOCAL_GET(rhsLocal)
+          instrs += wa.LOCAL_GET(lhsLocal)
+          instrs += wa.LOCAL_GET(rhsLocal)
           instrs += mainOp
         }
       } else {
         // lhs % rhs
-        instrs += LOCAL_GET(lhsLocal)
-        instrs += LOCAL_GET(rhsLocal)
+        instrs += wa.LOCAL_GET(lhsLocal)
+        instrs += wa.LOCAL_GET(rhsLocal)
         instrs += mainOp
       }
 
@@ -1278,36 +1277,64 @@ private class FunctionEmitter private (
 
       case BinaryOp.Int_/ =>
         binary.rhs match {
-          case IRTrees.IntLiteral(rhsValue) =>
-            genDivModByConstant(isDiv = true, rhsValue, I32_CONST(_), I32_SUB, I32_DIV_S)
+          case IntLiteral(rhsValue) =>
+            genDivModByConstant(isDiv = true, rhsValue, wa.I32_CONST(_), wa.I32_SUB, wa.I32_DIV_S)
           case _ =>
-            genDivMod(isDiv = true, I32_CONST(_), I32_EQZ, I32_EQ, I32_SUB, I32_DIV_S)
+            genDivMod(
+              isDiv = true,
+              wa.I32_CONST(_),
+              wa.I32_EQZ,
+              wa.I32_EQ,
+              wa.I32_SUB,
+              wa.I32_DIV_S
+            )
         }
       case BinaryOp.Int_% =>
         binary.rhs match {
-          case IRTrees.IntLiteral(rhsValue) =>
-            genDivModByConstant(isDiv = false, rhsValue, I32_CONST(_), I32_SUB, I32_REM_S)
+          case IntLiteral(rhsValue) =>
+            genDivModByConstant(isDiv = false, rhsValue, wa.I32_CONST(_), wa.I32_SUB, wa.I32_REM_S)
           case _ =>
-            genDivMod(isDiv = false, I32_CONST(_), I32_EQZ, I32_EQ, I32_SUB, I32_REM_S)
+            genDivMod(
+              isDiv = false,
+              wa.I32_CONST(_),
+              wa.I32_EQZ,
+              wa.I32_EQ,
+              wa.I32_SUB,
+              wa.I32_REM_S
+            )
         }
       case BinaryOp.Long_/ =>
         binary.rhs match {
-          case IRTrees.LongLiteral(rhsValue) =>
-            genDivModByConstant(isDiv = true, rhsValue, I64_CONST(_), I64_SUB, I64_DIV_S)
+          case LongLiteral(rhsValue) =>
+            genDivModByConstant(isDiv = true, rhsValue, wa.I64_CONST(_), wa.I64_SUB, wa.I64_DIV_S)
           case _ =>
-            genDivMod(isDiv = true, I64_CONST(_), I64_EQZ, I64_EQ, I64_SUB, I64_DIV_S)
+            genDivMod(
+              isDiv = true,
+              wa.I64_CONST(_),
+              wa.I64_EQZ,
+              wa.I64_EQ,
+              wa.I64_SUB,
+              wa.I64_DIV_S
+            )
         }
       case BinaryOp.Long_% =>
         binary.rhs match {
-          case IRTrees.LongLiteral(rhsValue) =>
-            genDivModByConstant(isDiv = false, rhsValue, I64_CONST(_), I64_SUB, I64_REM_S)
+          case LongLiteral(rhsValue) =>
+            genDivModByConstant(isDiv = false, rhsValue, wa.I64_CONST(_), wa.I64_SUB, wa.I64_REM_S)
           case _ =>
-            genDivMod(isDiv = false, I64_CONST(_), I64_EQZ, I64_EQ, I64_SUB, I64_REM_S)
+            genDivMod(
+              isDiv = false,
+              wa.I64_CONST(_),
+              wa.I64_EQZ,
+              wa.I64_EQ,
+              wa.I64_SUB,
+              wa.I64_REM_S
+            )
         }
 
-      case BinaryOp.Long_<<  => genLongShiftOp(I64_SHL)
-      case BinaryOp.Long_>>> => genLongShiftOp(I64_SHR_U)
-      case BinaryOp.Long_>>  => genLongShiftOp(I64_SHR_S)
+      case BinaryOp.Long_<<  => genLongShiftOp(wa.I64_SHL)
+      case BinaryOp.Long_>>> => genLongShiftOp(wa.I64_SHR_U)
+      case BinaryOp.Long_>>  => genLongShiftOp(wa.I64_SHR_S)
 
       /* Floating point remainders are specified by
        * https://262.ecma-international.org/#sec-numeric-types-number-remainder
@@ -1319,123 +1346,121 @@ private class FunctionEmitter private (
        * Web does not work.)
        */
       case BinaryOp.Float_% =>
-        genTree(binary.lhs, IRTypes.FloatType)
-        instrs += F64_PROMOTE_F32
-        genTree(binary.rhs, IRTypes.FloatType)
-        instrs += F64_PROMOTE_F32
-        fb.markPosition(binary)
-        instrs += CALL(genFunctionName.fmod)
-        instrs += F32_DEMOTE_F64
-        IRTypes.FloatType
+        genTree(binary.lhs, FloatType)
+        instrs += wa.F64_PROMOTE_F32
+        genTree(binary.rhs, FloatType)
+        instrs += wa.F64_PROMOTE_F32
+        markPosition(binary)
+        instrs += wa.CALL(genFunctionName.fmod)
+        instrs += wa.F32_DEMOTE_F64
+        FloatType
       case BinaryOp.Double_% =>
-        genTree(binary.lhs, IRTypes.DoubleType)
-        genTree(binary.rhs, IRTypes.DoubleType)
-        fb.markPosition(binary)
-        instrs += CALL(genFunctionName.fmod)
-        IRTypes.DoubleType
+        genTree(binary.lhs, DoubleType)
+        genTree(binary.rhs, DoubleType)
+        markPosition(binary)
+        instrs += wa.CALL(genFunctionName.fmod)
+        DoubleType
 
       // New in 1.11
       case BinaryOp.String_charAt =>
-        genTree(binary.lhs, IRTypes.StringType) // push the string
-        genTree(binary.rhs, IRTypes.IntType) // push the index
-        fb.markPosition(binary)
-        instrs += CALL(genFunctionName.stringCharAt)
-        IRTypes.CharType
+        genTree(binary.lhs, StringType) // push the string
+        genTree(binary.rhs, IntType) // push the index
+        markPosition(binary)
+        instrs += wa.CALL(genFunctionName.stringCharAt)
+        CharType
 
       case _ => genElementaryBinaryOp(binary)
     }
   }
 
-  private def genEq(binary: IRTrees.BinaryOp): IRTypes.Type = {
+  private def genEq(binary: BinaryOp): Type = {
     // TODO Optimize this when the operands have a better type than `any`
-    genTree(binary.lhs, IRTypes.AnyType)
-    genTree(binary.rhs, IRTypes.AnyType)
+    genTree(binary.lhs, AnyType)
+    genTree(binary.rhs, AnyType)
 
-    fb.markPosition(binary)
+    markPosition(binary)
 
-    instrs += CALL(genFunctionName.is)
+    instrs += wa.CALL(genFunctionName.is)
 
-    if (binary.op == IRTrees.BinaryOp.!==) {
-      instrs += I32_CONST(1)
-      instrs += I32_XOR
+    if (binary.op == BinaryOp.!==) {
+      instrs += wa.I32_CONST(1)
+      instrs += wa.I32_XOR
     }
 
-    IRTypes.BooleanType
+    BooleanType
   }
 
-  private def genElementaryBinaryOp(binary: IRTrees.BinaryOp): IRTypes.Type = {
-    import IRTrees.BinaryOp
-
+  private def genElementaryBinaryOp(binary: BinaryOp): Type = {
     genTreeAuto(binary.lhs)
     genTreeAuto(binary.rhs)
 
-    fb.markPosition(binary)
+    markPosition(binary)
 
     val operation = binary.op match {
-      case BinaryOp.Boolean_== => I32_EQ
-      case BinaryOp.Boolean_!= => I32_NE
-      case BinaryOp.Boolean_|  => I32_OR
-      case BinaryOp.Boolean_&  => I32_AND
+      case BinaryOp.Boolean_== => wa.I32_EQ
+      case BinaryOp.Boolean_!= => wa.I32_NE
+      case BinaryOp.Boolean_|  => wa.I32_OR
+      case BinaryOp.Boolean_&  => wa.I32_AND
 
-      case BinaryOp.Int_+   => I32_ADD
-      case BinaryOp.Int_-   => I32_SUB
-      case BinaryOp.Int_*   => I32_MUL
-      case BinaryOp.Int_/   => I32_DIV_S // signed division
-      case BinaryOp.Int_%   => I32_REM_S // signed remainder
-      case BinaryOp.Int_|   => I32_OR
-      case BinaryOp.Int_&   => I32_AND
-      case BinaryOp.Int_^   => I32_XOR
-      case BinaryOp.Int_<<  => I32_SHL
-      case BinaryOp.Int_>>> => I32_SHR_U
-      case BinaryOp.Int_>>  => I32_SHR_S
-      case BinaryOp.Int_==  => I32_EQ
-      case BinaryOp.Int_!=  => I32_NE
-      case BinaryOp.Int_<   => I32_LT_S
-      case BinaryOp.Int_<=  => I32_LE_S
-      case BinaryOp.Int_>   => I32_GT_S
-      case BinaryOp.Int_>=  => I32_GE_S
+      case BinaryOp.Int_+   => wa.I32_ADD
+      case BinaryOp.Int_-   => wa.I32_SUB
+      case BinaryOp.Int_*   => wa.I32_MUL
+      case BinaryOp.Int_/   => wa.I32_DIV_S // signed division
+      case BinaryOp.Int_%   => wa.I32_REM_S // signed remainder
+      case BinaryOp.Int_|   => wa.I32_OR
+      case BinaryOp.Int_&   => wa.I32_AND
+      case BinaryOp.Int_^   => wa.I32_XOR
+      case BinaryOp.Int_<<  => wa.I32_SHL
+      case BinaryOp.Int_>>> => wa.I32_SHR_U
+      case BinaryOp.Int_>>  => wa.I32_SHR_S
+      case BinaryOp.Int_==  => wa.I32_EQ
+      case BinaryOp.Int_!=  => wa.I32_NE
+      case BinaryOp.Int_<   => wa.I32_LT_S
+      case BinaryOp.Int_<=  => wa.I32_LE_S
+      case BinaryOp.Int_>   => wa.I32_GT_S
+      case BinaryOp.Int_>=  => wa.I32_GE_S
 
-      case BinaryOp.Long_+ => I64_ADD
-      case BinaryOp.Long_- => I64_SUB
-      case BinaryOp.Long_* => I64_MUL
-      case BinaryOp.Long_/ => I64_DIV_S
-      case BinaryOp.Long_% => I64_REM_S
-      case BinaryOp.Long_| => I64_OR
-      case BinaryOp.Long_& => I64_AND
-      case BinaryOp.Long_^ => I64_XOR
+      case BinaryOp.Long_+ => wa.I64_ADD
+      case BinaryOp.Long_- => wa.I64_SUB
+      case BinaryOp.Long_* => wa.I64_MUL
+      case BinaryOp.Long_/ => wa.I64_DIV_S
+      case BinaryOp.Long_% => wa.I64_REM_S
+      case BinaryOp.Long_| => wa.I64_OR
+      case BinaryOp.Long_& => wa.I64_AND
+      case BinaryOp.Long_^ => wa.I64_XOR
 
-      case BinaryOp.Long_== => I64_EQ
-      case BinaryOp.Long_!= => I64_NE
-      case BinaryOp.Long_<  => I64_LT_S
-      case BinaryOp.Long_<= => I64_LE_S
-      case BinaryOp.Long_>  => I64_GT_S
-      case BinaryOp.Long_>= => I64_GE_S
+      case BinaryOp.Long_== => wa.I64_EQ
+      case BinaryOp.Long_!= => wa.I64_NE
+      case BinaryOp.Long_<  => wa.I64_LT_S
+      case BinaryOp.Long_<= => wa.I64_LE_S
+      case BinaryOp.Long_>  => wa.I64_GT_S
+      case BinaryOp.Long_>= => wa.I64_GE_S
 
-      case BinaryOp.Float_+ => F32_ADD
-      case BinaryOp.Float_- => F32_SUB
-      case BinaryOp.Float_* => F32_MUL
-      case BinaryOp.Float_/ => F32_DIV
+      case BinaryOp.Float_+ => wa.F32_ADD
+      case BinaryOp.Float_- => wa.F32_SUB
+      case BinaryOp.Float_* => wa.F32_MUL
+      case BinaryOp.Float_/ => wa.F32_DIV
 
-      case BinaryOp.Double_+ => F64_ADD
-      case BinaryOp.Double_- => F64_SUB
-      case BinaryOp.Double_* => F64_MUL
-      case BinaryOp.Double_/ => F64_DIV
+      case BinaryOp.Double_+ => wa.F64_ADD
+      case BinaryOp.Double_- => wa.F64_SUB
+      case BinaryOp.Double_* => wa.F64_MUL
+      case BinaryOp.Double_/ => wa.F64_DIV
 
-      case BinaryOp.Double_== => F64_EQ
-      case BinaryOp.Double_!= => F64_NE
-      case BinaryOp.Double_<  => F64_LT
-      case BinaryOp.Double_<= => F64_LE
-      case BinaryOp.Double_>  => F64_GT
-      case BinaryOp.Double_>= => F64_GE
+      case BinaryOp.Double_== => wa.F64_EQ
+      case BinaryOp.Double_!= => wa.F64_NE
+      case BinaryOp.Double_<  => wa.F64_LT
+      case BinaryOp.Double_<= => wa.F64_LE
+      case BinaryOp.Double_>  => wa.F64_GT
+      case BinaryOp.Double_>= => wa.F64_GE
     }
     instrs += operation
     binary.tpe
   }
 
-  private def genStringConcat(binary: IRTrees.BinaryOp): IRTypes.Type = {
-    val wasmStringType = Types.WasmRefType.any
+  private def genStringConcat(binary: BinaryOp): Type = {
+    val wasmStringType = watpe.RefType.any
 
-    def genToString(tree: IRTrees.Tree): Unit = {
+    def genToString(tree: Tree): Unit = {
       def genWithDispatch(isAncestorOfHijackedClass: Boolean): Unit = {
         /* Somewhat duplicated from genApplyNonPrim, but specialized for
          * `toString`, and where the handling of `null` is different.
@@ -1447,9 +1472,9 @@ private class FunctionEmitter private (
 
         // A local for a copy of the receiver that we will use to resolve dispatch
         val receiverLocalForDispatch =
-          addSyntheticLocal(Types.WasmRefType(genTypeName.ObjectStruct))
+          addSyntheticLocal(watpe.RefType(genTypeName.ObjectStruct))
 
-        val objectClassInfo = ctx.getClassInfo(IRNames.ObjectClass)
+        val objectClassInfo = ctx.getClassInfo(ObjectClass)
 
         if (!isAncestorOfHijackedClass) {
           /* Standard dispatch codegen, with dedicated null handling.
@@ -1467,14 +1492,14 @@ private class FunctionEmitter private (
            * end $done
            */
 
-          instrs.block(Types.WasmRefType.any) { labelDone =>
+          instrs.block(watpe.RefType.any) { labelDone =>
             instrs.block() { labelIsNull =>
               genTreeAuto(tree)
-              fb.markPosition(binary)
-              instrs += BR_ON_NULL(labelIsNull)
-              instrs += LOCAL_TEE(receiverLocalForDispatch)
+              markPosition(binary)
+              instrs += wa.BR_ON_NULL(labelIsNull)
+              instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
-              instrs += BR_ON_NON_NULL(labelDone)
+              instrs += wa.BR_ON_NON_NULL(labelDone)
             }
 
             instrs ++= ctx.getConstantStringInstr("null")
@@ -1496,119 +1521,119 @@ private class FunctionEmitter private (
            * end $done
            */
 
-          instrs.block(Types.WasmRefType.any) { labelDone =>
+          instrs.block(watpe.RefType.any) { labelDone =>
             // First try the case where the value is one of our objects
-            instrs.block(Types.WasmRefType.anyref) { labelNotOurObject =>
+            instrs.block(watpe.RefType.anyref) { labelNotOurObject =>
               // Load receiver
               genTreeAuto(tree)
 
-              fb.markPosition(binary)
+              markPosition(binary)
 
-              instrs += BR_ON_CAST_FAIL(
+              instrs += wa.BR_ON_CAST_FAIL(
                 labelNotOurObject,
-                Types.WasmRefType.anyref,
-                Types.WasmRefType(genTypeName.ObjectStruct)
+                watpe.RefType.anyref,
+                watpe.RefType(genTypeName.ObjectStruct)
               )
-              instrs += LOCAL_TEE(receiverLocalForDispatch)
+              instrs += wa.LOCAL_TEE(receiverLocalForDispatch)
               genTableDispatch(objectClassInfo, toStringMethodName, receiverLocalForDispatch)
-              instrs += BR_ON_NON_NULL(labelDone)
-              instrs += REF_NULL(Types.WasmHeapType.Any)
+              instrs += wa.BR_ON_NON_NULL(labelDone)
+              instrs += wa.REF_NULL(watpe.HeapType.Any)
             } // end block labelNotOurObject
 
             // Now we have a value that is not one of our objects; the anyref is still on the stack
-            instrs += CALL(genFunctionName.jsValueToStringForConcat)
+            instrs += wa.CALL(genFunctionName.jsValueToStringForConcat)
           } // end block labelDone
         }
       }
 
       tree.tpe match {
-        case primType: IRTypes.PrimType =>
+        case primType: PrimType =>
           genTreeAuto(tree)
 
-          fb.markPosition(binary)
+          markPosition(binary)
 
           primType match {
-            case IRTypes.StringType =>
+            case StringType =>
               () // no-op
-            case IRTypes.BooleanType =>
-              instrs += CALL(genFunctionName.booleanToString)
-            case IRTypes.CharType =>
-              instrs += CALL(genFunctionName.charToString)
-            case IRTypes.ByteType | IRTypes.ShortType | IRTypes.IntType =>
-              instrs += CALL(genFunctionName.intToString)
-            case IRTypes.LongType =>
-              instrs += CALL(genFunctionName.longToString)
-            case IRTypes.FloatType =>
-              instrs += F64_PROMOTE_F32
-              instrs += CALL(genFunctionName.doubleToString)
-            case IRTypes.DoubleType =>
-              instrs += CALL(genFunctionName.doubleToString)
-            case IRTypes.NullType | IRTypes.UndefType =>
-              instrs += CALL(genFunctionName.jsValueToStringForConcat)
-            case IRTypes.NothingType =>
+            case BooleanType =>
+              instrs += wa.CALL(genFunctionName.booleanToString)
+            case CharType =>
+              instrs += wa.CALL(genFunctionName.charToString)
+            case ByteType | ShortType | IntType =>
+              instrs += wa.CALL(genFunctionName.intToString)
+            case LongType =>
+              instrs += wa.CALL(genFunctionName.longToString)
+            case FloatType =>
+              instrs += wa.F64_PROMOTE_F32
+              instrs += wa.CALL(genFunctionName.doubleToString)
+            case DoubleType =>
+              instrs += wa.CALL(genFunctionName.doubleToString)
+            case NullType | UndefType =>
+              instrs += wa.CALL(genFunctionName.jsValueToStringForConcat)
+            case NothingType =>
               () // unreachable
-            case IRTypes.NoType =>
+            case NoType =>
               throw new AssertionError(
                 s"Found expression of type void in String_+ at ${tree.pos}: $tree"
               )
           }
 
-        case IRTypes.ClassType(IRNames.BoxedStringClass) =>
+        case ClassType(BoxedStringClass) =>
           // Common case for which we want to avoid the hijacked class dispatch
           genTreeAuto(tree)
-          fb.markPosition(binary)
-          instrs += CALL(genFunctionName.jsValueToStringForConcat) // for `null`
+          markPosition(binary)
+          instrs += wa.CALL(genFunctionName.jsValueToStringForConcat) // for `null`
 
-        case IRTypes.ClassType(className) =>
+        case ClassType(className) =>
           genWithDispatch(ctx.getClassInfo(className).isAncestorOfHijackedClass)
 
-        case IRTypes.AnyType =>
+        case AnyType =>
           genWithDispatch(isAncestorOfHijackedClass = true)
 
-        case IRTypes.ArrayType(_) =>
+        case ArrayType(_) =>
           genWithDispatch(isAncestorOfHijackedClass = false)
 
-        case tpe: IRTypes.RecordType =>
+        case tpe: RecordType =>
           throw new AssertionError(s"Invalid type $tpe for String_+ at ${tree.pos}: $tree")
       }
     }
 
     binary.lhs match {
-      case IRTrees.StringLiteral("") =>
+      case StringLiteral("") =>
         // Common case where we don't actually need a concatenation
         genToString(binary.rhs)
 
       case _ =>
         genToString(binary.lhs)
         genToString(binary.rhs)
-        fb.markPosition(binary)
-        instrs += CALL(genFunctionName.stringConcat)
+        markPosition(binary)
+        instrs += wa.CALL(genFunctionName.stringConcat)
     }
 
-    IRTypes.StringType
+    StringType
   }
 
-  private def genIsInstanceOf(tree: IRTrees.IsInstanceOf): IRTypes.Type = {
-    genTree(tree.expr, IRTypes.AnyType)
+  private def genIsInstanceOf(tree: IsInstanceOf): Type = {
+    genTree(tree.expr, AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    def genIsPrimType(testType: IRTypes.PrimType): Unit = {
+    def genIsPrimType(testType: PrimType): Unit = {
       testType match {
-        case IRTypes.UndefType =>
-          instrs += CALL(genFunctionName.isUndef)
-        case IRTypes.StringType =>
-          instrs += CALL(genFunctionName.isString)
+        case UndefType =>
+          instrs += wa.CALL(genFunctionName.isUndef)
+        case StringType =>
+          instrs += wa.CALL(genFunctionName.isString)
 
-        case testType: IRTypes.PrimTypeWithRef =>
+        case testType: PrimTypeWithRef =>
           testType match {
-            case IRTypes.CharType =>
+            case CharType =>
               val structTypeName = genTypeName.forClass(SpecialNames.CharBoxClass)
-              instrs += REF_TEST(Types.WasmRefType(structTypeName))
-            case IRTypes.LongType =>
+              instrs += wa.REF_TEST(watpe.RefType(structTypeName))
+            case LongType =>
               val structTypeName = genTypeName.forClass(SpecialNames.LongBoxClass)
-              instrs += REF_TEST(Types.WasmRefType(structTypeName))
-            case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
+              instrs += wa.REF_TEST(watpe.RefType(structTypeName))
+            case NoType | NothingType | NullType =>
               throw new AssertionError(s"Illegal isInstanceOf[$testType]")
             case _ =>
               /* Calls the appropriate `tX` JS helper. It dynamically tests whether
@@ -1616,164 +1641,164 @@ private class FunctionEmitter private (
                * https://www.scala-js.org/doc/semantics.html
                * All the `tX` helpers have Wasm type `anyref -> i32` (interpreted as `boolean`).
                */
-              instrs += CALL(genFunctionName.typeTest(testType.primRef))
+              instrs += wa.CALL(genFunctionName.typeTest(testType.primRef))
           }
       }
     }
 
     tree.testType match {
-      case testType: IRTypes.PrimType =>
+      case testType: PrimType =>
         genIsPrimType(testType)
 
-      case IRTypes.AnyType | IRTypes.ClassType(IRNames.ObjectClass) =>
-        instrs += REF_IS_NULL
-        instrs += I32_CONST(1)
-        instrs += I32_XOR
+      case AnyType | ClassType(ObjectClass) =>
+        instrs += wa.REF_IS_NULL
+        instrs += wa.I32_CONST(1)
+        instrs += wa.I32_XOR
 
-      case IRTypes.ClassType(JLNumberClass) =>
+      case ClassType(JLNumberClass) =>
         /* Special case: the only non-Object *class* that is an ancestor of a
          * hijacked class. We need to accept `number` primitives here.
          */
-        val tempLocal = addSyntheticLocal(Types.WasmRefType.anyref)
-        instrs += LOCAL_TEE(tempLocal)
-        instrs += REF_TEST(Types.WasmRefType(genTypeName.forClass(JLNumberClass)))
-        instrs.ifThenElse(Types.WasmInt32) {
-          instrs += I32_CONST(1)
+        val tempLocal = addSyntheticLocal(watpe.RefType.anyref)
+        instrs += wa.LOCAL_TEE(tempLocal)
+        instrs += wa.REF_TEST(watpe.RefType(genTypeName.forClass(JLNumberClass)))
+        instrs.ifThenElse(watpe.Int32) {
+          instrs += wa.I32_CONST(1)
         } {
-          instrs += LOCAL_GET(tempLocal)
-          instrs += CALL(genFunctionName.typeTest(IRTypes.DoubleRef))
+          instrs += wa.LOCAL_GET(tempLocal)
+          instrs += wa.CALL(genFunctionName.typeTest(DoubleRef))
         }
 
-      case IRTypes.ClassType(testClassName) =>
-        IRTypes.BoxedClassToPrimType.get(testClassName) match {
+      case ClassType(testClassName) =>
+        BoxedClassToPrimType.get(testClassName) match {
           case Some(primType) =>
             genIsPrimType(primType)
           case None =>
             val info = ctx.getClassInfo(testClassName)
 
             if (info.isInterface)
-              instrs += CALL(genFunctionName.instanceTest(testClassName))
+              instrs += wa.CALL(genFunctionName.instanceTest(testClassName))
             else
-              instrs += REF_TEST(Types.WasmRefType(genTypeName.forClass(testClassName)))
+              instrs += wa.REF_TEST(watpe.RefType(genTypeName.forClass(testClassName)))
         }
 
-      case IRTypes.ArrayType(arrayTypeRef) =>
+      case ArrayType(arrayTypeRef) =>
         arrayTypeRef match {
-          case IRTypes.ArrayTypeRef(
-                IRTypes.ClassRef(IRNames.ObjectClass) | _: IRTypes.PrimRef,
+          case ArrayTypeRef(
+                ClassRef(ObjectClass) | _: PrimRef,
                 1
               ) =>
-            // For primitive arrays and exactly Array[Object], a REF_TEST is enough
+            // For primitive arrays and exactly Array[Object], a wa.REF_TEST is enough
             val structTypeName = genTypeName.forArrayClass(arrayTypeRef)
-            instrs += REF_TEST(Types.WasmRefType(structTypeName))
+            instrs += wa.REF_TEST(watpe.RefType(structTypeName))
 
           case _ =>
             /* Non-Object reference arra types need a sophisticated type test
              * based on assignability of component types.
              */
-            import Types.WasmRefType.anyref
+            import watpe.RefType.anyref
 
-            instrs.block(Sig(List(anyref), List(Types.WasmInt32))) { doneLabel =>
+            instrs.block(Sig(List(anyref), List(watpe.Int32))) { doneLabel =>
               instrs.block(Sig(List(anyref), List(anyref))) { notARefArrayLabel =>
                 // Try and cast to the generic representation first
                 val refArrayStructTypeName = genTypeName.forArrayClass(arrayTypeRef)
-                instrs += BR_ON_CAST_FAIL(
+                instrs += wa.BR_ON_CAST_FAIL(
                   notARefArrayLabel,
-                  Types.WasmRefType.anyref,
-                  Types.WasmRefType(refArrayStructTypeName)
+                  watpe.RefType.anyref,
+                  watpe.RefType(refArrayStructTypeName)
                 )
 
                 // refArrayValue := the generic representation
                 val refArrayValueLocal =
-                  addSyntheticLocal(Types.WasmRefType(refArrayStructTypeName))
-                instrs += LOCAL_SET(refArrayValueLocal)
+                  addSyntheticLocal(watpe.RefType(refArrayStructTypeName))
+                instrs += wa.LOCAL_SET(refArrayValueLocal)
 
                 // Load typeDataOf(arrayTypeRef)
                 genLoadArrayTypeData(arrayTypeRef)
 
                 // Load refArrayValue.vtable
-                instrs += LOCAL_GET(refArrayValueLocal)
-                instrs += STRUCT_GET(refArrayStructTypeName, genFieldIdx.objStruct.vtable)
+                instrs += wa.LOCAL_GET(refArrayValueLocal)
+                instrs += wa.STRUCT_GET(refArrayStructTypeName, genFieldIdx.objStruct.vtable)
 
                 // Call isAssignableFrom and return its result
-                instrs += CALL(genFunctionName.isAssignableFrom)
-                instrs += BR(doneLabel)
+                instrs += wa.CALL(genFunctionName.isAssignableFrom)
+                instrs += wa.BR(doneLabel)
               }
 
               // Here, the value is not a reference array type, so return false
-              instrs += DROP
-              instrs += I32_CONST(0)
+              instrs += wa.DROP
+              instrs += wa.I32_CONST(0)
             }
         }
 
-      case testType: IRTypes.RecordType =>
+      case testType: RecordType =>
         throw new AssertionError(s"Illegal type in IsInstanceOf: $testType")
     }
 
-    IRTypes.BooleanType
+    BooleanType
   }
 
-  private def genAsInstanceOf(tree: IRTrees.AsInstanceOf): IRTypes.Type = {
+  private def genAsInstanceOf(tree: AsInstanceOf): Type = {
     val sourceTpe = tree.expr.tpe
     val targetTpe = tree.tpe
 
-    if (IRTypes.isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
+    if (isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
       // Common case where no cast is necessary
       genTreeAuto(tree.expr)
       sourceTpe
     } else {
-      genTree(tree.expr, IRTypes.AnyType)
+      genTree(tree.expr, AnyType)
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
-      def genAsPrimType(targetTpe: IRTypes.PrimType): Unit = {
+      def genAsPrimType(targetTpe: PrimType): Unit = {
         // TODO We could do something better for things like double.asInstanceOf[int]
         genUnbox(targetTpe)(tree.pos)
       }
 
       targetTpe match {
-        case targetTpe: IRTypes.PrimType =>
+        case targetTpe: PrimType =>
           genAsPrimType(targetTpe)
 
-        case IRTypes.AnyType =>
+        case AnyType =>
           ()
 
-        case IRTypes.ClassType(targetClassName) =>
+        case ClassType(targetClassName) =>
           val info = ctx.getClassInfo(targetClassName)
           if (info.kind == ClassKind.HijackedClass) {
-            IRTypes.BoxedClassToPrimType(targetClassName) match {
-              case IRTypes.UndefType | IRTypes.StringType =>
+            BoxedClassToPrimType(targetClassName) match {
+              case UndefType | StringType =>
                 ()
-              case primType: IRTypes.PrimTypeWithRef =>
+              case primType: PrimTypeWithRef =>
                 primType match {
-                  case IRTypes.CharType =>
+                  case CharType =>
                     val structTypeName = genTypeName.forClass(SpecialNames.CharBoxClass)
-                    instrs += REF_CAST(Types.WasmRefType.nullable(structTypeName))
-                  case IRTypes.LongType =>
+                    instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
+                  case LongType =>
                     val structTypeName = genTypeName.forClass(SpecialNames.LongBoxClass)
-                    instrs += REF_CAST(Types.WasmRefType.nullable(structTypeName))
-                  case IRTypes.NoType | IRTypes.NothingType | IRTypes.NullType =>
+                    instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
+                  case NoType | NothingType | NullType =>
                     throw new AssertionError(s"Unexpected prim type $primType for $targetClassName")
                   case _ =>
-                    instrs += CALL(genFunctionName.unboxOrNull(primType.primRef))
+                    instrs += wa.CALL(genFunctionName.unboxOrNull(primType.primRef))
                 }
             }
           } else if (info.isAncestorOfHijackedClass) {
             // Nothing to do; the translation is `anyref`
             ()
           } else if (info.kind.isClass) {
-            instrs += REF_CAST(
-              Types.WasmRefType.nullable(genTypeName.forClass(targetClassName))
+            instrs += wa.REF_CAST(
+              watpe.RefType.nullable(genTypeName.forClass(targetClassName))
             )
           } else if (info.isInterface) {
-            instrs += REF_CAST(Types.WasmRefType.nullable(genTypeName.ObjectStruct))
+            instrs += wa.REF_CAST(watpe.RefType.nullable(genTypeName.ObjectStruct))
           }
 
-        case IRTypes.ArrayType(arrayTypeRef) =>
+        case ArrayType(arrayTypeRef) =>
           val structTypeName = genTypeName.forArrayClass(arrayTypeRef)
-          instrs += REF_CAST(Types.WasmRefType.nullable(structTypeName))
+          instrs += wa.REF_CAST(watpe.RefType.nullable(structTypeName))
 
-        case targetTpe: IRTypes.RecordType =>
+        case targetTpe: RecordType =>
           throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
       }
 
@@ -1787,77 +1812,77 @@ private class FunctionEmitter private (
     *
     * The type left on the stack is non-nullable.
     */
-  private def genUnbox(targetTpe: IRTypes.PrimType)(implicit pos: Position): Unit = {
+  private def genUnbox(targetTpe: PrimType)(implicit pos: Position): Unit = {
     targetTpe match {
-      case IRTypes.UndefType =>
-        instrs += DROP
-        instrs += GLOBAL_GET(genGlobalName.undef)
-      case IRTypes.StringType =>
-        instrs += REF_AS_NOT_NULL
+      case UndefType =>
+        instrs += wa.DROP
+        instrs += wa.GLOBAL_GET(genGlobalName.undef)
+      case StringType =>
+        instrs += wa.REF_AS_NOT_NULL
 
-      case targetTpe: IRTypes.PrimTypeWithRef =>
+      case targetTpe: PrimTypeWithRef =>
         targetTpe match {
-          case IRTypes.CharType | IRTypes.LongType =>
+          case CharType | LongType =>
             // Extract the `value` field (the only field) out of the box class.
 
             val boxClass =
-              if (targetTpe == IRTypes.CharType) SpecialNames.CharBoxClass
+              if (targetTpe == CharType) SpecialNames.CharBoxClass
               else SpecialNames.LongBoxClass
             val resultType = TypeTransformer.transformType(targetTpe)(ctx)
 
-            instrs.block(Sig(List(Types.WasmRefType.anyref), List(resultType))) { doneLabel =>
-              instrs.block(Sig(List(Types.WasmRefType.anyref), Nil)) { isNullLabel =>
-                instrs += BR_ON_NULL(isNullLabel)
+            instrs.block(Sig(List(watpe.RefType.anyref), List(resultType))) { doneLabel =>
+              instrs.block(Sig(List(watpe.RefType.anyref), Nil)) { isNullLabel =>
+                instrs += wa.BR_ON_NULL(isNullLabel)
                 val structTypeName = genTypeName.forClass(boxClass)
-                instrs += REF_CAST(Types.WasmRefType(structTypeName))
-                instrs += STRUCT_GET(structTypeName, genFieldIdx.objStruct.uniqueRegularField)
-                instrs += BR(doneLabel)
+                instrs += wa.REF_CAST(watpe.RefType(structTypeName))
+                instrs += wa.STRUCT_GET(structTypeName, genFieldIdx.objStruct.uniqueRegularField)
+                instrs += wa.BR(doneLabel)
               }
-              genTree(IRTypes.zeroOf(targetTpe), targetTpe)
+              genTree(zeroOf(targetTpe), targetTpe)
             }
 
-          case IRTypes.NothingType | IRTypes.NullType | IRTypes.NoType =>
+          case NothingType | NullType | NoType =>
             throw new IllegalArgumentException(s"Illegal type in genUnbox: $targetTpe")
           case _ =>
-            instrs += CALL(genFunctionName.unbox(targetTpe.primRef))
+            instrs += wa.CALL(genFunctionName.unbox(targetTpe.primRef))
         }
     }
   }
 
-  private def isSubclass(subClass: IRNames.ClassName, superClass: IRNames.ClassName): Boolean =
+  private def isSubclass(subClass: ClassName, superClass: ClassName): Boolean =
     ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
-  private def genGetClass(tree: IRTrees.GetClass): IRTypes.Type = {
+  private def genGetClass(tree: GetClass): Type = {
     /* Unlike in `genApply` or `genStringConcat`, here we make no effort to
      * optimize known-primitive receivers. In practice, such cases would be
      * useless.
      */
 
     val needHijackedClassDispatch = tree.expr.tpe match {
-      case IRTypes.ClassType(className) =>
+      case ClassType(className) =>
         ctx.getClassInfo(className).isAncestorOfHijackedClass
-      case IRTypes.ArrayType(_) | IRTypes.NothingType | IRTypes.NullType =>
+      case ArrayType(_) | NothingType | NullType =>
         false
       case _ =>
         true
     }
 
     if (!needHijackedClassDispatch) {
-      val typeDataType = Types.WasmRefType(genTypeName.typeData)
-      val objectTypeIdx = genTypeName.forClass(IRNames.ObjectClass)
+      val typeDataType = watpe.RefType(genTypeName.typeData)
+      val objectTypeIdx = genTypeName.forClass(ObjectClass)
 
       val typeDataLocal = addSyntheticLocal(typeDataType)
 
       genTreeAuto(tree.expr)
-      fb.markPosition(tree)
-      instrs += STRUCT_GET(objectTypeIdx, genFieldIdx.objStruct.vtable) // implicit trap on null
-      instrs += LOCAL_SET(typeDataLocal)
-      genClassOfFromTypeData(LOCAL_GET(typeDataLocal))
+      markPosition(tree)
+      instrs += wa.STRUCT_GET(objectTypeIdx, genFieldIdx.objStruct.vtable) // implicit trap on null
+      instrs += wa.LOCAL_SET(typeDataLocal)
+      genClassOfFromTypeData(wa.LOCAL_GET(typeDataLocal))
     } else {
-      genTree(tree.expr, IRTypes.AnyType)
-      fb.markPosition(tree)
-      instrs += REF_AS_NOT_NULL
-      instrs += CALL(genFunctionName.anyGetClass)
+      genTree(tree.expr, AnyType)
+      markPosition(tree)
+      instrs += wa.REF_AS_NOT_NULL
+      instrs += wa.CALL(genFunctionName.anyGetClass)
     }
 
     tree.tpe
@@ -1866,21 +1891,21 @@ private class FunctionEmitter private (
   private def genReadStorage(storage: VarStorage): Unit = {
     storage match {
       case VarStorage.Local(localIdx) =>
-        instrs += LOCAL_GET(localIdx)
+        instrs += wa.LOCAL_GET(localIdx)
       case VarStorage.StructField(structLocalIdx, structTypeName, fieldIdx) =>
-        instrs += LOCAL_GET(structLocalIdx)
-        instrs += STRUCT_GET(structTypeName, fieldIdx)
+        instrs += wa.LOCAL_GET(structLocalIdx)
+        instrs += wa.STRUCT_GET(structTypeName, fieldIdx)
     }
   }
 
-  private def genVarRef(r: IRTrees.VarRef): IRTypes.Type = {
-    fb.markPosition(r)
+  private def genVarRef(r: VarRef): Type = {
+    markPosition(r)
     genReadStorage(lookupLocal(r.ident.name))
     r.tpe
   }
 
-  private def genThis(t: IRTrees.This): IRTypes.Type = {
-    fb.markPosition(t)
+  private def genThis(t: This): Type = {
+    markPosition(t)
 
     genReadStorage(receiverStorage)
 
@@ -1890,30 +1915,30 @@ private class FunctionEmitter private (
     // This is bad for us because it means genAdapt fails to box the primitives when required.
     // We work around this issue here by re-computing the correct type of This nodes.
     val fixedTpe = t.tpe match {
-      case IRTypes.ClassType(cls) => IRTypes.BoxedClassToPrimType.getOrElse(cls, t.tpe)
-      case _                      => t.tpe
+      case ClassType(cls) => BoxedClassToPrimType.getOrElse(cls, t.tpe)
+      case _              => t.tpe
     }
 
     fixedTpe
   }
 
-  private def genVarDef(r: IRTrees.VarDef): IRTypes.Type = {
+  private def genVarDef(r: VarDef): Type = {
     /* This is an isolated VarDef that is not in a Block.
      * Its scope is empty by construction, and therefore it need not be stored.
      */
-    genTree(r.rhs, IRTypes.NoType)
-    IRTypes.NoType
+    genTree(r.rhs, NoType)
+    NoType
   }
 
-  private def genIf(t: IRTrees.If, expectedType: IRTypes.Type): IRTypes.Type = {
+  private def genIf(t: If, expectedType: Type): Type = {
     val ty = TypeTransformer.transformResultType(expectedType)(ctx)
-    genTree(t.cond, IRTypes.BooleanType)
+    genTree(t.cond, BooleanType)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.elsep match {
-      case IRTrees.Skip() =>
-        assert(expectedType == IRTypes.NoType)
+      case Skip() =>
+        assert(expectedType == NoType)
         instrs.ifThen() {
           genTree(t.thenp, expectedType)
         }
@@ -1925,29 +1950,29 @@ private class FunctionEmitter private (
         }
     }
 
-    if (expectedType == IRTypes.NothingType)
-      instrs += UNREACHABLE
+    if (expectedType == NothingType)
+      instrs += wa.UNREACHABLE
 
     expectedType
   }
 
-  private def genWhile(t: IRTrees.While): IRTypes.Type = {
+  private def genWhile(t: While): Type = {
     t.cond match {
-      case IRTrees.BooleanLiteral(true) =>
+      case BooleanLiteral(true) =>
         // infinite loop that must be typed as `nothing`, i.e., unreachable
         // loop $label
         //   body
         //   br $label
         // end
         // unreachable
-        fb.markPosition(t)
+        markPosition(t)
         instrs.loop() { label =>
-          genTree(t.body, IRTypes.NoType)
-          fb.markPosition(t)
-          instrs += BR(label)
+          genTree(t.body, NoType)
+          markPosition(t)
+          instrs += wa.BR(label)
         }
-        instrs += UNREACHABLE
-        IRTypes.NothingType
+        instrs += wa.UNREACHABLE
+        NothingType
 
       case _ =>
         // loop $label
@@ -1957,21 +1982,21 @@ private class FunctionEmitter private (
         //     br $label
         //   end
         // end
-        fb.markPosition(t)
+        markPosition(t)
         instrs.loop() { label =>
-          genTree(t.cond, IRTypes.BooleanType)
-          fb.markPosition(t)
+          genTree(t.cond, BooleanType)
+          markPosition(t)
           instrs.ifThen() {
-            genTree(t.body, IRTypes.NoType)
-            fb.markPosition(t)
-            instrs += BR(label)
+            genTree(t.body, NoType)
+            markPosition(t)
+            instrs += wa.BR(label)
           }
         }
-        IRTypes.NoType
+        NoType
     }
   }
 
-  private def genForIn(t: IRTrees.ForIn): IRTypes.Type = {
+  private def genForIn(t: ForIn): Type = {
     /* This is tricky. In general, the body of a ForIn can be an arbitrary
      * statement, which can refer to the enclosing scope and its locals,
      * including for mutations. Unfortunately, there is no way to implement a
@@ -1989,137 +2014,137 @@ private class FunctionEmitter private (
      */
 
     t.body match {
-      case IRTrees.JSFunctionApply(fVarRef: IRTrees.VarRef, List(IRTrees.VarRef(argIdent)))
+      case JSFunctionApply(fVarRef: VarRef, List(VarRef(argIdent)))
           if fVarRef.ident.name != t.keyVar.name && argIdent.name == t.keyVar.name =>
-        genTree(t.obj, IRTypes.AnyType)
-        genTree(fVarRef, IRTypes.AnyType)
-        fb.markPosition(t)
-        instrs += CALL(genFunctionName.jsForInSimple)
+        genTree(t.obj, AnyType)
+        genTree(fVarRef, AnyType)
+        markPosition(t)
+        instrs += wa.CALL(genFunctionName.jsForInSimple)
 
       case _ =>
         throw new NotImplementedError(s"Unsupported shape of ForIn node at ${t.pos}: $t")
     }
 
-    IRTypes.NoType
+    NoType
   }
 
-  private def genTryCatch(t: IRTrees.TryCatch, expectedType: IRTypes.Type): IRTypes.Type = {
+  private def genTryCatch(t: TryCatch, expectedType: Type): Type = {
     val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
 
     if (UseLegacyExceptionsForTryCatch) {
-      fb.markPosition(t)
-      instrs += TRY(instrs.sigToBlockType(WasmFunctionSignature(Nil, resultType)))
+      markPosition(t)
+      instrs += wa.TRY(instrs.sigToBlockType(Sig(Nil, resultType)))
       genTree(t.block, expectedType)
-      fb.markPosition(t)
-      instrs += CATCH(genTagName.exceptionTagName)
-      withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
-        instrs += ANY_CONVERT_EXTERN
-        instrs += LOCAL_SET(exceptionLocal)
+      markPosition(t)
+      instrs += wa.CATCH(genTagName.exceptionTagName)
+      withNewLocal(t.errVar.name, watpe.RefType.anyref) { exceptionLocal =>
+        instrs += wa.ANY_CONVERT_EXTERN
+        instrs += wa.LOCAL_SET(exceptionLocal)
         genTree(t.handler, expectedType)
       }
-      instrs += END
+      instrs += wa.END
     } else {
-      fb.markPosition(t)
+      markPosition(t)
       instrs.block(resultType) { doneLabel =>
-        instrs.block(Types.WasmRefType.externref) { catchLabel =>
+        instrs.block(watpe.RefType.externref) { catchLabel =>
           /* We used to have `resultType` as result of the try_table, with the
-           * `BR(doneLabel)` outside of the try_table. Unfortunately it seems
+           * `wa.BR(doneLabel)` outside of the try_table. Unfortunately it seems
            * V8 cannot handle try_table with a result type that is `(ref ...)`.
            * The current encoding with `externref` as result type (to match the
            * enclosing block) and the `br` *inside* the `try_table` works.
            */
-          instrs.tryTable(Types.WasmRefType.externref)(
-            List(CatchClause.Catch(genTagName.exceptionTagName, catchLabel))
+          instrs.tryTable(watpe.RefType.externref)(
+            List(wa.CatchClause.Catch(genTagName.exceptionTagName, catchLabel))
           ) {
             genTree(t.block, expectedType)
-            fb.markPosition(t)
-            instrs += BR(doneLabel)
+            markPosition(t)
+            instrs += wa.BR(doneLabel)
           }
         } // end block $catch
-        withNewLocal(t.errVar.name, Types.WasmRefType.anyref) { exceptionLocal =>
-          instrs += ANY_CONVERT_EXTERN
-          instrs += LOCAL_SET(exceptionLocal)
+        withNewLocal(t.errVar.name, watpe.RefType.anyref) { exceptionLocal =>
+          instrs += wa.ANY_CONVERT_EXTERN
+          instrs += wa.LOCAL_SET(exceptionLocal)
           genTree(t.handler, expectedType)
         }
       } // end block $done
     }
 
-    if (expectedType == IRTypes.NothingType)
-      instrs += UNREACHABLE
+    if (expectedType == NothingType)
+      instrs += wa.UNREACHABLE
 
     expectedType
   }
 
-  private def genThrow(tree: IRTrees.Throw): IRTypes.Type = {
-    genTree(tree.expr, IRTypes.AnyType)
-    fb.markPosition(tree)
-    instrs += EXTERN_CONVERT_ANY
-    instrs += THROW(genTagName.exceptionTagName)
+  private def genThrow(tree: Throw): Type = {
+    genTree(tree.expr, AnyType)
+    markPosition(tree)
+    instrs += wa.EXTERN_CONVERT_ANY
+    instrs += wa.THROW(genTagName.exceptionTagName)
 
-    IRTypes.NothingType
+    NothingType
   }
 
-  private def genBlock(t: IRTrees.Block, expectedType: IRTypes.Type): IRTypes.Type = {
+  private def genBlock(t: Block, expectedType: Type): Type = {
     genBlockStats(t.stats.init) {
       genTree(t.stats.last, expectedType)
     }
     expectedType
   }
 
-  final def genBlockStats[A](stats: List[IRTrees.Tree])(inner: => A): A = {
+  final def genBlockStats[A](stats: List[Tree])(inner: => A): A = {
     stats match {
-      case (stat @ IRTrees.VarDef(name, _, vtpe, _, rhs)) :: rest =>
+      case (stat @ VarDef(name, _, vtpe, _, rhs)) :: rest =>
         genTree(rhs, vtpe)
-        fb.markPosition(stat)
+        markPosition(stat)
         withNewLocal(name.name, TypeTransformer.transformType(vtpe)(ctx)) { local =>
-          instrs += LOCAL_SET(local)
+          instrs += wa.LOCAL_SET(local)
           genBlockStats(rest)(inner)
         }
       case stat :: rest =>
-        genTree(stat, IRTypes.NoType)
+        genTree(stat, NoType)
         genBlockStats(rest)(inner)
       case Nil =>
         inner
     }
   }
 
-  private def genNew(n: IRTrees.New): IRTypes.Type = {
+  private def genNew(n: New): Type = {
     /* Do not use transformType here, because we must get the struct type even
      * if the given class is an ancestor of hijacked classes (which in practice
      * is only the case for j.l.Object).
      */
-    val instanceTyp = Types.WasmRefType(genTypeName.forClass(n.className))
+    val instanceTyp = watpe.RefType(genTypeName.forClass(n.className))
     val localInstance = addSyntheticLocal(instanceTyp)
 
-    fb.markPosition(n)
-    instrs += CALL(genFunctionName.newDefault(n.className))
-    instrs += LOCAL_TEE(localInstance)
+    markPosition(n)
+    instrs += wa.CALL(genFunctionName.newDefault(n.className))
+    instrs += wa.LOCAL_TEE(localInstance)
 
     genArgs(n.args, n.ctor.name)
 
-    fb.markPosition(n)
+    markPosition(n)
 
-    instrs += CALL(
+    instrs += wa.CALL(
       genFunctionName.forMethod(
-        IRTrees.MemberNamespace.Constructor,
+        MemberNamespace.Constructor,
         n.className,
         n.ctor.name
       )
     )
-    instrs += LOCAL_GET(localInstance)
+    instrs += wa.LOCAL_GET(localInstance)
     n.tpe
   }
 
   /** Codegen to box a primitive `char`/`long` into a `CharacterBox`/`LongBox`. */
   private def genBox(
-      primType: IRTypes.PrimTypeWithRef,
-      boxClassName: IRNames.ClassName
-  ): IRTypes.Type = {
+      primType: PrimTypeWithRef,
+      boxClassName: ClassName
+  ): Type = {
     // `primTyp` is `i32` for `char` (containing a `u16` value) or `i64` for `long`.
     val primTyp = TypeTransformer.transformType(primType)(ctx)
     val primLocal = addSyntheticLocal(primTyp)
 
-    val boxClassType = IRTypes.ClassType(boxClassName)
+    val boxClassType = ClassType(boxClassName)
     val boxTyp = TypeTransformer.transformClassType(boxClassName)(ctx).toNonNullable
     val instanceLocal = addSyntheticLocal(boxTyp)
 
@@ -2140,83 +2165,83 @@ private class FunctionEmitter private (
      * what the constructor would do anyway (so we're basically inlining it).
      */
 
-    instrs += LOCAL_SET(primLocal)
-    instrs += CALL(genFunctionName.newDefault(boxClassName))
-    instrs += LOCAL_TEE(instanceLocal)
-    instrs += LOCAL_GET(primLocal)
-    instrs += STRUCT_SET(
+    instrs += wa.LOCAL_SET(primLocal)
+    instrs += wa.CALL(genFunctionName.newDefault(boxClassName))
+    instrs += wa.LOCAL_TEE(instanceLocal)
+    instrs += wa.LOCAL_GET(primLocal)
+    instrs += wa.STRUCT_SET(
       genTypeName.forClass(boxClassName),
       genFieldIdx.objStruct.uniqueRegularField
     )
-    instrs += LOCAL_GET(instanceLocal)
+    instrs += wa.LOCAL_GET(instanceLocal)
 
     boxClassType
   }
 
-  private def genIdentityHashCode(tree: IRTrees.IdentityHashCode): IRTypes.Type = {
+  private def genIdentityHashCode(tree: IdentityHashCode): Type = {
     // TODO Avoid dispatch when we know a more precise type than any
-    genTree(tree.expr, IRTypes.AnyType)
+    genTree(tree.expr, AnyType)
 
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.identityHashCode)
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.identityHashCode)
 
-    IRTypes.IntType
+    IntType
   }
 
-  private def genWrapAsThrowable(tree: IRTrees.WrapAsThrowable): IRTypes.Type = {
-    val throwableClassType = IRTypes.ClassType(IRNames.ThrowableClass)
-    val nonNullThrowableTyp = Types.WasmRefType(genTypeName.ThrowableStruct)
+  private def genWrapAsThrowable(tree: WrapAsThrowable): Type = {
+    val throwableClassType = ClassType(ThrowableClass)
+    val nonNullThrowableTyp = watpe.RefType(genTypeName.ThrowableStruct)
 
     val jsExceptionTyp =
       TypeTransformer.transformClassType(SpecialNames.JSExceptionClass)(ctx).toNonNullable
 
     instrs.block(nonNullThrowableTyp) { doneLabel =>
-      genTree(tree.expr, IRTypes.AnyType)
+      genTree(tree.expr, AnyType)
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
       // if expr.isInstanceOf[Throwable], then br $done
-      instrs += BR_ON_CAST(
+      instrs += wa.BR_ON_CAST(
         doneLabel,
-        Types.WasmRefType.anyref,
+        watpe.RefType.anyref,
         nonNullThrowableTyp
       )
 
       // otherwise, wrap in a new JavaScriptException
 
-      val exprLocal = addSyntheticLocal(Types.WasmRefType.anyref)
+      val exprLocal = addSyntheticLocal(watpe.RefType.anyref)
       val instanceLocal = addSyntheticLocal(jsExceptionTyp)
 
-      instrs += LOCAL_SET(exprLocal)
-      instrs += CALL(genFunctionName.newDefault(SpecialNames.JSExceptionClass))
-      instrs += LOCAL_TEE(instanceLocal)
-      instrs += LOCAL_GET(exprLocal)
-      instrs += CALL(
+      instrs += wa.LOCAL_SET(exprLocal)
+      instrs += wa.CALL(genFunctionName.newDefault(SpecialNames.JSExceptionClass))
+      instrs += wa.LOCAL_TEE(instanceLocal)
+      instrs += wa.LOCAL_GET(exprLocal)
+      instrs += wa.CALL(
         genFunctionName.forMethod(
-          IRTrees.MemberNamespace.Constructor,
+          MemberNamespace.Constructor,
           SpecialNames.JSExceptionClass,
           SpecialNames.JSExceptionCtor
         )
       )
-      instrs += LOCAL_GET(instanceLocal)
+      instrs += wa.LOCAL_GET(instanceLocal)
     }
 
     throwableClassType
   }
 
-  private def genUnwrapFromThrowable(tree: IRTrees.UnwrapFromThrowable): IRTypes.Type = {
-    instrs.block(Types.WasmRefType.anyref) { doneLabel =>
-      genTree(tree.expr, IRTypes.ClassType(IRNames.ThrowableClass))
+  private def genUnwrapFromThrowable(tree: UnwrapFromThrowable): Type = {
+    instrs.block(watpe.RefType.anyref) { doneLabel =>
+      genTree(tree.expr, ClassType(ThrowableClass))
 
-      fb.markPosition(tree)
+      markPosition(tree)
 
-      instrs += REF_AS_NOT_NULL
+      instrs += wa.REF_AS_NOT_NULL
 
       // if !expr.isInstanceOf[js.JavaScriptException], then br $done
-      instrs += BR_ON_CAST_FAIL(
+      instrs += wa.BR_ON_CAST_FAIL(
         doneLabel,
-        Types.WasmRefType(genTypeName.ThrowableStruct),
-        Types.WasmRefType(genTypeName.JSExceptionStruct)
+        watpe.RefType(genTypeName.ThrowableStruct),
+        watpe.RefType(genTypeName.JSExceptionStruct)
       )
 
       // otherwise, unwrap the JavaScriptException by reading its field
@@ -2224,66 +2249,66 @@ private class FunctionEmitter private (
       val idx =
         ctx.getClassInfo(SpecialNames.JSExceptionClass).getFieldIdx(SpecialNames.JSExceptionField)
 
-      instrs += STRUCT_GET(genTypeName.forClass(SpecialNames.JSExceptionClass), idx)
+      instrs += wa.STRUCT_GET(genTypeName.forClass(SpecialNames.JSExceptionClass), idx)
     }
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSNew(tree: IRTrees.JSNew): IRTypes.Type = {
-    genTree(tree.ctor, IRTypes.AnyType)
+  private def genJSNew(tree: JSNew): Type = {
+    genTree(tree.ctor, AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsNew)
-    IRTypes.AnyType
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsNew)
+    AnyType
   }
 
-  private def genJSSelect(tree: IRTrees.JSSelect): IRTypes.Type = {
-    genTree(tree.qualifier, IRTypes.AnyType)
-    genTree(tree.item, IRTypes.AnyType)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsSelect)
-    IRTypes.AnyType
+  private def genJSSelect(tree: JSSelect): Type = {
+    genTree(tree.qualifier, AnyType)
+    genTree(tree.item, AnyType)
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsSelect)
+    AnyType
   }
 
-  private def genJSFunctionApply(tree: IRTrees.JSFunctionApply): IRTypes.Type = {
-    genTree(tree.fun, IRTypes.AnyType)
+  private def genJSFunctionApply(tree: JSFunctionApply): Type = {
+    genTree(tree.fun, AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsFunctionApply)
-    IRTypes.AnyType
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsFunctionApply)
+    AnyType
   }
 
-  private def genJSMethodApply(tree: IRTrees.JSMethodApply): IRTypes.Type = {
-    genTree(tree.receiver, IRTypes.AnyType)
-    genTree(tree.method, IRTypes.AnyType)
+  private def genJSMethodApply(tree: JSMethodApply): Type = {
+    genTree(tree.receiver, AnyType)
+    genTree(tree.method, AnyType)
     genJSArgsArray(tree.args)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsMethodApply)
-    IRTypes.AnyType
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsMethodApply)
+    AnyType
   }
 
-  private def genJSImportCall(tree: IRTrees.JSImportCall): IRTypes.Type = {
-    genTree(tree.arg, IRTypes.AnyType)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsImportCall)
-    IRTypes.AnyType
+  private def genJSImportCall(tree: JSImportCall): Type = {
+    genTree(tree.arg, AnyType)
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsImportCall)
+    AnyType
   }
 
-  private def genJSImportMeta(tree: IRTrees.JSImportMeta): IRTypes.Type = {
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsImportMeta)
-    IRTypes.AnyType
+  private def genJSImportMeta(tree: JSImportMeta): Type = {
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsImportMeta)
+    AnyType
   }
 
-  private def genLoadJSConstructor(tree: IRTrees.LoadJSConstructor): IRTypes.Type = {
-    fb.markPosition(tree)
+  private def genLoadJSConstructor(tree: LoadJSConstructor): Type = {
+    markPosition(tree)
     SWasmGen.genLoadJSConstructor(instrs, tree.className)(ctx)
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genLoadJSModule(tree: IRTrees.LoadJSModule): IRTypes.Type = {
-    fb.markPosition(tree)
+  private def genLoadJSModule(tree: LoadJSModule): Type = {
+    markPosition(tree)
 
     val info = ctx.getClassInfo(tree.className)
 
@@ -2293,11 +2318,11 @@ private class FunctionEmitter private (
           throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
         }
         genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
-        IRTypes.AnyType
+        AnyType
 
       case ClassKind.JSModuleClass =>
-        instrs += CALL(genFunctionName.loadModule(tree.className))
-        IRTypes.AnyType
+        instrs += wa.CALL(genFunctionName.loadModule(tree.className))
+        AnyType
 
       case _ =>
         throw new AssertionError(
@@ -2306,7 +2331,7 @@ private class FunctionEmitter private (
     }
   }
 
-  private def genSelectJSNativeMember(tree: IRTrees.SelectJSNativeMember): IRTypes.Type = {
+  private def genSelectJSNativeMember(tree: SelectJSNativeMember): Type = {
     val info = ctx.getClassInfo(tree.className)
     val jsNativeLoadSpec = info.jsNativeMembers.getOrElse(
       tree.member.name, {
@@ -2314,136 +2339,134 @@ private class FunctionEmitter private (
       }
     )
     genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSDelete(tree: IRTrees.JSDelete): IRTypes.Type = {
-    genTree(tree.qualifier, IRTypes.AnyType)
-    genTree(tree.item, IRTypes.AnyType)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsDelete)
-    IRTypes.NoType
+  private def genJSDelete(tree: JSDelete): Type = {
+    genTree(tree.qualifier, AnyType)
+    genTree(tree.item, AnyType)
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsDelete)
+    NoType
   }
 
-  private def genJSUnaryOp(tree: IRTrees.JSUnaryOp): IRTypes.Type = {
-    genTree(tree.lhs, IRTypes.AnyType)
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsUnaryOps(tree.op))
-    IRTypes.AnyType
+  private def genJSUnaryOp(tree: JSUnaryOp): Type = {
+    genTree(tree.lhs, AnyType)
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsUnaryOps(tree.op))
+    AnyType
   }
 
-  private def genJSBinaryOp(tree: IRTrees.JSBinaryOp): IRTypes.Type = {
-    import IRTrees.JSBinaryOp
-
+  private def genJSBinaryOp(tree: JSBinaryOp): Type = {
     tree.op match {
       case JSBinaryOp.|| | JSBinaryOp.&& =>
         /* Here we need to implement the short-circuiting behavior, with a
          * condition based on the truthy value of the left-hand-side.
          */
-        val lhsLocal = addSyntheticLocal(Types.WasmRefType.anyref)
-        genTree(tree.lhs, IRTypes.AnyType)
-        fb.markPosition(tree)
-        instrs += LOCAL_TEE(lhsLocal)
-        instrs += CALL(genFunctionName.jsIsTruthy)
-        instrs += IF(BlockType.ValueType(Types.WasmRefType.anyref))
+        val lhsLocal = addSyntheticLocal(watpe.RefType.anyref)
+        genTree(tree.lhs, AnyType)
+        markPosition(tree)
+        instrs += wa.LOCAL_TEE(lhsLocal)
+        instrs += wa.CALL(genFunctionName.jsIsTruthy)
+        instrs += wa.IF(wa.BlockType.ValueType(watpe.RefType.anyref))
         if (tree.op == JSBinaryOp.||) {
-          instrs += LOCAL_GET(lhsLocal)
-          instrs += ELSE
-          genTree(tree.rhs, IRTypes.AnyType)
-          fb.markPosition(tree)
+          instrs += wa.LOCAL_GET(lhsLocal)
+          instrs += wa.ELSE
+          genTree(tree.rhs, AnyType)
+          markPosition(tree)
         } else {
-          genTree(tree.rhs, IRTypes.AnyType)
-          fb.markPosition(tree)
-          instrs += ELSE
-          instrs += LOCAL_GET(lhsLocal)
+          genTree(tree.rhs, AnyType)
+          markPosition(tree)
+          instrs += wa.ELSE
+          instrs += wa.LOCAL_GET(lhsLocal)
         }
-        instrs += END
+        instrs += wa.END
 
       case _ =>
-        genTree(tree.lhs, IRTypes.AnyType)
-        genTree(tree.rhs, IRTypes.AnyType)
-        fb.markPosition(tree)
-        instrs += CALL(genFunctionName.jsBinaryOps(tree.op))
+        genTree(tree.lhs, AnyType)
+        genTree(tree.rhs, AnyType)
+        markPosition(tree)
+        instrs += wa.CALL(genFunctionName.jsBinaryOps(tree.op))
     }
 
     tree.tpe
   }
 
-  private def genJSArrayConstr(tree: IRTrees.JSArrayConstr): IRTypes.Type = {
+  private def genJSArrayConstr(tree: JSArrayConstr): Type = {
     genJSArgsArray(tree.items)
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSObjectConstr(tree: IRTrees.JSObjectConstr): IRTypes.Type = {
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsNewObject)
+  private def genJSObjectConstr(tree: JSObjectConstr): Type = {
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsNewObject)
     for ((prop, value) <- tree.fields) {
-      genTree(prop, IRTypes.AnyType)
-      genTree(value, IRTypes.AnyType)
-      instrs += CALL(genFunctionName.jsObjectPush)
+      genTree(prop, AnyType)
+      genTree(value, AnyType)
+      instrs += wa.CALL(genFunctionName.jsObjectPush)
     }
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSGlobalRef(tree: IRTrees.JSGlobalRef): IRTypes.Type = {
-    fb.markPosition(tree)
+  private def genJSGlobalRef(tree: JSGlobalRef): Type = {
+    markPosition(tree)
     instrs ++= ctx.getConstantStringInstr(tree.name)
-    instrs += CALL(genFunctionName.jsGlobalRefGet)
-    IRTypes.AnyType
+    instrs += wa.CALL(genFunctionName.jsGlobalRefGet)
+    AnyType
   }
 
-  private def genJSTypeOfGlobalRef(tree: IRTrees.JSTypeOfGlobalRef): IRTypes.Type = {
-    fb.markPosition(tree)
+  private def genJSTypeOfGlobalRef(tree: JSTypeOfGlobalRef): Type = {
+    markPosition(tree)
     instrs ++= ctx.getConstantStringInstr(tree.globalRef.name)
-    instrs += CALL(genFunctionName.jsGlobalRefTypeof)
-    IRTypes.AnyType
+    instrs += wa.CALL(genFunctionName.jsGlobalRefTypeof)
+    AnyType
   }
 
-  private def genJSArgsArray(args: List[IRTrees.TreeOrJSSpread]): Unit = {
-    instrs += CALL(genFunctionName.jsNewArray)
+  private def genJSArgsArray(args: List[TreeOrJSSpread]): Unit = {
+    instrs += wa.CALL(genFunctionName.jsNewArray)
     for (arg <- args) {
       arg match {
-        case arg: IRTrees.Tree =>
-          genTree(arg, IRTypes.AnyType)
-          instrs += CALL(genFunctionName.jsArrayPush)
-        case IRTrees.JSSpread(items) =>
-          genTree(items, IRTypes.AnyType)
-          instrs += CALL(genFunctionName.jsArraySpreadPush)
+        case arg: Tree =>
+          genTree(arg, AnyType)
+          instrs += wa.CALL(genFunctionName.jsArrayPush)
+        case JSSpread(items) =>
+          genTree(items, AnyType)
+          instrs += wa.CALL(genFunctionName.jsArraySpreadPush)
       }
     }
   }
 
-  private def genJSLinkingInfo(tree: IRTrees.JSLinkingInfo): IRTypes.Type = {
-    fb.markPosition(tree)
-    instrs += CALL(genFunctionName.jsLinkingInfo)
-    IRTypes.AnyType
+  private def genJSLinkingInfo(tree: JSLinkingInfo): Type = {
+    markPosition(tree)
+    instrs += wa.CALL(genFunctionName.jsLinkingInfo)
+    AnyType
   }
 
   // ===============================================================================
   // array
   // ===============================================================================
-  private def genArrayLength(t: IRTrees.ArrayLength): IRTypes.Type = {
+  private def genArrayLength(t: ArrayLength): Type = {
     genTreeAuto(t.array)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.array.tpe match {
-      case IRTypes.ArrayType(arrayTypeRef) =>
+      case ArrayType(arrayTypeRef) =>
         // Get the underlying array; implicit trap on null
-        instrs += STRUCT_GET(
+        instrs += wa.STRUCT_GET(
           genTypeName.forArrayClass(arrayTypeRef),
           genFieldIdx.objStruct.uniqueRegularField
         )
         // Get the length
-        instrs += ARRAY_LEN
-        IRTypes.IntType
+        instrs += wa.ARRAY_LEN
+        IntType
 
-      case IRTypes.NothingType =>
+      case NothingType =>
         // unreachable
-        IRTypes.NothingType
-      case IRTypes.NullType =>
-        instrs += UNREACHABLE
-        IRTypes.NothingType
+        NothingType
+      case NullType =>
+        instrs += wa.UNREACHABLE
+        NothingType
       case _ =>
         throw new IllegalArgumentException(
           s"ArraySelect.array must be an array type, but has type ${t.array.tpe}"
@@ -2451,7 +2474,7 @@ private class FunctionEmitter private (
     }
   }
 
-  private def genNewArray(t: IRTrees.NewArray): IRTypes.Type = {
+  private def genNewArray(t: NewArray): Type = {
     val arrayTypeRef = t.typeRef
 
     if (t.lengths.isEmpty || t.lengths.size > arrayTypeRef.dimensions)
@@ -2459,20 +2482,20 @@ private class FunctionEmitter private (
         s"invalid lengths ${t.lengths} for array type ${arrayTypeRef.displayName}"
       )
 
-    fb.markPosition(t)
+    markPosition(t)
 
     if (t.lengths.size == 1) {
       genLoadVTableAndITableForArray(arrayTypeRef)
 
       // Create the underlying array
-      genTree(t.lengths.head, IRTypes.IntType)
-      fb.markPosition(t)
+      genTree(t.lengths.head, IntType)
+      markPosition(t)
 
       val underlyingArrayType = genTypeName.underlyingOf(arrayTypeRef)
-      instrs += ARRAY_NEW_DEFAULT(underlyingArrayType)
+      instrs += wa.ARRAY_NEW_DEFAULT(underlyingArrayType)
 
       // Create the array object
-      instrs += STRUCT_NEW(genTypeName.forArrayClass(arrayTypeRef))
+      instrs += wa.STRUCT_NEW(genTypeName.forArrayClass(arrayTypeRef))
     } else {
       /* There is no Scala source code that produces `NewArray` with more than
        * one specified dimension, so this branch is not tested.
@@ -2485,74 +2508,74 @@ private class FunctionEmitter private (
 
       // Second arg: an array of the lengths
       for (length <- t.lengths)
-        genTree(length, IRTypes.IntType)
-      fb.markPosition(t)
-      instrs += ARRAY_NEW_FIXED(genTypeName.i32Array, t.lengths.size)
+        genTree(length, IntType)
+      markPosition(t)
+      instrs += wa.ARRAY_NEW_FIXED(genTypeName.i32Array, t.lengths.size)
 
       // Third arg: constant 0 (start index inside the array of lengths)
-      instrs += I32_CONST(0)
+      instrs += wa.I32_CONST(0)
 
-      instrs += CALL(genFunctionName.newArrayObject)
+      instrs += wa.CALL(genFunctionName.newArrayObject)
     }
 
     t.tpe
   }
 
   /** Gen code to load the vtable and the itable of the given array type. */
-  private def genLoadVTableAndITableForArray(arrayTypeRef: IRTypes.ArrayTypeRef): Unit = {
+  private def genLoadVTableAndITableForArray(arrayTypeRef: ArrayTypeRef): Unit = {
     // Load the typeData of the resulting array type. It is the vtable of the resulting object.
     genLoadArrayTypeData(arrayTypeRef)
 
     // Load the itables for the array type
-    instrs += GLOBAL_GET(genGlobalName.arrayClassITable)
+    instrs += wa.GLOBAL_GET(genGlobalName.arrayClassITable)
   }
 
   /** For getting element from an array, array.set should be generated by transformation of
     * `Assign(ArraySelect(...), ...)`
     */
-  private def genArraySelect(t: IRTrees.ArraySelect): IRTypes.Type = {
+  private def genArraySelect(t: ArraySelect): Type = {
     genTreeAuto(t.array)
 
-    fb.markPosition(t)
+    markPosition(t)
 
     t.array.tpe match {
-      case IRTypes.ArrayType(arrayTypeRef) =>
+      case ArrayType(arrayTypeRef) =>
         // Get the underlying array; implicit trap on null
-        instrs += STRUCT_GET(
+        instrs += wa.STRUCT_GET(
           genTypeName.forArrayClass(arrayTypeRef),
           genFieldIdx.objStruct.uniqueRegularField
         )
 
         // Load the index
-        genTree(t.index, IRTypes.IntType)
+        genTree(t.index, IntType)
 
-        fb.markPosition(t)
+        markPosition(t)
 
         // Use the appropriate variant of array.get for sign extension
         val typeIdx = genTypeName.underlyingOf(arrayTypeRef)
         arrayTypeRef match {
-          case IRTypes.ArrayTypeRef(IRTypes.BooleanRef | IRTypes.CharRef, 1) =>
-            instrs += ARRAY_GET_U(typeIdx)
-          case IRTypes.ArrayTypeRef(IRTypes.ByteRef | IRTypes.ShortRef, 1) =>
-            instrs += ARRAY_GET_S(typeIdx)
+          case ArrayTypeRef(BooleanRef | CharRef, 1) =>
+            instrs += wa.ARRAY_GET_U(typeIdx)
+          case ArrayTypeRef(ByteRef | ShortRef, 1) =>
+            instrs += wa.ARRAY_GET_S(typeIdx)
           case _ =>
-            instrs += ARRAY_GET(typeIdx)
+            instrs += wa.ARRAY_GET(typeIdx)
         }
 
         /* If it is a reference array type whose element type does not translate
          * to `anyref`, we must cast down the result.
          */
         arrayTypeRef match {
-          case IRTypes.ArrayTypeRef(_: IRTypes.PrimRef, 1) =>
+          case ArrayTypeRef(_: PrimRef, 1) =>
             // a primitive array type always has the correct
             ()
           case _ =>
             TypeTransformer.transformType(t.tpe)(ctx) match {
-              case Types.WasmRefType.anyref =>
+              case watpe.RefType.anyref =>
                 // nothing to do
                 ()
-              case refType: Types.WasmRefType =>
-                instrs += REF_CAST(refType)
+              case refType: watpe.RefType =>
+                instrs += wa.REF_CAST(refType)
               case typ =>
                 throw new AssertionError(s"Unexpected result type for reference array: $typ")
             }
@@ -2560,12 +2583,12 @@ private class FunctionEmitter private (
 
         t.tpe
 
-      case IRTypes.NothingType =>
+      case NothingType =>
         // unreachable
-        IRTypes.NothingType
-      case IRTypes.NullType =>
-        instrs += UNREACHABLE
-        IRTypes.NothingType
+        NothingType
+      case NullType =>
+        instrs += wa.UNREACHABLE
+        NothingType
       case _ =>
         throw new IllegalArgumentException(
           s"ArraySelect.array must be an array type, but has type ${t.array.tpe}"
@@ -2573,31 +2596,31 @@ private class FunctionEmitter private (
     }
   }
 
-  private def genArrayValue(t: IRTrees.ArrayValue): IRTypes.Type = {
+  private def genArrayValue(t: ArrayValue): Type = {
     val arrayTypeRef = t.typeRef
 
-    fb.markPosition(t)
+    markPosition(t)
 
     genLoadVTableAndITableForArray(arrayTypeRef)
 
     val expectedElemType = arrayTypeRef match {
-      case IRTypes.ArrayTypeRef(base: IRTypes.PrimRef, 1) => base.tpe
-      case _                                              => IRTypes.AnyType
+      case ArrayTypeRef(base: PrimRef, 1) => base.tpe
+      case _                              => AnyType
     }
 
     // Create the underlying array
     t.elems.foreach(genTree(_, expectedElemType))
-    fb.markPosition(t)
+    markPosition(t)
     val underlyingArrayType = genTypeName.underlyingOf(arrayTypeRef)
-    instrs += ARRAY_NEW_FIXED(underlyingArrayType, t.elems.size)
+    instrs += wa.ARRAY_NEW_FIXED(underlyingArrayType, t.elems.size)
 
     // Create the array object
-    instrs += STRUCT_NEW(genTypeName.forArrayClass(arrayTypeRef))
+    instrs += wa.STRUCT_NEW(genTypeName.forArrayClass(arrayTypeRef))
 
     t.tpe
   }
 
-  private def genClosure(tree: IRTrees.Closure): IRTypes.Type = {
+  private def genClosure(tree: Closure): Type = {
     implicit val pos = tree.pos
     implicit val ctx = this.ctx
 
@@ -2611,14 +2634,14 @@ private class FunctionEmitter private (
       closureFuncName,
       enclosingClassName = None,
       Some(tree.captureParams),
-      receiverTyp = if (!hasThis) None else Some(Types.WasmRefType.anyref),
+      receiverTyp = if (!hasThis) None else Some(watpe.RefType.anyref),
       tree.params,
       tree.restParam,
       tree.body,
-      resultType = IRTypes.AnyType
+      resultType = AnyType
     )
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
     // Put a reference to the function on the stack
     instrs += ctx.refFuncWithDeclaration(closureFuncName)
@@ -2626,14 +2649,14 @@ private class FunctionEmitter private (
     // Evaluate the capture values and instantiate the capture data struct
     for ((param, value) <- tree.captureParams.zip(tree.captureValues))
       genTree(value, param.ptpe)
-    fb.markPosition(tree)
-    instrs += STRUCT_NEW(dataStructTypeName)
+    markPosition(tree)
+    instrs += wa.STRUCT_NEW(dataStructTypeName)
 
     /* If there is a ...rest param, the helper requires as third argument the
      * number of regular arguments.
      */
     if (hasRestParam)
-      instrs += I32_CONST(tree.params.size)
+      instrs += wa.I32_CONST(tree.params.size)
 
     // Call the appropriate helper
     val helper = (hasThis, hasRestParam) match {
@@ -2642,39 +2665,39 @@ private class FunctionEmitter private (
       case (false, true)  => genFunctionName.closureRest
       case (true, true)   => genFunctionName.closureThisRest
     }
-    instrs += CALL(helper)
+    instrs += wa.CALL(helper)
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genClone(t: IRTrees.Clone): IRTypes.Type = {
+  private def genClone(t: Clone): Type = {
     val expr = addSyntheticLocal(TypeTransformer.transformType(t.expr.tpe)(ctx))
 
-    genTree(t.expr, IRTypes.ClassType(IRNames.CloneableClass))
+    genTree(t.expr, ClassType(CloneableClass))
 
-    fb.markPosition(t)
+    markPosition(t)
 
-    instrs += REF_CAST(Types.WasmRefType(genTypeName.ObjectStruct))
-    instrs += LOCAL_TEE(expr)
-    instrs += REF_AS_NOT_NULL // cloneFunction argument is not nullable
+    instrs += wa.REF_CAST(watpe.RefType(genTypeName.ObjectStruct))
+    instrs += wa.LOCAL_TEE(expr)
+    instrs += wa.REF_AS_NOT_NULL // cloneFunction argument is not nullable
 
-    instrs += LOCAL_GET(expr)
-    instrs += STRUCT_GET(
-      genTypeName.forClass(IRNames.ObjectClass),
+    instrs += wa.LOCAL_GET(expr)
+    instrs += wa.STRUCT_GET(
+      genTypeName.forClass(ObjectClass),
       genFieldIdx.objStruct.vtable
     )
-    instrs += STRUCT_GET(
+    instrs += wa.STRUCT_GET(
       genTypeName.typeData,
       genFieldIdx.typeData.cloneFunctionIdx
     )
     // cloneFunction: (ref j.l.Object) -> ref j.l.Object
-    instrs += CALL_REF(genTypeName.cloneFunctionType)
+    instrs += wa.CALL_REF(genTypeName.cloneFunctionType)
 
     t.tpe match {
       case ClassType(className) =>
         val info = ctx.getClassInfo(className)
         if (!info.isInterface) // if it's interface, no need to cast from j.l.Object
-          instrs += REF_CAST(Types.WasmRefType(genTypeName.forClass(className)))
+          instrs += wa.REF_CAST(watpe.RefType(genTypeName.forClass(className)))
       case _ =>
         throw new IllegalArgumentException(
           s"Clone result type must be a class type, but is ${t.tpe}"
@@ -2683,62 +2706,62 @@ private class FunctionEmitter private (
     t.tpe
   }
 
-  private def genMatch(tree: IRTrees.Match, expectedType: IRTypes.Type): IRTypes.Type = {
-    val IRTrees.Match(selector, cases, defaultBody) = tree
+  private def genMatch(tree: Match, expectedType: Type): Type = {
+    val Match(selector, cases, defaultBody) = tree
     val selectorLocal = addSyntheticLocal(TypeTransformer.transformType(selector.tpe)(ctx))
 
     genTreeAuto(selector)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    instrs += LOCAL_SET(selectorLocal)
+    instrs += wa.LOCAL_SET(selectorLocal)
 
     instrs.block(TypeTransformer.transformResultType(expectedType)(ctx)) { doneLabel =>
       instrs.block() { defaultLabel =>
         val caseLabels = cases.map(c => c._1 -> instrs.genLabel())
         for (caseLabel <- caseLabels)
-          instrs += BLOCK(BlockType.ValueType(), Some(caseLabel._2))
+          instrs += wa.BLOCK(wa.BlockType.ValueType(), Some(caseLabel._2))
 
         for {
           caseLabel <- caseLabels
           matchableLiteral <- caseLabel._1
         } {
-          fb.markPosition(matchableLiteral)
+          markPosition(matchableLiteral)
           val label = caseLabel._2
-          instrs += LOCAL_GET(selectorLocal)
+          instrs += wa.LOCAL_GET(selectorLocal)
           matchableLiteral match {
-            case IRTrees.IntLiteral(value) =>
-              instrs += I32_CONST(value)
-              instrs += I32_EQ
-              instrs += BR_IF(label)
-            case IRTrees.StringLiteral(value) =>
+            case IntLiteral(value) =>
+              instrs += wa.I32_CONST(value)
+              instrs += wa.I32_EQ
+              instrs += wa.BR_IF(label)
+            case StringLiteral(value) =>
               instrs ++= ctx.getConstantStringInstr(value)
-              instrs += CALL(genFunctionName.is)
-              instrs += BR_IF(label)
-            case IRTrees.Null() =>
-              instrs += REF_IS_NULL
-              instrs += BR_IF(label)
+              instrs += wa.CALL(genFunctionName.is)
+              instrs += wa.BR_IF(label)
+            case Null() =>
+              instrs += wa.REF_IS_NULL
+              instrs += wa.BR_IF(label)
           }
         }
-        instrs += BR(defaultLabel)
+        instrs += wa.BR(defaultLabel)
 
         for ((caseLabel, caze) <- caseLabels.zip(cases).reverse) {
-          fb.markPosition(caze._2)
-          instrs += END
+          markPosition(caze._2)
+          instrs += wa.END
           genTree(caze._2, expectedType)
-          instrs += BR(doneLabel)
+          instrs += wa.BR(doneLabel)
         }
       }
       genTree(defaultBody, expectedType)
     }
 
-    if (expectedType == IRTypes.NothingType)
-      instrs += UNREACHABLE
+    if (expectedType == NothingType)
+      instrs += wa.UNREACHABLE
 
     expectedType
   }
 
-  private def genCreateJSClass(tree: IRTrees.CreateJSClass): IRTypes.Type = {
+  private def genCreateJSClass(tree: CreateJSClass): Type = {
     val classInfo = ctx.getClassInfo(tree.className)
     val jsClassCaptures = classInfo.jsClassCaptures.getOrElse {
       throw new AssertionError(
@@ -2749,55 +2772,55 @@ private class FunctionEmitter private (
     for ((captureValue, captureParam) <- tree.captureValues.zip(jsClassCaptures))
       genTree(captureValue, captureParam.ptpe)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    instrs += CALL(genFunctionName.createJSClassOf(tree.className))
+    instrs += wa.CALL(genFunctionName.createJSClassOf(tree.className))
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSPrivateSelect(tree: IRTrees.JSPrivateSelect): IRTypes.Type = {
-    genTree(tree.qualifier, IRTypes.AnyType)
+  private def genJSPrivateSelect(tree: JSPrivateSelect): Type = {
+    genTree(tree.qualifier, AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    instrs += GLOBAL_GET(genGlobalName.forJSPrivateField(tree.field.name))
-    instrs += CALL(genFunctionName.jsSelect)
+    instrs += wa.GLOBAL_GET(genGlobalName.forJSPrivateField(tree.field.name))
+    instrs += wa.CALL(genFunctionName.jsSelect)
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSSuperSelect(tree: IRTrees.JSSuperSelect): IRTypes.Type = {
-    genTree(tree.superClass, IRTypes.AnyType)
-    genTree(tree.receiver, IRTypes.AnyType)
-    genTree(tree.item, IRTypes.AnyType)
+  private def genJSSuperSelect(tree: JSSuperSelect): Type = {
+    genTree(tree.superClass, AnyType)
+    genTree(tree.receiver, AnyType)
+    genTree(tree.item, AnyType)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    instrs += CALL(genFunctionName.jsSuperGet)
+    instrs += wa.CALL(genFunctionName.jsSuperGet)
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSSuperMethodCall(tree: IRTrees.JSSuperMethodCall): IRTypes.Type = {
-    genTree(tree.superClass, IRTypes.AnyType)
-    genTree(tree.receiver, IRTypes.AnyType)
-    genTree(tree.method, IRTypes.AnyType)
+  private def genJSSuperMethodCall(tree: JSSuperMethodCall): Type = {
+    genTree(tree.superClass, AnyType)
+    genTree(tree.receiver, AnyType)
+    genTree(tree.method, AnyType)
     genJSArgsArray(tree.args)
 
-    fb.markPosition(tree)
+    markPosition(tree)
 
-    instrs += CALL(genFunctionName.jsSuperCall)
+    instrs += wa.CALL(genFunctionName.jsSuperCall)
 
-    IRTypes.AnyType
+    AnyType
   }
 
-  private def genJSNewTarget(tree: IRTrees.JSNewTarget): IRTypes.Type = {
-    fb.markPosition(tree)
+  private def genJSNewTarget(tree: JSNewTarget): Type = {
+    markPosition(tree)
 
     genReadStorage(newTargetStorage)
 
-    IRTypes.AnyType
+    AnyType
   }
 
   /*--------------------------------------------------------------------*
@@ -2970,7 +2993,7 @@ private class FunctionEmitter private (
    */
 
   /** This object namespaces everything related to unwinding, so that we don't pollute too much the
-    * overall internal scope of `WasmExpressionBuilder`.
+    * overall internal scope of `ExpressionBuilder`.
     */
   private object unwinding {
 
@@ -2988,7 +3011,7 @@ private class FunctionEmitter private (
 
     private var enclosingTryFinallyStack: List[TryFinallyEntry] = Nil
 
-    private var enclosingLabeledBlocks: Map[IRNames.LabelName, LabeledEntry] = Map.empty
+    private var enclosingLabeledBlocks: Map[LabelName, LabeledEntry] = Map.empty
 
     private def innermostTryFinally: Option[TryFinallyEntry] =
       enclosingTryFinallyStack.headOption
@@ -3028,16 +3051,16 @@ private class FunctionEmitter private (
 
     /** Information about an enclosing `TryFinally` block. */
     private final class TryFinallyEntry(val depth: Int) {
-      private var _crossInfo: Option[(WasmLocalName, WasmLabelName)] = None
+      private var _crossInfo: Option[(wanme.LocalName, wanme.LabelName)] = None
 
       def isInside(labeledEntry: LabeledEntry): Boolean =
         this.depth > labeledEntry.depth
 
       def wasCrossed: Boolean = _crossInfo.isDefined
 
-      def requireCrossInfo(): (WasmLocalName, WasmLabelName) = {
+      def requireCrossInfo(): (wanme.LocalName, wanme.LabelName) = {
         _crossInfo.getOrElse {
-          val info = (addSyntheticLocal(Types.WasmInt32), instrs.genLabel())
+          val info = (addSyntheticLocal(watpe.Int32), instrs.genLabel())
           _crossInfo = Some(info)
           info
         }
@@ -3047,14 +3070,14 @@ private class FunctionEmitter private (
     /** Information about an enclosing `Labeled` block. */
     private final class LabeledEntry(
         val depth: Int,
-        val irLabelName: IRNames.LabelName,
-        val expectedType: IRTypes.Type
+        val irLabelName: LabelName,
+        val expectedType: Type
     ) {
 
       /** The regular label for this `Labeled` block, used for `Return`s that do not cross a
         * `TryFinally`.
         */
-      val regularWasmLabel: WasmLabelName = instrs.genLabel()
+      val regularWasmLabel: wanme.LabelName = instrs.genLabel()
 
       /** The destination tag allocated to this label, used by the `finally` blocks to keep
         * propagating to the right destination.
@@ -3065,16 +3088,16 @@ private class FunctionEmitter private (
 
       /** The locals in which to store the result of the label if we have to cross a `try..finally`.
         */
-      private var resultLocals: List[WasmLocalName] = null
+      private var resultLocals: List[wanme.LocalName] = null
 
       /** An additional Wasm label that has a `[]` result, and which will get its result from the
         * `resultLocal` instead of expecting it on the stack.
         */
-      private var crossLabel: WasmLabelName = null
+      private var crossLabel: wanme.LabelName = null
 
       def wasCrossUsed: Boolean = destinationTag != 0
 
-      def requireCrossInfo(): (Int, List[WasmLocalName], WasmLabelName) = {
+      def requireCrossInfo(): (Int, List[wanme.LocalName], wanme.LabelName) = {
         if (destinationTag == 0) {
           destinationTag = allocateDestinationTag()
           val resultTypes = TypeTransformer.transformResultType(expectedType)(ctx)
@@ -3086,21 +3109,21 @@ private class FunctionEmitter private (
       }
     }
 
-    def genLabeled(t: IRTrees.Labeled, expectedType: IRTypes.Type): IRTypes.Type = {
+    def genLabeled(t: Labeled, expectedType: Type): Type = {
       val entry = new LabeledEntry(currentUnwindingStackDepth, t.label.name, expectedType)
 
       val ty = TypeTransformer.transformResultType(expectedType)(ctx)
 
-      fb.markPosition(t)
+      markPosition(t)
 
-      // Manual BLOCK here because we have a specific `label`
-      instrs += BLOCK(
-        instrs.sigToBlockType(WasmFunctionSignature(Nil, ty)),
+      // Manual wa.BLOCK here because we have a specific `label`
+      instrs += wa.BLOCK(
+        instrs.sigToBlockType(Sig(Nil, ty)),
         Some(entry.regularWasmLabel)
       )
 
       /* Remember the position in the instruction stream, in case we need to
-       * come back and insert the BLOCK for the cross handling.
+       * come back and insert the wa.BLOCK for the cross handling.
        */
       val instrsBlockBeginIndex = instrs.markCurrentInstructionIndex()
 
@@ -3109,12 +3132,12 @@ private class FunctionEmitter private (
         genTree(t.body, expectedType)
       }
 
-      fb.markPosition(t)
+      markPosition(t)
 
       // Deal with crossing behavior
       if (entry.wasCrossUsed) {
         assert(
-          expectedType != IRTypes.NothingType,
+          expectedType != NothingType,
           "The tryFinallyCrossLabel should not have been used for label " +
             s"${t.label.name.nameString} of type nothing"
         )
@@ -3144,49 +3167,49 @@ private class FunctionEmitter private (
         val (_, resultLocals, crossLabel) = entry.requireCrossInfo()
 
         // Go back and insert the `block $crossLabel` right after `block $labeled`
-        instrs.insert(instrsBlockBeginIndex, BLOCK(BlockType.ValueType(), Some(crossLabel)))
+        instrs.insert(instrsBlockBeginIndex, wa.BLOCK(wa.BlockType.ValueType(), Some(crossLabel)))
 
         // Add the `br`, `end` and `local.get` at the current position, as usual
-        instrs += BR(entry.regularWasmLabel)
-        instrs += END
+        instrs += wa.BR(entry.regularWasmLabel)
+        instrs += wa.END
         for (local <- resultLocals)
-          instrs += LOCAL_GET(local)
+          instrs += wa.LOCAL_GET(local)
       }
 
-      instrs += END
+      instrs += wa.END
 
-      if (expectedType == IRTypes.NothingType)
-        instrs += UNREACHABLE
+      if (expectedType == NothingType)
+        instrs += wa.UNREACHABLE
 
       expectedType
     }
 
-    def genTryFinally(t: IRTrees.TryFinally, expectedType: IRTypes.Type): IRTypes.Type = {
+    def genTryFinally(t: TryFinally, expectedType: Type): Type = {
       val entry = new TryFinallyEntry(currentUnwindingStackDepth)
 
       val resultType = TypeTransformer.transformResultType(expectedType)(ctx)
       val resultLocals = resultType.map(addSyntheticLocal(_))
 
-      fb.markPosition(t)
+      markPosition(t)
 
       instrs.block() { doneLabel =>
-        instrs.block(Types.WasmRefType.exnref) { catchLabel =>
+        instrs.block(watpe.RefType.exnref) { catchLabel =>
           /* Remember the position in the instruction stream, in case we need
-           * to come back and insert the BLOCK for the cross handling.
+           * to come back and insert the wa.BLOCK for the cross handling.
            */
           val instrsBlockBeginIndex = instrs.markCurrentInstructionIndex()
 
-          instrs.tryTable()(List(CatchClause.CatchAllRef(catchLabel))) {
+          instrs.tryTable()(List(wa.CatchClause.CatchAllRef(catchLabel))) {
             // try block
             enterTryFinally(entry) {
               genTree(t.block, expectedType)
             }
 
-            fb.markPosition(t)
+            markPosition(t)
 
             // store the result in locals during the finally block
             for (resultLocal <- resultLocals.reverse)
-              instrs += LOCAL_SET(resultLocal)
+              instrs += wa.LOCAL_SET(resultLocal)
           }
 
           /* If this try..finally was crossed by a `Return`, we need to amend
@@ -3210,36 +3233,35 @@ private class FunctionEmitter private (
             // Go back and insert the `block $cross` right after `block $catch`
             instrs.insert(
               instrsBlockBeginIndex,
-              BLOCK(BlockType.ValueType(), Some(crossLabel))
+              wa.BLOCK(wa.BlockType.ValueType(), Some(crossLabel))
             )
 
             // And the other amendments normally
-            instrs += I32_CONST(0)
-            instrs += LOCAL_SET(destinationTagLocal)
-            instrs += END // of the inserted BLOCK
+            instrs += wa.I32_CONST(0)
+            instrs += wa.LOCAL_SET(destinationTagLocal)
+            instrs += wa.END // of the inserted wa.BLOCK
           }
 
           // on success, push a `null_ref exn` on the stack
-          instrs += REF_NULL(Types.WasmHeapType.Exn)
+          instrs += wa.REF_NULL(watpe.HeapType.Exn)
         } // end block $catch
 
         // finally block (during which we leave the `(ref null exn)` on the stack)
-        genTree(t.finalizer, IRTypes.NoType)
+        genTree(t.finalizer, NoType)
 
-        fb.markPosition(t)
+        markPosition(t)
 
         if (!entry.wasCrossed) {
           // If the `exnref` is non-null, rethrow it
-          instrs += BR_ON_NULL(doneLabel)
-          instrs += THROW_REF
+          instrs += wa.BR_ON_NULL(doneLabel)
+          instrs += wa.THROW_REF
         } else {
           /* If the `exnref` is non-null, rethrow it.
            * Otherwise, stay within the `$done` block.
            */
-          instrs.block(WasmFunctionSignature(List(Types.WasmRefType.exnref), Nil)) {
-            exnrefIsNullLabel =>
-              instrs += BR_ON_NULL(exnrefIsNullLabel)
-              instrs += THROW_REF
+          instrs.block(Sig(List(watpe.RefType.exnref), Nil)) { exnrefIsNullLabel =>
+            instrs += wa.BR_ON_NULL(exnrefIsNullLabel)
+            instrs += wa.THROW_REF
           }
 
           /* Otherwise, use a br_table to dispatch to the right destination
@@ -3247,7 +3269,7 @@ private class FunctionEmitter private (
            * which is set by `Return` or to 0 for fall-through.
            */
 
-          // The order does not matter here because they will be "re-sorted" by emitBRTable
+          // The order does not matter here because they will be "re-sorted" by emitwa.BRTable
           val possibleTargetEntries =
             enclosingLabeledBlocks.valuesIterator.filter(_.wasCrossUsed).toList
 
@@ -3258,19 +3280,20 @@ private class FunctionEmitter private (
            * are outside of the next try..finally in line go to the latter;
            * for other `Labeled`'s, we go to their cross label.
            */
-          val brTableDests: List[(Int, WasmLabelName)] = possibleTargetEntries.map { targetEntry =>
-            val (destinationTag, _, crossLabel) = targetEntry.requireCrossInfo()
-            val label = nextTryFinallyEntry.filter(_.isInside(targetEntry)) match {
-              case None          => crossLabel
-              case Some(nextTry) => nextTry.requireCrossInfo()._2
-            }
-            destinationTag -> label
+          val brTableDests: List[(Int, wanme.LabelName)] = possibleTargetEntries.map {
+            targetEntry =>
+              val (destinationTag, _, crossLabel) = targetEntry.requireCrossInfo()
+              val label = nextTryFinallyEntry.filter(_.isInside(targetEntry)) match {
+                case None          => crossLabel
+                case Some(nextTry) => nextTry.requireCrossInfo()._2
+              }
+              destinationTag -> label
           }
 
-          instrs += LOCAL_GET(entry.requireCrossInfo()._1)
+          instrs += wa.LOCAL_GET(entry.requireCrossInfo()._1)
           for (nextTry <- nextTryFinallyEntry) {
             // Transfer the destinationTag to the next try..finally in line
-            instrs += LOCAL_TEE(nextTry.requireCrossInfo()._1)
+            instrs += wa.LOCAL_TEE(nextTry.requireCrossInfo()._1)
           }
           emitBRTable(brTableDests, doneLabel)
         }
@@ -3278,54 +3301,54 @@ private class FunctionEmitter private (
 
       // reload the result onto the stack
       for (resultLocal <- resultLocals)
-        instrs += LOCAL_GET(resultLocal)
+        instrs += wa.LOCAL_GET(resultLocal)
 
-      if (expectedType == IRTypes.NothingType)
-        instrs += UNREACHABLE
+      if (expectedType == NothingType)
+        instrs += wa.UNREACHABLE
 
       expectedType
     }
 
     private def emitBRTable(
-        dests: List[(Int, WasmLabelName)],
-        defaultLabel: WasmLabelName
+        dests: List[(Int, wanme.LabelName)],
+        defaultLabel: wanme.LabelName
     ): Unit = {
       dests match {
         case Nil =>
-          instrs += DROP
-          instrs += BR(defaultLabel)
+          instrs += wa.DROP
+          instrs += wa.BR(defaultLabel)
 
         case (singleDestValue, singleDestLabel) :: Nil =>
           /* Common case (as far as getting here in the first place is concerned):
            * All the `Return`s that cross the current `TryFinally` have the same
            * target destination (namely the enclosing `def` in the original program).
            */
-          instrs += I32_CONST(singleDestValue)
-          instrs += I32_EQ
-          instrs += BR_IF(singleDestLabel)
-          instrs += BR(defaultLabel)
+          instrs += wa.I32_CONST(singleDestValue)
+          instrs += wa.I32_EQ
+          instrs += wa.BR_IF(singleDestLabel)
+          instrs += wa.BR(defaultLabel)
 
         case _ :: _ =>
           // `max` is safe here because the list is non-empty
           val table = Array.fill(dests.map(_._1).max + 1)(defaultLabel)
           for (dest <- dests)
             table(dest._1) = dest._2
-          instrs += BR_TABLE(table.toList, defaultLabel)
+          instrs += wa.BR_TABLE(table.toList, defaultLabel)
       }
     }
 
-    def genReturn(t: IRTrees.Return): IRTypes.Type = {
+    def genReturn(t: Return): Type = {
       val targetEntry = enclosingLabeledBlocks(t.label.name)
 
       genTree(t.expr, targetEntry.expectedType)
 
-      fb.markPosition(t)
+      markPosition(t)
 
-      if (targetEntry.expectedType != IRTypes.NothingType) {
+      if (targetEntry.expectedType != NothingType) {
         innermostTryFinally.filter(_.isInside(targetEntry)) match {
           case None =>
             // Easy case: directly branch out of the block
-            instrs += BR(targetEntry.regularWasmLabel)
+            instrs += wa.BR(targetEntry.regularWasmLabel)
 
           case Some(tryFinallyEntry) =>
             /* Here we need to branch to the innermost enclosing `finally` block,
@@ -3336,18 +3359,18 @@ private class FunctionEmitter private (
 
             // 1. Store the result in the label's result locals.
             for (local <- resultLocals.reverse)
-              instrs += LOCAL_SET(local)
+              instrs += wa.LOCAL_SET(local)
 
             // 2. Store the label's destination tag into the try..finally's destination local.
-            instrs += I32_CONST(destinationTag)
-            instrs += LOCAL_SET(destinationTagLocal)
+            instrs += wa.I32_CONST(destinationTag)
+            instrs += wa.LOCAL_SET(destinationTagLocal)
 
             // 3. Branch to the enclosing `finally` block's cross label.
-            instrs += BR(crossLabel)
+            instrs += wa.BR(crossLabel)
         }
       }
 
-      IRTypes.NothingType
+      NothingType
     }
   }
 }

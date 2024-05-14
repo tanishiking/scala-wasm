@@ -5,49 +5,50 @@ import scala.annotation.tailrec
 import org.scalajs.ir.Position
 import org.scalajs.linker.backend.javascript.SourceMapWriter
 
+import Instructions._
 import Names._
+import Modules._
 import Types._
-import WasmInstr.{BlockType, END}
 
-class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
-  import WasmBinaryWriter._
+class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
+  import BinaryWriter._
 
-  private val typeIdxValues: Map[WasmTypeName, Int] =
+  private val typeIdxValues: Map[TypeName, Int] =
     module.types.flatMap(_.subTypes).map(_.name).zipWithIndex.toMap
 
-  private val dataIdxValues: Map[WasmDataName, Int] =
+  private val dataIdxValues: Map[DataName, Int] =
     module.datas.map(_.name).zipWithIndex.toMap
 
-  private val allFunctionNames: List[WasmFunctionName] = {
+  private val allFunctionNames: List[FunctionName] = {
     val importedFunctionNames = module.imports.collect {
-      case WasmImport(_, _, WasmImportDesc.Func(id, _)) => id
+      case Import(_, _, ImportDesc.Func(id, _)) => id
     }
     importedFunctionNames ::: module.funcs.map(_.name)
   }
 
-  private val funcIdxValues: Map[WasmFunctionName, Int] =
+  private val funcIdxValues: Map[FunctionName, Int] =
     allFunctionNames.zipWithIndex.toMap
 
-  private val tagIdxValues: Map[WasmTagName, Int] = {
-    val importedTagNames = module.imports.collect {
-      case WasmImport(_, _, WasmImportDesc.Tag(id, _)) => id
+  private val tagIdxValues: Map[TagName, Int] = {
+    val importedTagNames = module.imports.collect { case Import(_, _, ImportDesc.Tag(id, _)) =>
+      id
     }
     val allNames = importedTagNames ::: module.tags.map(_.name)
     allNames.zipWithIndex.toMap
   }
 
-  private val globalIdxValues: Map[WasmGlobalName, Int] = {
+  private val globalIdxValues: Map[GlobalName, Int] = {
     val importedGlobalNames = module.imports.collect {
-      case WasmImport(_, _, WasmImportDesc.Global(id, _, _)) => id
+      case Import(_, _, ImportDesc.Global(id, _, _)) => id
     }
     val allNames = importedGlobalNames ::: module.globals.map(_.name)
     allNames.zipWithIndex.toMap
   }
 
-  private var localIdxValues: Option[Map[WasmLocalName, Int]] = None
-  private var labelsInScope: List[Option[WasmLabelName]] = Nil
+  private var localIdxValues: Option[Map[LocalName, Int]] = None
+  private var labelsInScope: List[Option[LabelName]] = Nil
 
-  private def withLocalIdxValues(values: Map[WasmLocalName, Int])(f: => Unit): Unit = {
+  private def withLocalIdxValues(values: Map[LocalName, Int])(f: => Unit): Unit = {
     val saved = localIdxValues
     localIdxValues = Some(values)
     try f
@@ -122,9 +123,9 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeSubType(buf: Buffer, subType: WasmSubType): Unit = {
+  private def writeSubType(buf: Buffer, subType: SubType): Unit = {
     subType match {
-      case WasmSubType(_, true, None, compositeType) =>
+      case SubType(_, true, None, compositeType) =>
         writeCompositeType(buf, compositeType)
       case _ =>
         buf.byte(if (subType.isFinal) 0x4F else 0x50)
@@ -133,20 +134,20 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeCompositeType(buf: Buffer, compositeType: WasmCompositeType): Unit = {
-    def writeFieldType(fieldType: WasmFieldType): Unit = {
+  private def writeCompositeType(buf: Buffer, compositeType: CompositeType): Unit = {
+    def writeFieldType(fieldType: FieldType): Unit = {
       writeType(buf, fieldType.typ)
       buf.boolean(fieldType.isMutable)
     }
 
     compositeType match {
-      case WasmArrayType(fieldType) =>
+      case ArrayType(fieldType) =>
         buf.byte(0x5E) // array
         writeFieldType(fieldType)
-      case WasmStructType(fields) =>
+      case StructType(fields) =>
         buf.byte(0x5F) // struct
         buf.vec(fields)(field => writeFieldType(field.fieldType))
-      case WasmFunctionType(params, results) =>
+      case FunctionType(params, results) =>
         buf.byte(0x60) // func
         writeResultType(buf, params)
         writeResultType(buf, results)
@@ -159,14 +160,14 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
       buf.name(imprt.name)
 
       imprt.desc match {
-        case WasmImportDesc.Func(id, typeName) =>
+        case ImportDesc.Func(id, typeName) =>
           buf.byte(0x00) // func
           writeTypeIdx(buf, typeName)
-        case WasmImportDesc.Global(id, typ, isMutable) =>
+        case ImportDesc.Global(id, typ, isMutable) =>
           buf.byte(0x03) // global
           writeType(buf, typ)
           buf.boolean(isMutable)
-        case WasmImportDesc.Tag(id, typeName) =>
+        case ImportDesc.Tag(id, typeName) =>
           buf.byte(0x04) // tag
           buf.byte(0x00) // exception kind (that is the only valid kind for now)
           writeTypeIdx(buf, typeName)
@@ -199,10 +200,10 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     buf.vec(module.exports) { exp =>
       buf.name(exp.exportName)
       exp match {
-        case WasmExport.Function(_, funcName) =>
+        case Export.Function(_, funcName) =>
           buf.byte(0x00)
           writeFuncIdx(buf, funcName)
-        case WasmExport.Global(_, globalName) =>
+        case Export.Global(_, globalName) =>
           buf.byte(0x03)
           writeGlobalIdx(buf, globalName)
       }
@@ -216,8 +217,8 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   private def writeElementSection(buf: Buffer): Unit = {
     buf.vec(module.elems) { element =>
       element.mode match {
-        case WasmElement.Mode.Passive     => buf.byte(5)
-        case WasmElement.Mode.Declarative => buf.byte(7)
+        case Element.Mode.Passive     => buf.byte(5)
+        case Element.Mode.Declarative => buf.byte(7)
       }
       writeType(buf, element.typ)
       buf.vec(element.init) { expr =>
@@ -231,7 +232,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   private def writeDataSection(buf: Buffer): Unit = {
     buf.vec(module.datas) { data =>
       data.mode match {
-        case WasmData.Mode.Passive => buf.byte(1)
+        case Data.Mode.Passive => buf.byte(1)
       }
       buf.vec(data.bytes)(buf.byte)
     }
@@ -258,7 +259,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeFunc(buf: Buffer, func: WasmFunction): Unit = {
+  private def writeFunc(buf: Buffer, func: Function): Unit = {
     emitStartFuncPosition(buf, func.pos)
 
     buf.vec(func.locals.filter(!_.isParameter)) { local =>
@@ -273,71 +274,71 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     emitEndFuncPosition(buf)
   }
 
-  private def writeType(buf: Buffer, typ: WasmStorageType): Unit = {
+  private def writeType(buf: Buffer, typ: StorageType): Unit = {
     typ match {
-      case typ: WasmSimpleType => buf.byte(typ.binaryCode)
-      case typ: WasmPackedType => buf.byte(typ.binaryCode)
+      case typ: SimpleType => buf.byte(typ.binaryCode)
+      case typ: PackedType => buf.byte(typ.binaryCode)
 
-      case WasmRefType(true, heapType: WasmHeapType.AbsHeapType) =>
+      case RefType(true, heapType: HeapType.AbsHeapType) =>
         buf.byte(heapType.binaryCode)
 
-      case WasmRefType(nullable, heapType) =>
+      case RefType(nullable, heapType) =>
         buf.byte(if (nullable) 0x63 else 0x64)
         writeHeapType(buf, heapType)
     }
   }
 
-  private def writeHeapType(buf: Buffer, heapType: WasmHeapType): Unit = {
+  private def writeHeapType(buf: Buffer, heapType: HeapType): Unit = {
     heapType match {
-      case WasmHeapType.Type(typeName)        => writeTypeIdxs33(buf, typeName)
-      case heapType: WasmHeapType.AbsHeapType => buf.byte(heapType.binaryCode)
+      case HeapType.Type(typeName)        => writeTypeIdxs33(buf, typeName)
+      case heapType: HeapType.AbsHeapType => buf.byte(heapType.binaryCode)
     }
   }
 
-  private def writeResultType(buf: Buffer, resultType: List[WasmType]): Unit =
+  private def writeResultType(buf: Buffer, resultType: List[Type]): Unit =
     buf.vec(resultType)(writeType(buf, _))
 
-  private def writeTypeIdx(buf: Buffer, typeName: WasmTypeName): Unit =
+  private def writeTypeIdx(buf: Buffer, typeName: TypeName): Unit =
     buf.u32(typeIdxValues(typeName))
 
-  private def writeDataIdx(buf: Buffer, dataName: WasmDataName): Unit =
+  private def writeDataIdx(buf: Buffer, dataName: DataName): Unit =
     buf.u32(dataIdxValues(dataName))
 
-  private def writeTypeIdxs33(buf: Buffer, typeName: WasmTypeName): Unit =
+  private def writeTypeIdxs33(buf: Buffer, typeName: TypeName): Unit =
     buf.s33OfUInt(typeIdxValues(typeName))
 
-  private def writeFuncIdx(buf: Buffer, funcName: WasmFunctionName): Unit =
+  private def writeFuncIdx(buf: Buffer, funcName: FunctionName): Unit =
     buf.u32(funcIdxValues(funcName))
 
-  private def writeTagIdx(buf: Buffer, tagName: WasmTagName): Unit =
+  private def writeTagIdx(buf: Buffer, tagName: TagName): Unit =
     buf.u32(tagIdxValues(tagName))
 
-  private def writeGlobalIdx(buf: Buffer, globalName: WasmGlobalName): Unit =
+  private def writeGlobalIdx(buf: Buffer, globalName: GlobalName): Unit =
     buf.u32(globalIdxValues(globalName))
 
-  private def writeLocalIdx(buf: Buffer, localName: WasmLocalName): Unit = {
+  private def writeLocalIdx(buf: Buffer, localName: LocalName): Unit = {
     localIdxValues match {
       case Some(values) => buf.u32(values(localName))
       case None         => throw new IllegalStateException(s"Local name table is not available")
     }
   }
 
-  private def writeLabelIdx(buf: Buffer, labelIdx: WasmLabelName): Unit = {
+  private def writeLabelIdx(buf: Buffer, labelIdx: LabelName): Unit = {
     val relativeNumber = labelsInScope.indexOf(Some(labelIdx))
     if (relativeNumber < 0)
       throw new IllegalStateException(s"Cannot find $labelIdx in scope")
     buf.u32(relativeNumber)
   }
 
-  private def writeExpr(buf: Buffer, expr: WasmExpr): Unit = {
+  private def writeExpr(buf: Buffer, expr: Expr): Unit = {
     for (instr <- expr.instr)
       writeInstr(buf, instr)
     buf.byte(0x0B) // end
   }
 
-  private def writeInstr(buf: Buffer, instr: WasmInstr): Unit = {
+  private def writeInstr(buf: Buffer, instr: Instr): Unit = {
     instr match {
-      case WasmInstr.PositionMark(pos) =>
+      case PositionMark(pos) =>
         emitPosition(buf, pos)
 
       case _ =>
@@ -356,7 +357,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
         writeInstrImmediates(buf, instr)
 
         instr match {
-          case instr: WasmInstr.StructuredLabeledInstr =>
+          case instr: StructuredLabeledInstr =>
             // We must register even the `None` labels, because they contribute to relative numbering
             labelsInScope ::= instr.label
           case END =>
@@ -367,13 +368,11 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     }
   }
 
-  private def writeInstrImmediates(buf: Buffer, instr: WasmInstr): Unit = {
-    import WasmInstr._
-
+  private def writeInstrImmediates(buf: Buffer, instr: Instr): Unit = {
     def writeBrOnCast(
-        labelIdx: WasmLabelName,
-        from: WasmRefType,
-        to: WasmRefType
+        labelIdx: LabelName,
+        from: RefType,
+        to: RefType
     ): Unit = {
       val castFlags = ((if (from.nullable) 1 else 0) | (if (to.nullable) 2 else 0)).toByte
       buf.byte(castFlags)
@@ -385,27 +384,27 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
     instr match {
       // Convenience categories
 
-      case instr: WasmSimpleInstr =>
+      case instr: SimpleInstr =>
         ()
-      case instr: WasmBlockTypeLabeledInstr =>
+      case instr: BlockTypeLabeledInstr =>
         writeBlockType(buf, instr.blockTypeArgument)
-      case instr: WasmLabelInstr =>
+      case instr: LabelInstr =>
         writeLabelIdx(buf, instr.labelArgument)
-      case instr: WasmFuncInstr =>
+      case instr: FuncInstr =>
         writeFuncIdx(buf, instr.funcArgument)
-      case instr: WasmTypeInstr =>
+      case instr: TypeInstr =>
         writeTypeIdx(buf, instr.typeArgument)
-      case instr: WasmTagInstr =>
+      case instr: TagInstr =>
         writeTagIdx(buf, instr.tagArgument)
-      case instr: WasmLocalInstr =>
+      case instr: LocalInstr =>
         writeLocalIdx(buf, instr.localArgument)
-      case instr: WasmGlobalInstr =>
+      case instr: GlobalInstr =>
         writeGlobalIdx(buf, instr.globalArgument)
-      case instr: WasmHeapTypeInstr =>
+      case instr: HeapTypeInstr =>
         writeHeapType(buf, instr.heapTypeArgument)
-      case instr: WasmRefTypeInstr =>
+      case instr: RefTypeInstr =>
         writeHeapType(buf, instr.refTypeArgument.heapType)
-      case instr: WasmStructFieldInstr =>
+      case instr: StructFieldInstr =>
         writeTypeIdx(buf, instr.structTypeName)
         buf.u32(instr.fieldIdx.value)
 
@@ -459,7 +458,7 @@ class WasmBinaryWriter(module: WasmModule, emitDebugInfo: Boolean) {
   }
 }
 
-object WasmBinaryWriter {
+object BinaryWriter {
   private final val SectionCustom = 0x00
   private final val SectionType = 0x01
   private final val SectionImport = 0x02
@@ -615,11 +614,11 @@ object WasmBinaryWriter {
   }
 
   final class WithSourceMap(
-      module: WasmModule,
+      module: Module,
       emitDebugInfo: Boolean,
       sourceMapWriter: SourceMapWriter,
       sourceMapURI: String
-  ) extends WasmBinaryWriter(module, emitDebugInfo) {
+  ) extends BinaryWriter(module, emitDebugInfo) {
 
     override protected def emitStartFuncPosition(buf: Buffer, pos: Position): Unit =
       sourceMapWriter.startNode(buf.currentGlobalOffset, pos)
