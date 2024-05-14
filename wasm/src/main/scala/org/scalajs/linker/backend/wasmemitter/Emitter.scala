@@ -117,9 +117,8 @@ final class Emitter(config: Emitter.Config) {
 
     implicit val pos = Position.NoPosition
 
-    implicit val fctx = WasmFunctionContext(genFunctionName.start, Nil, Nil)
-
-    import fctx.instrs
+    val fb = new FunctionBuilder(ctx.moduleBuilder, genFunctionName.start, pos)
+    val instrs: fb.type = fb
 
     // Initialize itables
     for (className <- ctx.getAllClassesWithITableGlobal()) {
@@ -210,32 +209,35 @@ final class Emitter(config: Emitter.Config) {
         instrs += WasmInstr.CALL(functionName)
       }
 
-      val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(BoxedStringClass), 1)
-
-      val callTree = ModuleInitializerImpl.fromInitializer(init) match {
+      ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
-          IRTrees.ApplyStatic(
-            IRTrees.ApplyFlags.empty,
-            className,
-            IRTrees.MethodIdent(encodedMainMethodName),
-            List(IRTrees.ArrayValue(stringArrayTypeRef, args.map(IRTrees.StringLiteral(_))))
-          )(IRTypes.NoType)
+          // vtable of Array[String]
+          instrs += GLOBAL_GET(genGlobalName.forVTable(BoxedStringClass))
+          instrs += I32_CONST(1)
+          instrs += CALL(genFunctionName.arrayTypeData)
+
+          // itable of Array[String]
+          instrs += GLOBAL_GET(genGlobalName.arrayClassITable)
+
+          // underlying array of args
+          args.foreach(arg => instrs ++= ctx.getConstantStringInstr(arg))
+          instrs += ARRAY_NEW_FIXED(genTypeName.anyArray, args.size)
+
+          // array object
+          val stringArrayTypeRef = IRTypes.ArrayTypeRef(IRTypes.ClassRef(BoxedStringClass), 1)
+          instrs += STRUCT_NEW(genTypeName.forArrayClass(stringArrayTypeRef))
+
+          // call
+          genCallStatic(className, encodedMainMethodName)
 
         case ModuleInitializerImpl.VoidMainMethod(className, encodedMainMethodName) =>
-          IRTrees.ApplyStatic(
-            IRTrees.ApplyFlags.empty,
-            className,
-            IRTrees.MethodIdent(encodedMainMethodName),
-            Nil
-          )(IRTypes.NoType)
+          genCallStatic(className, encodedMainMethodName)
       }
-
-      WasmExpressionBuilder.generateIRBody(callTree, IRTypes.NoType)
     }
 
     // Finish the start function
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
     ctx.moduleBuilder.setStart(genFunctionName.start)
   }
 

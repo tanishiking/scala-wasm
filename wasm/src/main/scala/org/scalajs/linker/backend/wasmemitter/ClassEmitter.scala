@@ -42,7 +42,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = WasmGlobal(
         genGlobalName.forStaticField(name.name),
         transformType(ftpe),
-        WasmExpr(List(genStaticVarInit(ftpe))),
+        WasmExpr(List(genZeroOf(ftpe))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -67,18 +67,24 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
   }
 
-  private def genStaticVarInit(tpe: IRTypes.Type)(implicit ctx: WasmContext): WasmInstr = {
+  private def genZeroOf(tpe: IRTypes.Type)(implicit ctx: WasmContext): WasmInstr = {
     import IRTypes._
 
     tpe match {
-      case BooleanType | CharType | ByteType | ShortType | IntType => I32_CONST(0)
-      case LongType                                                => I64_CONST(0L)
-      case FloatType                                               => F32_CONST(0.0f)
-      case DoubleType                                              => F64_CONST(0.0)
-      case AnyType | ClassType(_) | ArrayType(_) | NullType        => REF_NULL(WasmHeapType.None)
+      case BooleanType | CharType | ByteType | ShortType | IntType =>
+        I32_CONST(0)
 
-      case NoType | NothingType | StringType | UndefType | _: RecordType =>
-        throw new AssertionError(s"Unexpected type for static variable: ${tpe.show()}")
+      case LongType   => I64_CONST(0L)
+      case FloatType  => F32_CONST(0.0f)
+      case DoubleType => F64_CONST(0.0)
+      case StringType => GLOBAL_GET(genGlobalName.emptyString)
+      case UndefType  => GLOBAL_GET(genGlobalName.undef)
+
+      case AnyType | ClassType(_) | ArrayType(_) | NullType =>
+        REF_NULL(WasmHeapType.None)
+
+      case NoType | NothingType | _: RecordType =>
+        throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
     }
   }
 
@@ -143,45 +149,46 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     implicit val noPos: Position = Position.NoPosition
 
-    def build(loadJSClass: (WasmFunctionContext) => Unit): WasmFunctionName = {
-      implicit val fctx = WasmFunctionContext(
+    def build(loadJSClass: (FunctionBuilder) => Unit): WasmFunctionName = {
+      val fb = new FunctionBuilder(
+        ctx.moduleBuilder,
         genFunctionName.isJSClassInstance(clazz.className),
-        List("x" -> WasmRefType.anyref),
-        List(WasmInt32)
+        noPos
       )
+      val xParam = fb.addParam("x", WasmRefType.anyref)
+      fb.setResultType(WasmInt32)
+      fb.setFunctionType(ctx.isJSClassInstanceFuncTypeName)
 
-      val List(xParam) = fctx.paramIndices
-
-      import fctx.instrs
+      val instrs = fb
 
       if (clazz.kind == ClassKind.JSClass && !clazz.hasInstances) {
         /* We need to constant-fold the instance test, to avoid trying to
          * call $loadJSClass.className, since it will not exist at all.
          */
-        fctx.instrs += I32_CONST(0) // false
+        instrs += I32_CONST(0) // false
       } else {
         instrs += LOCAL_GET(xParam)
-        loadJSClass(fctx)
+        loadJSClass(fb)
         instrs += CALL(genFunctionName.jsBinaryOps(IRTrees.JSBinaryOp.instanceof))
         instrs += CALL(genFunctionName.unbox(IRTypes.BooleanRef))
       }
 
-      val func = fctx.buildAndAddToContext(ctx.isJSClassInstanceFuncTypeName)
+      val func = fb.buildAndAddToModule()
       func.name
     }
 
     clazz.kind match {
       case ClassKind.NativeJSClass =>
         clazz.jsNativeLoadSpec.map { jsNativeLoadSpec =>
-          build { fctx =>
-            WasmExpressionBuilder.genLoadJSNativeLoadSpec(fctx, jsNativeLoadSpec)
+          build { fb =>
+            WasmExpressionBuilder.genLoadJSNativeLoadSpec(fb, jsNativeLoadSpec)
           }
         }
 
       case ClassKind.JSClass =>
         if (clazz.jsClassCaptures.isEmpty) {
-          val funcName = build { fctx =>
-            fctx.instrs += CALL(genFunctionName.loadJSClass(clazz.className))
+          val funcName = build { fb =>
+            fb += CALL(genFunctionName.loadJSClass(clazz.className))
           }
           Some(funcName)
         } else {
@@ -424,17 +431,18 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val classInfo = ctx.getClassInfo(clazz.className)
 
-    val fctx = WasmFunctionContext(
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.instanceTest(clazz.name.name),
-      List("expr" -> WasmRefType.anyref),
-      List(WasmInt32)
+      pos
     )
-    val List(exprParam) = fctx.paramIndices
+    val exprParam = fb.addParam("expr", WasmRefType.anyref)
+    fb.setResultType(WasmInt32)
 
-    import fctx.instrs
+    val instrs = fb
 
-    val itables = fctx.addLocal("itables", WasmRefType.nullable(genTypeName.itables))
-    val exprNonNullLocal = fctx.addLocal("exprNonNull", WasmRefType.any)
+    val itables = fb.addLocal("itables", WasmRefType.nullable(genTypeName.itables))
+    val exprNonNullLocal = fb.addLocal("exprNonNull", WasmRefType.any)
 
     val itableIdx = ctx.getItableIdx(classInfo)
     instrs.block(WasmRefType.anyref) { testFail =>
@@ -505,7 +513,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += I32_CONST(0) // false
     }
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
   }
 
   private def genNewDefaultFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -516,13 +524,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     assert(clazz.hasDirectInstances)
 
     val structName = genTypeName.forClass(className)
-    implicit val fctx = WasmFunctionContext(
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.newDefault(className),
-      Nil,
-      List(WasmRefType(structName))
+      pos
     )
+    fb.setResultType(WasmRefType(structName))
 
-    import fctx.instrs
+    val instrs = fb
 
     instrs += GLOBAL_GET(genGlobalName.forVTable(className))
 
@@ -533,11 +542,11 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += REF_NULL(WasmHeapType(genTypeName.itables))
 
     classInfo.allFieldDefs.foreach { f =>
-      WasmExpressionBuilder.generateIRBody(IRTypes.zeroOf(f.ftpe)(clazz.pos), f.ftpe)
+      instrs += genZeroOf(f.ftpe)
     }
     instrs += STRUCT_NEW(structName)
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
   }
 
   /** Generate clone function for the given class, if it is concrete and implements the Cloneable
@@ -551,19 +560,21 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val className = clazz.className
     val info = ctx.getClassInfo(className)
 
-    val fctx = WasmFunctionContext(
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.clone(className),
-      List("from" -> WasmRefType(genTypeName.ObjectStruct)),
-      List(WasmRefType(genTypeName.ObjectStruct))
+      pos
     )
-    val List(fromParam) = fctx.paramIndices
+    val fromParam = fb.addParam("from", WasmRefType(genTypeName.ObjectStruct))
+    fb.setResultType(WasmRefType(genTypeName.ObjectStruct))
+    fb.setFunctionType(ctx.cloneFunctionTypeName)
 
-    import fctx.instrs
+    val instrs = fb
 
     val heapType = WasmHeapType(genTypeName.forClass(className))
 
-    val from = fctx.addSyntheticLocal(WasmRefType.nullable(heapType))
-    val result = fctx.addSyntheticLocal(WasmRefType.nullable(heapType))
+    val from = fb.addLocal("fromTyped", WasmRefType.nullable(heapType))
+    val result = fb.addLocal("result", WasmRefType.nullable(heapType))
 
     instrs += LOCAL_GET(fromParam)
     instrs += REF_CAST(WasmRefType(heapType))
@@ -581,7 +592,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     instrs += LOCAL_GET(result)
     instrs += REF_AS_NOT_NULL
 
-    fctx.buildAndAddToContext(ctx.cloneFunctionTypeName)
+    fb.buildAndAddToModule()
   }
 
   private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -602,15 +613,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val resultTyp = WasmRefType(typeName)
 
-    implicit val fctx = WasmFunctionContext(
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.loadModule(clazz.className),
-      Nil,
-      List(resultTyp)
+      pos
     )
+    fb.setResultType(resultTyp)
 
-    val instanceLocal = fctx.addLocal("instance", resultTyp)
+    val instanceLocal = fb.addLocal("instance", resultTyp)
 
-    import fctx.instrs
+    val instrs = fb
 
     instrs.block(resultTyp) { nonNullLabel =>
       // load global, return if not null
@@ -630,7 +642,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += LOCAL_GET(instanceLocal)
     }
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
   }
 
   /** Generate global instance of the class itable. Their init value will be an array of null refs
@@ -1067,15 +1079,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
     ctx.addGlobal(cachedJSClassGlobal)
 
-    val fctx = WasmFunctionContext(
-      Some(clazz.className),
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.loadJSClass(clazz.className),
-      None,
-      Nil,
-      List(WasmRefType.any)
+      pos
     )
+    fb.setResultType(WasmRefType.any)
 
-    import fctx.instrs
+    val instrs = fb
 
     instrs.block(WasmRefType.any) { doneLabel =>
       // Load cached JS class, return if non-null
@@ -1085,7 +1096,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += CALL(genFunctionName.createJSClassOf(clazz.className))
     }
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
   }
 
   private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -1103,13 +1114,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
       )
     )
 
-    val fctx = WasmFunctionContext(
+    val fb = new FunctionBuilder(
+      ctx.moduleBuilder,
       genFunctionName.loadModule(className),
-      Nil,
-      List(WasmRefType.anyref)
+      pos
     )
+    fb.setResultType(WasmRefType.anyref)
 
-    import fctx.instrs
+    val instrs = fb
 
     instrs.block(WasmRefType.anyref) { doneLabel =>
       // Load cached instance; return if non-null
@@ -1126,7 +1138,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += GLOBAL_GET(cacheGlobalName)
     }
 
-    fctx.buildAndAddToContext()
+    fb.buildAndAddToModule()
   }
 
   private def transformTopLevelMethodExportDef(
@@ -1240,20 +1252,22 @@ class ClassEmitter(coreSpec: CoreSpec) {
        * at least one table.
        */
 
-      implicit val fctx = WasmFunctionContext(
-        Some(className),
+      val fb = new FunctionBuilder(
+        ctx.moduleBuilder,
         genFunctionName.forTableEntry(className, methodName),
-        Some(WasmRefType.any),
-        method.args,
-        method.resultType
+        pos
       )
+      val receiverParam = fb.addParam("<this>", WasmRefType.any)
+      val argParams = method.args.map { arg =>
+        fb.addParam(arg.name.name.nameString, TypeTransformer.transformType(arg.ptpe))
+      }
+      fb.setResultTypes(TypeTransformer.transformResultType(method.resultType))
+      fb.setFunctionType(ctx.tableFunctionType(methodName))
 
-      import fctx.instrs
-
-      val receiverLocal :: paramLocals = fctx.paramIndices: @unchecked
+      val instrs = fb
 
       // Load and cast down the receiver
-      instrs += LOCAL_GET(receiverLocal)
+      instrs += LOCAL_GET(receiverParam)
       receiverTyp match {
         case Some(Types.WasmRefType(_, WasmHeapType.Any)) =>
           () // no cast necessary
@@ -1264,13 +1278,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
 
       // Load the other parameters
-      for (paramLocal <- paramLocals)
-        instrs += LOCAL_GET(paramLocal)
+      for (argParam <- argParams)
+        instrs += LOCAL_GET(argParam)
 
       // Call the statically resolved method
       instrs += RETURN_CALL(functionName)
 
-      fctx.buildAndAddToContext(useFunctionTypeInMainRecType = true)
+      fb.buildAndAddToModule()
     }
   }
 

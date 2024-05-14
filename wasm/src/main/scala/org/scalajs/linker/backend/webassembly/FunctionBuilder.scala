@@ -16,7 +16,6 @@ final class FunctionBuilder(
 ) {
   import FunctionBuilder._
 
-  private var cnt = 0
   private var labelIdx = 0
 
   private val params = mutable.ListBuffer.empty[WasmLocal]
@@ -34,8 +33,16 @@ final class FunctionBuilder(
   def setResultTypes(typs: List[WasmType]): Unit =
     resultTypes = typs
 
-  def addParam(name: WasmLocalName, typ: WasmType): Unit =
+  def setResultType(typ: WasmType): Unit =
+    setResultTypes(typ :: Nil)
+
+  def addParam(name: WasmLocalName, typ: WasmType): WasmLocalName = {
     params += WasmLocal(name, typ, isParameter = true)
+    name
+  }
+
+  def addParam(name: String, typ: WasmType): WasmLocalName =
+    addParam(WasmLocalName(name), typ)
 
   def genLabel(): WasmLabelName = {
     val label = WasmLabelName(labelIdx.toString())
@@ -50,15 +57,6 @@ final class FunctionBuilder(
 
   def addLocal(name: String, typ: WasmType): WasmLocalName =
     addLocal(WasmLocalName(name), typ)
-
-  private def genSyntheticLocalName(): WasmLocalName = {
-    val name = WasmLocalName(s"local___$cnt")
-    cnt += 1
-    name
-  }
-
-  def addSyntheticLocal(typ: WasmType): WasmLocalName =
-    addLocal(genSyntheticLocalName(), typ)
 
   // Position handling
 
