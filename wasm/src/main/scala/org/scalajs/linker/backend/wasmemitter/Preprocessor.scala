@@ -14,8 +14,10 @@ object Preprocessor {
   def preprocess(classes: List[LinkedClass], tles: List[LinkedTopLevelExport])(implicit
       ctx: WasmContext
   ): Unit = {
+    val staticFieldMirrors = computeStaticFieldMirrors(tles)
+
     for (clazz <- classes)
-      preprocess(clazz)
+      preprocess(clazz, staticFieldMirrors.getOrElse(clazz.className, Map.empty))
 
     val collector = new AbstractMethodCallCollector(ctx)
     for (clazz <- classes)
@@ -29,7 +31,28 @@ object Preprocessor {
     ctx.assignBuckets(classes)
   }
 
-  private def preprocess(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def computeStaticFieldMirrors(
+      tles: List[LinkedTopLevelExport]
+  ): Map[ClassName, Map[FieldName, List[String]]] = {
+    var result = Map.empty[ClassName, Map[FieldName, List[String]]]
+    for (tle <- tles) {
+      tle.tree match {
+        case TopLevelFieldExportDef(_, exportName, FieldIdent(fieldName)) =>
+          val className = tle.owningClass
+          val mirrors = result.getOrElse(className, Map.empty)
+          val newExportNames = exportName :: mirrors.getOrElse(fieldName, Nil)
+          val newMirrors = mirrors.updated(fieldName, newExportNames)
+          result = result.updated(className, newMirrors)
+
+        case _ =>
+      }
+    }
+    result
+  }
+
+  private def preprocess(clazz: LinkedClass, staticFieldMirrors: Map[FieldName, List[String]])(
+      implicit ctx: WasmContext
+  ): Unit = {
     val kind = clazz.kind
 
     val allFieldDefs: List[FieldDef] =
@@ -96,6 +119,7 @@ object Preprocessor {
         hasRuntimeTypeInfo,
         clazz.jsNativeLoadSpec,
         clazz.jsNativeMembers.map(m => m.name.name -> m.jsNativeLoadSpec).toMap,
+        staticFieldMirrors,
         _itableIdx = -1
       )
     )

@@ -119,7 +119,10 @@ const scalaJSHelpers = {
   closureThis: (f, data) => function(...args) { return f(data, this, ...args); },
   closureRest: (f, data, n) => ((...args) => f(data, ...args.slice(0, n), args.slice(n))),
   closureThisRest: (f, data, n) => function(...args) { return f(data, this, ...args.slice(0, n), args.slice(n)); },
-  closureRestNoData: (f, n) => ((...args) => f(...args.slice(0, n), args.slice(n))),
+
+  // Top-level exported defs -- they must be `function`s but have no actual `this` nor `data`
+  makeExportedDef: (f) => function(...args) { return f(...args); },
+  makeExportedDefRest: (f, n) => function(...args) { return f(...args.slice(0, n), args.slice(n)); },
 
   // Strings
   emptyString: "",
@@ -305,11 +308,12 @@ const scalaJSHelpers = {
   },
 }
 
-export async function load(wasmFileURL, importedModules) {
+export async function load(wasmFileURL, importedModules, exportSetters) {
   const myScalaJSHelpers = { ...scalaJSHelpers, idHashCodeMap: new WeakMap() };
   const importsObj = {
     "__scalaJSHelpers": myScalaJSHelpers,
     "__scalaJSImports": importedModules,
+    "__scalaJSExportSetters": exportSetters,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;
@@ -323,24 +327,7 @@ export async function load(wasmFileURL, importedModules) {
   } else {
     wasmModulePromise = WebAssembly.instantiateStreaming(fetch(resolvedURL), importsObj);
   }
-  const wasmModule = await wasmModulePromise;
-  const exports = wasmModule.instance.exports;
-
-  const userExports = Object.create(null);
-  for (const exportName of Object.getOwnPropertyNames(exports)) {
-    const exportValue = exports[exportName];
-    if (exportValue instanceof WebAssembly.Global) {
-      Object.defineProperty(userExports, exportName, {
-        configurable: true,
-        enumerable: true,
-        get: () => exportValue.value,
-      });
-    } else {
-      userExports[exportName] = exportValue;
-    }
-  }
-  Object.freeze(userExports);
-  return userExports;
+  await wasmModulePromise;
 }
     """
   }

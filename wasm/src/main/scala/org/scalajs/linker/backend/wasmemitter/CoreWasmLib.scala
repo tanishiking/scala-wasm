@@ -377,8 +377,10 @@ object CoreWasmLib {
       List(RefType.func, anyref, Int32),
       List(RefType.any)
     )
+
+    addHelperImport(genFunctionName.makeExportedDef, List(RefType.func), List(RefType.any))
     addHelperImport(
-      genFunctionName.closureRestNoData,
+      genFunctionName.makeExportedDefRest,
       List(RefType.func, Int32),
       List(RefType.any)
     )
