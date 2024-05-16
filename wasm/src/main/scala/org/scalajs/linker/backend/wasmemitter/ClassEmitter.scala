@@ -100,49 +100,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
   }
 
-  private def genTypeDataFieldValues(
-      clazz: LinkedClass,
-      reflectiveProxies: List[ConcreteMethodInfo]
-  )(implicit
-      ctx: WasmContext
-  ): List[wa.Instr] = {
-    import genFieldName.typeData.{reflectiveProxies => _, _}
-
-    val className = clazz.className
-    val classInfo = ctx.getClassInfo(className)
-
-    val kind = className match {
-      case ObjectClass         => KindObject
-      case BoxedUnitClass      => KindBoxedUnit
-      case BoxedBooleanClass   => KindBoxedBoolean
-      case BoxedCharacterClass => KindBoxedCharacter
-      case BoxedByteClass      => KindBoxedByte
-      case BoxedShortClass     => KindBoxedShort
-      case BoxedIntegerClass   => KindBoxedInteger
-      case BoxedLongClass      => KindBoxedLong
-      case BoxedFloatClass     => KindBoxedFloat
-      case BoxedDoubleClass    => KindBoxedDouble
-      case BoxedStringClass    => KindBoxedString
-
-      case _ =>
-        clazz.kind match {
-          case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
-          case ClassKind.Interface                                               => KindInterface
-          case _                                                                 => KindJSType
-        }
-    }
-
-    val isJSClassInstanceFuncOpt = genIsJSClassInstanceFunction(clazz)
-
-    genTypeDataFieldValues(
-      kind,
-      classInfo.specialInstanceTypes,
-      ClassRef(clazz.className),
-      isJSClassInstanceFuncOpt,
-      reflectiveProxies
-    )
-  }
-
   private def genIsJSClassInstanceFunction(clazz: LinkedClass)(implicit
       ctx: WasmContext
   ): Option[wanme.FunctionName] = {
@@ -188,65 +145,70 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genTypeDataFieldValues(
-      kind: Int,
-      specialInstanceTypes: Int,
-      typeRef: NonArrayTypeRef,
-      isJSClassInstanceFuncOpt: Option[wanme.FunctionName],
+      clazz: LinkedClass,
       reflectiveProxies: List[ConcreteMethodInfo]
   )(implicit
       ctx: WasmContext
   ): List[wa.Instr] = {
-    val nameStr = typeRef match {
-      case typeRef: PrimRef =>
-        typeRef.displayName
-      case ClassRef(className) =>
-        RuntimeClassNameMapperImpl.map(
-          coreSpec.semantics.runtimeClassNameMapper,
-          className.nameString
-        )
-    }
+    val className = clazz.className
+    val classInfo = ctx.getClassInfo(className)
 
+    val nameStr = RuntimeClassNameMapperImpl.map(
+      coreSpec.semantics.runtimeClassNameMapper,
+      className.nameString
+    )
     val nameDataValue: List[wa.Instr] = ctx.getConstantStringDataInstr(nameStr)
 
+    val kind = className match {
+      case ObjectClass         => KindObject
+      case BoxedUnitClass      => KindBoxedUnit
+      case BoxedBooleanClass   => KindBoxedBoolean
+      case BoxedCharacterClass => KindBoxedCharacter
+      case BoxedByteClass      => KindBoxedByte
+      case BoxedShortClass     => KindBoxedShort
+      case BoxedIntegerClass   => KindBoxedInteger
+      case BoxedLongClass      => KindBoxedLong
+      case BoxedFloatClass     => KindBoxedFloat
+      case BoxedDoubleClass    => KindBoxedDouble
+      case BoxedStringClass    => KindBoxedString
+
+      case _ =>
+        clazz.kind match {
+          case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
+          case ClassKind.Interface                                               => KindInterface
+          case _                                                                 => KindJSType
+        }
+    }
+
     val strictAncestorsValue: List[wa.Instr] = {
-      typeRef match {
-        case ClassRef(className) =>
-          val ancestors = ctx.getClassInfo(className).ancestors
+      val ancestors = ctx.getClassInfo(className).ancestors
 
-          // By spec, the first element of `ancestors` is always the class itself
-          assert(
-            ancestors.headOption.contains(className),
-            s"The ancestors of ${className.nameString} do not start with itself: $ancestors"
-          )
-          val strictAncestors = ancestors.tail
+      // By spec, the first element of `ancestors` is always the class itself
+      assert(
+        ancestors.headOption.contains(className),
+        s"The ancestors of ${className.nameString} do not start with itself: $ancestors"
+      )
+      val strictAncestors = ancestors.tail
 
-          val elems = for {
-            ancestor <- strictAncestors
-            if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
-          } yield {
-            wa.GlobalGet(genGlobalName.forVTable(ancestor))
-          }
-          elems :+ wa.ArrayNewFixed(genTypeName.typeDataArray, elems.size)
-        case _ =>
-          wa.RefNull(watpe.HeapType.None) :: Nil
+      val elems = for {
+        ancestor <- strictAncestors
+        if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
+      } yield {
+        wa.GlobalGet(genGlobalName.forVTable(ancestor))
       }
+      elems :+ wa.ArrayNewFixed(genTypeName.typeDataArray, elems.size)
     }
 
     val cloneFunction = {
-      val nullref = wa.RefNull(watpe.HeapType.NoFunc)
-      typeRef match {
-        case ClassRef(className) =>
-          val classInfo = ctx.getClassInfo(className)
-          // If the class is concrete and implements the `java.lang.Cloneable`,
-          // `genCloneFunction` should've generated the clone function
-          if (!classInfo.isAbstract && classInfo.ancestors.contains(CloneableClass))
-            wa.RefFunc(genFunctionName.clone(className))
-          else nullref
-        case _ => nullref
-      }
+      // If the class is concrete and implements the `java.lang.Cloneable`,
+      // `genCloneFunction` should've generated the clone function
+      if (!classInfo.isAbstract && classInfo.ancestors.contains(CloneableClass))
+        wa.RefFunc(genFunctionName.clone(className))
+      else
+        wa.RefNull(watpe.HeapType.NoFunc)
     }
 
-    val isJSClassInstance = isJSClassInstanceFuncOpt match {
+    val isJSClassInstance = genIsJSClassInstanceFunction(clazz) match {
       case None           => wa.RefNull(watpe.HeapType.NoFunc)
       case Some(funcName) => wa.RefFunc(funcName)
     }
@@ -267,7 +229,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         // kind
         wa.I32Const(kind),
         // specialInstanceTypes
-        wa.I32Const(specialInstanceTypes)
+        wa.I32Const(classInfo.specialInstanceTypes)
       ) ::: (
         // strictAncestors
         strictAncestorsValue
