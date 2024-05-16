@@ -598,33 +598,23 @@ class ClassEmitter(coreSpec: CoreSpec) {
   /** Generate global instance of the class itable. Their init value will be an array of null refs
     * of size = number of interfaces. They will be initialized in start function
     */
-  private def genGlobalClassItable(
-      clazz: LinkedClass
-  )(implicit ctx: WasmContext): Unit = {
+  private def genGlobalClassItable(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val info = ctx.getClassInfo(clazz.className)
     val implementsAnyInterface = info.ancestors.exists(a => ctx.getClassInfo(a).isInterface)
     if (implementsAnyInterface) {
       val globalName = genGlobalName.forITable(clazz.className)
-      ctx.addGlobalITable(clazz.className, genITableGlobal(globalName))
+      val itablesInit = List(
+        wa.I32Const(ctx.itablesLength),
+        wa.ArrayNewDefault(genTypeName.itables)
+      )
+      val global = wamod.Global(
+        globalName,
+        watpe.RefType(genTypeName.itables),
+        wamod.Expr(itablesInit),
+        isMutable = false
+      )
+      ctx.addGlobalITable(clazz.className, global)
     }
-  }
-
-  private def genArrayClassItable()(implicit ctx: WasmContext): Unit =
-    ctx.addGlobal(genITableGlobal(genGlobalName.arrayClassITable))
-
-  private def genITableGlobal(
-      name: wanme.GlobalName
-  )(implicit ctx: WasmContext): wamod.Global = {
-    val itablesInit = List(
-      wa.I32Const(ctx.itablesLength),
-      wa.ArrayNewDefault(genTypeName.itables)
-    )
-    wamod.Global(
-      name,
-      watpe.RefType(genTypeName.itables),
-      wamod.Expr(itablesInit),
-      isMutable = false
-    )
   }
 
   private def genInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
