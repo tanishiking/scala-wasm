@@ -98,22 +98,10 @@ object Modules {
 
   sealed abstract class CompositeType
 
-  final case class FunctionSignature(
-      params: List[Type],
-      results: List[Type]
-  )
-  object FunctionSignature {
-    val NilToNil: FunctionSignature = FunctionSignature(Nil, Nil)
-  }
+  final case class FunctionType(params: List[Type], results: List[Type]) extends CompositeType
 
-  final case class FunctionType(
-      params: List[Type],
-      results: List[Type]
-  ) extends CompositeType
   object FunctionType {
-    def apply(sig: FunctionSignature): FunctionType = {
-      FunctionType(sig.params, sig.results)
-    }
+    val NilToNil: FunctionType = FunctionType(Nil, Nil)
   }
 
   final case class StructType(fields: List[StructField]) extends CompositeType

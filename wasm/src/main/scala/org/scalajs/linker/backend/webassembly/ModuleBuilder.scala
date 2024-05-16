@@ -5,7 +5,7 @@ import scala.collection.mutable
 import Names._
 import Modules._
 
-final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionSignatureProvider) {
+final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeProvider) {
   import ModuleBuilder._
 
   /** Items are `RecType | RecTypeBuilder`. */
@@ -20,8 +20,8 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionSigna
   private val elems: mutable.ListBuffer[Element] = new mutable.ListBuffer()
   private val datas: mutable.ListBuffer[Data] = new mutable.ListBuffer()
 
-  def signatureToTypeName(sig: FunctionSignature): TypeName =
-    functionSignatureProvider.signatureToTypeName(sig)
+  def functionTypeToTypeName(sig: FunctionType): TypeName =
+    functionSignatureProvider.functionTypeToTypeName(sig)
 
   def addRecType(typ: RecType): Unit = types += typ
   def addRecType(typ: SubType): Unit = addRecType(RecType(typ))
@@ -64,8 +64,8 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionSigna
 }
 
 object ModuleBuilder {
-  trait FunctionSignatureProvider {
-    def signatureToTypeName(sig: FunctionSignature): TypeName
+  trait FunctionTypeProvider {
+    def functionTypeToTypeName(sig: FunctionType): TypeName
   }
 
   final class RecTypeBuilder {

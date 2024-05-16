@@ -194,8 +194,8 @@ object CoreWasmLib {
   }
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
-    val exceptionSig = FunctionSignature(List(RefType.externref), Nil)
-    val typeName = ctx.moduleBuilder.signatureToTypeName(exceptionSig)
+    val exceptionSig = FunctionType(List(RefType.externref), Nil)
+    val typeName = ctx.moduleBuilder.functionTypeToTypeName(exceptionSig)
     ctx.moduleBuilder.addImport(
       Import(
         "__scalaJSHelpers",
@@ -332,8 +332,8 @@ object CoreWasmLib {
         params: List[Type],
         results: List[Type]
     ): Unit = {
-      val sig = FunctionSignature(params, results)
-      val typeName = ctx.moduleBuilder.signatureToTypeName(sig)
+      val sig = FunctionType(params, results)
+      val typeName = ctx.moduleBuilder.functionTypeToTypeName(sig)
       ctx.moduleBuilder.addImport(
         Import("__scalaJSHelpers", name.name, ImportDesc.Func(name, typeName))
       )
@@ -1046,7 +1046,7 @@ object CoreWasmLib {
       // if dims == 0 then
       //   return typeData.arrayOf (which is on the stack)
       instrs += I32Eqz
-      instrs.ifThen(FunctionSignature(List(objectVTableType), List(objectVTableType))) {
+      instrs.ifThen(FunctionType(List(objectVTableType), List(objectVTableType))) {
         instrs += Return
       }
 
@@ -1785,7 +1785,7 @@ object CoreWasmLib {
 
     // componentTypeData := ref_as_non_null(arrayTypeData.componentType)
     // switch (componentTypeData.kind)
-    val switchClauseSig = FunctionSignature(
+    val switchClauseSig = FunctionType(
       List(arrayTypeDataType, itablesType, Int32),
       List(nonNullObjectType)
     )
