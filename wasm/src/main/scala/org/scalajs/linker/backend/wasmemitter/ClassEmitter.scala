@@ -56,10 +56,10 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     clazz.kind match {
-      case ClassKind.ModuleClass => genModuleClass(clazz)
-      case ClassKind.Class       => genClass(clazz)
-      case ClassKind.Interface   => genInterface(clazz)
-
+      case ClassKind.Class | ClassKind.ModuleClass =>
+        genScalaClass(clazz)
+      case ClassKind.Interface =>
+        genInterface(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass =>
         genJSClass(clazz)
       case ClassKind.HijackedClass | ClassKind.AbstractJSType | ClassKind.NativeJSClass |
@@ -308,13 +308,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
   }
 
-  /** @return
-    *   Optionally returns the generated struct type for this class. If the given LinkedClass is an
-    *   abstract class, returns None
-    */
-  private def genClassCommon(
-      clazz: LinkedClass
-  )(implicit ctx: WasmContext): wamod.StructType = {
+  /** Generates a Scala class or module class. */
+  private def genScalaClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val className = clazz.name.name
     val typeRef = ClassRef(className)
     val classInfo = ctx.getClassInfo(className)
@@ -377,7 +372,22 @@ class ClassEmitter(coreSpec: CoreSpec) {
         genCloneFunction(clazz)
     }
 
-    structType
+    // Generate the module accessor
+    if (clazz.kind == ClassKind.ModuleClass && clazz.hasInstances) {
+      val heapType = watpe.HeapType(genTypeName.forClass(clazz.className))
+
+      // global instance
+      // (global name (ref null type))
+      val global = wamod.Global(
+        genGlobalName.forModuleInstance(clazz.name.name),
+        watpe.RefType.nullable(heapType),
+        wamod.Expr(List(wa.RefNull(heapType))),
+        isMutable = true
+      )
+      ctx.addGlobal(global)
+
+      genLoadModuleFunc(clazz)
+    }
   }
 
   private def genVTableType(
@@ -665,11 +675,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
   }
 
-  private def genClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    assert(clazz.kind == ClassKind.Class)
-    genClassCommon(clazz)
-  }
-
   private def genInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
     // gen itable type
@@ -689,28 +694,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     if (clazz.hasInstanceTests)
       genInterfaceInstanceTest(clazz)
-  }
-
-  private def genModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
-    assert(clazz.kind == ClassKind.ModuleClass)
-
-    genClassCommon(clazz)
-
-    if (clazz.hasInstances) {
-      val heapType = watpe.HeapType(genTypeName.forClass(clazz.className))
-
-      // global instance
-      // (global name (ref null type))
-      val global = wamod.Global(
-        genGlobalName.forModuleInstance(clazz.name.name),
-        watpe.RefType.nullable(heapType),
-        wamod.Expr(List(wa.RefNull(heapType))),
-        isMutable = true
-      )
-      ctx.addGlobal(global)
-
-      genLoadModuleFunc(clazz)
-    }
   }
 
   private def genJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
