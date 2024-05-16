@@ -383,8 +383,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
     * See https://github.com/tanishiking/scala-wasm/issues/27#issuecomment-2008252049
     */
   private def genInterfaceInstanceTest(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     assert(clazz.kind == ClassKind.Interface)
 
     val classInfo = ctx.getClassInfo(clazz.className)
@@ -392,7 +390,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.instanceTest(clazz.name.name),
-      pos
+      clazz.pos
     )
     val exprParam = fb.addParam("expr", watpe.RefType.anyref)
     fb.setResultType(watpe.Int32)
@@ -474,8 +472,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genNewDefaultFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(className)
     assert(clazz.hasDirectInstances)
@@ -484,7 +480,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.newDefault(className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType(structName))
 
@@ -512,15 +508,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
     * called on the class instance.
     */
   private def genCloneFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.className
     val info = ctx.getClassInfo(className)
 
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.clone(className),
-      pos
+      clazz.pos
     )
     val fromParam = fb.addParam("from", watpe.RefType(genTypeName.ObjectStruct))
     fb.setResultType(watpe.RefType(genTypeName.ObjectStruct))
@@ -553,8 +547,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genModuleAccessor(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     assert(clazz.kind == ClassKind.ModuleClass)
 
     val className = clazz.className
@@ -566,7 +558,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadModule(clazz.className),
-      pos
+      clazz.pos
     )
     fb.setResultType(resultTyp)
 
@@ -957,8 +949,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val cachedJSClassGlobal = wamod.Global(
       genGlobalName.forJSClassValue(clazz.className),
       watpe.RefType.anyref,
@@ -970,7 +960,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadJSClass(clazz.className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType.any)
 
@@ -988,8 +978,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.className
     val cacheGlobalName = genGlobalName.forModuleInstance(className)
 
@@ -1005,7 +993,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadModule(className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType.anyref)
 
