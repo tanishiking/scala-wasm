@@ -1065,7 +1065,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val functionName = genFunctionName.forMethod(namespace, className, methodName)
 
-    val isHijackedClass = ctx.getClassInfo(className).kind == ClassKind.HijackedClass
+    val isHijackedClass = clazz.kind == ClassKind.HijackedClass
 
     val receiverTyp =
       if (namespace.isStatic)
