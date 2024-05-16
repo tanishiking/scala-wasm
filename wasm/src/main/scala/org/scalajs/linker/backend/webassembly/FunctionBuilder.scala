@@ -84,11 +84,11 @@ final class FunctionBuilder(
   }
 
   def ifThenElse(blockType: BlockType)(thenp: => Unit)(elsep: => Unit): Unit = {
-    instrs += IF(blockType)
+    instrs += If(blockType)
     thenp
-    instrs += ELSE
+    instrs += Else
     elsep
-    instrs += END
+    instrs += End
   }
 
   def ifThenElse(resultType: Type)(thenp: => Unit)(elsep: => Unit): Unit =
@@ -104,9 +104,9 @@ final class FunctionBuilder(
     ifThenElse(BlockType.ValueType())(thenp)(elsep)
 
   def ifThen(blockType: BlockType)(thenp: => Unit): Unit = {
-    instrs += IF(blockType)
+    instrs += If(blockType)
     thenp
-    instrs += END
+    instrs += End
   }
 
   def ifThen(sig: FunctionSignature)(thenp: => Unit): Unit =
@@ -120,9 +120,9 @@ final class FunctionBuilder(
 
   def block[A](blockType: BlockType)(body: LabelName => A): A = {
     val label = genLabel()
-    instrs += BLOCK(blockType, Some(label))
+    instrs += Block(blockType, Some(label))
     val result = body(label)
-    instrs += END
+    instrs += End
     result
   }
 
@@ -140,9 +140,9 @@ final class FunctionBuilder(
 
   def loop[A](blockType: BlockType)(body: LabelName => A): A = {
     val label = genLabel()
-    instrs += LOOP(blockType, Some(label))
+    instrs += Loop(blockType, Some(label))
     val result = body(label)
-    instrs += END
+    instrs += End
     result
   }
 
@@ -163,15 +163,15 @@ final class FunctionBuilder(
       cond
       ifThen() {
         body
-        instrs += BR(loopLabel)
+        instrs += Br(loopLabel)
       }
     }
   }
 
   def tryTable[A](blockType: BlockType)(clauses: List[CatchClause])(body: => A): A = {
-    instrs += TRY_TABLE(blockType, clauses)
+    instrs += TryTable(blockType, clauses)
     val result = body
-    instrs += END
+    instrs += End
     result
   }
 
@@ -258,17 +258,17 @@ final class FunctionBuilder(
 
         // Enter all the case labels
         for (clauseLabel <- clauseLabels.reverse)
-          instrs += BLOCK(clauseBlockType, Some(clauseLabel))
+          instrs += Block(clauseBlockType, Some(clauseLabel))
 
         // Load the scrutinee and dispatch
         scrutinee()
-        instrs += BR_TABLE(dispatchVector.toList, defaultLabel)
+        instrs += BrTable(dispatchVector.toList, defaultLabel)
 
         // Close all the case labels and emit their respective bodies
         for (clause <- clauses) {
-          instrs += END // close the block whose label is the corresponding label for this clause
+          instrs += End // close the block whose label is the corresponding label for this clause
           clause._2() // emit the body of that clause
-          instrs += BR(doneLabel) // jump to done
+          instrs += Br(doneLabel) // jump to done
         }
       }
 
@@ -344,7 +344,7 @@ final class FunctionBuilder(
         while (nestingLevel >= 0 && iter.hasNext) {
           val deadCodeInstr = iter.next()
           deadCodeInstr match {
-            case END | ELSE | _: CATCH | CATCH_ALL if nestingLevel == 0 =>
+            case End | Else | _: Catch | CatchAll if nestingLevel == 0 =>
               /* We have reached the end of the original block of dead code.
                * Actually emit this END or ELSE and then drop `nestingLevel`
                * below 0 to end the dead code processing loop.
@@ -352,7 +352,7 @@ final class FunctionBuilder(
               resultBuilder += deadCodeInstr
               nestingLevel = -1 // acts as a `break` instruction
 
-            case END =>
+            case End =>
               nestingLevel -= 1
 
             case _: StructuredLabeledInstr =>

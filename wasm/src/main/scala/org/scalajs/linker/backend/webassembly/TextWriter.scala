@@ -332,8 +332,8 @@ class TextWriter {
 
       case _ =>
         instr match {
-          case END | ELSE | _: CATCH | CATCH_ALL => b.deindent()
-          case _                                 => ()
+          case End | Else | _: Catch | CatchAll => b.deindent()
+          case _                                => ()
         }
         b.newLine()
         b.appendElement(instr.mnemonic)
@@ -347,8 +347,8 @@ class TextWriter {
         writeInstrImmediates(instr)
 
         instr match {
-          case _: StructuredLabeledInstr | ELSE | _: CATCH | CATCH_ALL => b.indent()
-          case _                                                       => ()
+          case _: StructuredLabeledInstr | Else | _: Catch | CatchAll => b.indent()
+          case _                                                      => ()
         }
     }
   }
@@ -383,16 +383,16 @@ class TextWriter {
 
       // Specific instructions with unique-ish shapes
 
-      case I32_CONST(v) => b.appendElement(v.toString())
-      case I64_CONST(v) => b.appendElement(v.toString())
-      case F32_CONST(v) => b.appendElement(floatString(v.toDouble))
-      case F64_CONST(v) => b.appendElement(floatString(v))
+      case I32Const(v) => b.appendElement(v.toString())
+      case I64Const(v) => b.appendElement(v.toString())
+      case F32Const(v) => b.appendElement(floatString(v.toDouble))
+      case F64Const(v) => b.appendElement(floatString(v))
 
-      case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
+      case BrTable(labelIdxVector, defaultLabelIdx) =>
         labelIdxVector.foreach(writeLabelIdx(_))
         writeLabelIdx(defaultLabelIdx)
 
-      case TRY_TABLE(blockType, clauses, _) =>
+      case TryTable(blockType, clauses, _) =>
         writeBlockType(blockType)
         for (clause <- clauses) {
           b.sameLineList(
@@ -403,23 +403,23 @@ class TextWriter {
           )
         }
 
-      case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
+      case ArrayNewData(typeIdx, dataIdx) =>
         b.appendName(typeIdx)
         b.appendName(dataIdx)
 
-      case ARRAY_NEW_FIXED(typeIdx, length) =>
+      case ArrayNewFixed(typeIdx, length) =>
         b.appendName(typeIdx)
         b.appendElement(Integer.toUnsignedString(length))
 
-      case ARRAY_COPY(destType, srcType) =>
+      case ArrayCopy(destType, srcType) =>
         b.appendName(destType)
         b.appendName(srcType)
 
-      case BR_ON_CAST(labelIdx, from, to) =>
+      case BrOnCast(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)
         writeType(from)
         writeType(to)
-      case BR_ON_CAST_FAIL(labelIdx, from, to) =>
+      case BrOnCastFail(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)
         writeType(from)
         writeType(to)
