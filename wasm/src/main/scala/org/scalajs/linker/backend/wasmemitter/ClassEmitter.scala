@@ -345,7 +345,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       )
       ctx.addGlobal(global)
 
-      genLoadModuleFunc(clazz)
+      genModuleAccessor(clazz)
     }
   }
 
@@ -552,7 +552,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     fb.buildAndAddToModule()
   }
 
-  private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genModuleAccessor(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     implicit val pos = clazz.pos
 
     assert(clazz.kind == ClassKind.ModuleClass)
