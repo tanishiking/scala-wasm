@@ -938,7 +938,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
 
       // Class initializer
-      for (classInit <- clazz.methods.find(_.methodName.isClassInitializer)) {
+      if (clazz.methods.exists(_.methodName.isClassInitializer)) {
         assert(
           clazz.jsClassCaptures.isEmpty,
           s"Illegal class initializer in non-static class ${clazz.className.nameString}"
