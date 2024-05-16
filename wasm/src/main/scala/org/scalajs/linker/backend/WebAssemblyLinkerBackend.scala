@@ -12,6 +12,7 @@ import org.scalajs.linker.interface._
 import org.scalajs.linker.interface.unstable._
 import org.scalajs.linker.standard._
 
+import org.scalajs.linker.backend.javascript.{ByteArrayWriter, SourceMapWriter}
 import org.scalajs.linker.backend.webassembly._
 
 import org.scalajs.linker.backend.wasmemitter.Emitter
@@ -88,13 +89,13 @@ final class WebAssemblyLinkerBackend(
       val emitDebugInfo = !linkerConfig.minify
 
       if (linkerConfig.sourceMap) {
-        val sourceMapWriter = new SourceMapWriterAccess.ByteArrayWriterBox()
+        val sourceMapWriter = new ByteArrayWriter
 
         val wasmFileURI = s"./$wasmFileName"
         val sourceMapURI = s"./$sourceMapFileName"
 
         val smWriter =
-          sourceMapWriter.createSourceMapWriter(wasmFileURI, linkerConfig.relativizeSourceMapBase)
+          new SourceMapWriter(sourceMapWriter, wasmFileURI, linkerConfig.relativizeSourceMapBase)
         val binaryOutput = new BinaryWriter.WithSourceMap(
           wasmModule,
           emitDebugInfo,
