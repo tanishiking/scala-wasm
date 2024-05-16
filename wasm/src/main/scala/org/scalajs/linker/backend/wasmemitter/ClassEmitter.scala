@@ -26,8 +26,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
   def genClassDef(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
-    if (!clazz.kind.isClass && classInfo.hasRuntimeTypeInfo) {
-      // Gen typeData -- for classes, we do it as part of the vtable generation
+    if (classInfo.hasRuntimeTypeInfo && !(clazz.kind.isClass && clazz.hasDirectInstances)) {
+      // Gen typeData -- for concrete Scala classes, we do it as part of the vtable generation instead
       val typeRef = ClassRef(clazz.className)
       val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
       val typeDataGlobal =
@@ -326,7 +326,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     // When we don't generate a vtable, we still generate the typeData
 
     if (!isAbstractClass) {
-      // Generate an actual vtable
+      // Generate an actual vtable, which we integrate into the typeData
       val reflectiveProxies =
         classInfo.resolvedMethodInfos.valuesIterator.filter(_.methodName.isReflectiveProxy).toList
       val typeDataFieldValues = genTypeDataFieldValues(clazz, reflectiveProxies)
@@ -336,13 +336,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val globalVTable =
         genTypeDataGlobal(typeRef, vtableTypeName, typeDataFieldValues, vtableElems)
       ctx.addGlobal(globalVTable)
+
+      // Generate the itable
       genGlobalClassItable(clazz)
-    } else if (classInfo.hasRuntimeTypeInfo) {
-      // Only generate typeData
-      val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
-      val globalTypeData =
-        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(globalTypeData)
     }
 
     // Declare the struct type for the class
