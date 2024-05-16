@@ -56,14 +56,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     clazz.kind match {
-      case ClassKind.ModuleClass   => genModuleClass(clazz)
-      case ClassKind.Class         => genClass(clazz)
-      case ClassKind.HijackedClass => genHijackedClass(clazz)
-      case ClassKind.Interface     => genInterface(clazz)
+      case ClassKind.ModuleClass => genModuleClass(clazz)
+      case ClassKind.Class       => genClass(clazz)
+      case ClassKind.Interface   => genInterface(clazz)
 
       case ClassKind.JSClass | ClassKind.JSModuleClass =>
         genJSClass(clazz)
-      case ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.NativeJSModuleClass =>
+      case ClassKind.HijackedClass | ClassKind.AbstractJSType | ClassKind.NativeJSClass |
+          ClassKind.NativeJSModuleClass =>
         () // nothing to do
     }
   }
@@ -668,11 +668,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   private def genClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Class)
     genClassCommon(clazz)
-  }
-
-  private def genHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    // nothing to do
-    ()
   }
 
   private def genInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
