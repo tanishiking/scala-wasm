@@ -28,11 +28,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     if (classInfo.hasRuntimeTypeInfo && !(clazz.kind.isClass && clazz.hasDirectInstances)) {
       // Gen typeData -- for concrete Scala classes, we do it as part of the vtable generation instead
-      val typeRef = ClassRef(clazz.className)
       val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
-      val typeDataGlobal =
-        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(typeDataGlobal)
+      genTypeDataGlobal(clazz.className, genTypeName.typeData, typeDataFieldValues, Nil)
     }
 
     // Declare static fields
@@ -255,18 +252,20 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genTypeDataGlobal(
-      typeRef: NonArrayTypeRef,
+      className: ClassName,
       typeDataTypeName: wanme.TypeName,
       typeDataFieldValues: List[wa.Instr],
       vtableElems: List[wa.RefFunc]
-  )(implicit ctx: WasmContext): wamod.Global = {
+  )(implicit ctx: WasmContext): Unit = {
     val instrs: List[wa.Instr] =
       typeDataFieldValues ::: vtableElems ::: wa.StructNew(typeDataTypeName) :: Nil
-    wamod.Global(
-      genGlobalName.forVTable(typeRef),
-      watpe.RefType(typeDataTypeName),
-      wamod.Expr(instrs),
-      isMutable = false
+    ctx.addGlobal(
+      wamod.Global(
+        genGlobalName.forVTable(className),
+        watpe.RefType(typeDataTypeName),
+        wamod.Expr(instrs),
+        isMutable = false
+      )
     )
   }
 
@@ -295,9 +294,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val vtableElems = classInfo.tableEntries.map { methodName =>
         wa.RefFunc(classInfo.resolvedMethodInfos(methodName).tableEntryName)
       }
-      val globalVTable =
-        genTypeDataGlobal(typeRef, vtableTypeName, typeDataFieldValues, vtableElems)
-      ctx.addGlobal(globalVTable)
+      genTypeDataGlobal(className, vtableTypeName, typeDataFieldValues, vtableElems)
 
       // Generate the itable
       genGlobalClassItable(clazz)
