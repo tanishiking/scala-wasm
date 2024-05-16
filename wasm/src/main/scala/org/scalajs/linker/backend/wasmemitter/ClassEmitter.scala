@@ -556,19 +556,12 @@ class ClassEmitter(coreSpec: CoreSpec) {
     implicit val pos = clazz.pos
 
     assert(clazz.kind == ClassKind.ModuleClass)
-    val ctor = clazz.methods
-      .find(_.methodName.isConstructor)
-      .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
-    val typeName = genTypeName.forClass(clazz.name.name)
-    val globalInstanceName = genGlobalName.forModuleInstance(clazz.name.name)
 
-    val ctorName = genFunctionName.forMethod(
-      ctor.flags.namespace,
-      clazz.name.name,
-      ctor.name.name
-    )
-
-    val resultTyp = watpe.RefType(typeName)
+    val className = clazz.className
+    val globalInstanceName = genGlobalName.forModuleInstance(className)
+    val ctorName =
+      genFunctionName.forMethod(MemberNamespace.Constructor, className, NoArgConstructorName)
+    val resultTyp = watpe.RefType(genTypeName.forClass(className))
 
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
@@ -587,7 +580,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += wa.BrOnNonNull(nonNullLabel)
 
       // create an instance and call its constructor
-      instrs += wa.Call(genFunctionName.newDefault(clazz.name.name))
+      instrs += wa.Call(genFunctionName.newDefault(className))
       instrs += wa.LocalTee(instanceLocal)
       instrs += wa.Call(ctorName)
 
