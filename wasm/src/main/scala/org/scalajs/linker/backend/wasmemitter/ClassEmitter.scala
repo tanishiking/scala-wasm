@@ -352,12 +352,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
       watpe.RefType.nullable(genTypeName.itables),
       isMutable = false
     )
-    val fields = classInfo.allFieldDefs.map(genField)
+    val fields = classInfo.allFieldDefs.map { field =>
+      wamod.StructField(
+        genFieldName.forClassInstanceField(field.name.name),
+        transformType(field.ftpe),
+        isMutable = true // initialized by the constructors, so always mutable at the Wasm level
+      )
+    }
     val structTypeName = genTypeName.forClass(clazz.name.name)
     val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
-    val structType = wamod.StructType(
-      vtableField +: itablesField +: fields
-    )
+    val structType = wamod.StructType(vtableField :: itablesField :: fields)
     val subType = wamod.SubType(structTypeName, isFinal = false, superType, structType)
     ctx.mainRecType.addSubType(subType)
 
@@ -1197,17 +1201,5 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
       fb.buildAndAddToModule()
     }
-  }
-
-  private def genField(
-      field: FieldDef
-  )(implicit ctx: WasmContext): wamod.StructField = {
-    wamod.StructField(
-      genFieldName.forClassInstanceField(field.name.name),
-      transformType(field.ftpe),
-      // needs to be mutable even if it's flags.isMutable = false
-      // because it's initialized by constructor
-      isMutable = true // field.flags.isMutable
-    )
   }
 }
