@@ -23,7 +23,7 @@ import TypeTransformer._
 import WasmContext._
 
 class ClassEmitter(coreSpec: CoreSpec) {
-  def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
+  def genClassDef(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
     if (!clazz.kind.isClass && classInfo.hasRuntimeTypeInfo) {
@@ -56,13 +56,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     clazz.kind match {
-      case ClassKind.ModuleClass   => transformModuleClass(clazz)
-      case ClassKind.Class         => transformClass(clazz)
-      case ClassKind.HijackedClass => transformHijackedClass(clazz)
-      case ClassKind.Interface     => transformInterface(clazz)
+      case ClassKind.ModuleClass   => genModuleClass(clazz)
+      case ClassKind.Class         => genClass(clazz)
+      case ClassKind.HijackedClass => genHijackedClass(clazz)
+      case ClassKind.Interface     => genInterface(clazz)
 
       case ClassKind.JSClass | ClassKind.JSModuleClass =>
-        transformJSClass(clazz)
+        genJSClass(clazz)
       case ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.NativeJSModuleClass =>
         () // nothing to do
     }
@@ -90,12 +90,12 @@ class ClassEmitter(coreSpec: CoreSpec) {
     * for the static field. This is fine because, by spec of ECMAScript modules, JavaScript code
     * that *uses* the export cannot mutate it; it can only read it.
     */
-  def transformTopLevelExport(
+  def genTopLevelExport(
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {
     genTopLevelExportSetter(topLevelExport.exportName)
     topLevelExport.tree match {
-      case d: TopLevelMethodExportDef => transformTopLevelMethodExportDef(d)
+      case d: TopLevelMethodExportDef => genTopLevelMethodExportDef(d)
       case _                          => ()
     }
   }
@@ -312,7 +312,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     *   Optionally returns the generated struct type for this class. If the given LinkedClass is an
     *   abstract class, returns None
     */
-  private def transformClassCommon(
+  private def genClassCommon(
       clazz: LinkedClass
   )(implicit ctx: WasmContext): wamod.StructType = {
     val className = clazz.name.name
@@ -361,7 +361,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       watpe.RefType.nullable(genTypeName.itables),
       isMutable = false
     )
-    val fields = classInfo.allFieldDefs.map(transformField)
+    val fields = classInfo.allFieldDefs.map(genField)
     val structTypeName = genTypeName.forClass(clazz.name.name)
     val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
     val structType = wamod.StructType(
@@ -665,17 +665,17 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
   }
 
-  private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Class)
-    transformClassCommon(clazz)
+    genClassCommon(clazz)
   }
 
-  private def transformHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     // nothing to do
     ()
   }
 
-  private def transformInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
     // gen itable type
     val className = clazz.name.name
@@ -696,10 +696,10 @@ class ClassEmitter(coreSpec: CoreSpec) {
       genInterfaceInstanceTest(clazz)
   }
 
-  private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
+  private def genModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
     assert(clazz.kind == ClassKind.ModuleClass)
 
-    transformClassCommon(clazz)
+    genClassCommon(clazz)
 
     if (clazz.hasInstances) {
       val heapType = watpe.HeapType(genTypeName.forClass(clazz.className))
@@ -718,7 +718,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
   }
 
-  private def transformJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind.isJSClass)
 
     // Define the globals holding the Symbols of private fields
@@ -1124,7 +1124,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
   }
 
-  private def transformTopLevelMethodExportDef(
+  private def genTopLevelMethodExportDef(
       exportDef: TopLevelMethodExportDef
   )(implicit ctx: WasmContext): Unit = {
     implicit val pos = exportDef.pos
@@ -1225,7 +1225,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
   }
 
-  private def transformField(
+  private def genField(
       field: FieldDef
   )(implicit ctx: WasmContext): wamod.StructField = {
     wamod.StructField(
