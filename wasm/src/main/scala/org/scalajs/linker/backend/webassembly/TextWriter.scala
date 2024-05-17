@@ -178,18 +178,15 @@ class TextWriter {
 
     b.newLineList(
       "func", {
-        val (params, nonParams) = f.locals.partition(_.isParameter)
         b.appendName(f.name)
         writeTypeUse(f.typeName)
 
         b.newLine()
-        params.foreach(writeParam)
+        f.params.foreach(writeParam)
         f.results.foreach(r => { b.sameLineList("result", writeType(r)) })
 
         b.newLine()
-        if (nonParams.nonEmpty) {
-          nonParams.foreach(writeLocal)
-        }
+        f.locals.foreach(writeLocal)
         f.body.instr.foreach(writeInstr)
       }
     )

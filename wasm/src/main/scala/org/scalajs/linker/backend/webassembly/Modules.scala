@@ -36,26 +36,18 @@ object Modules {
     final case class Tag(id: TagName, typeName: TypeName) extends ImportDesc
   }
 
-  /** @see
-    *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
-    */
+  /** A WebAssembly `func`, including names for parameters and locals. */
   final case class Function(
-      val name: FunctionName,
-      val typeName: TypeName,
-      val locals: List[Local],
-      val results: List[Type],
-      val body: Expr,
-      val pos: Position
+      name: FunctionName,
+      typeName: TypeName,
+      params: List[Local],
+      results: List[Type],
+      locals: List[Local],
+      body: Expr,
+      pos: Position
   )
 
-  /** The index space for locals is only accessible inside a function and includes the parameters of
-    * that function, which precede the local variables.
-    */
-  case class Local(
-      val name: LocalName,
-      val typ: Type,
-      val isParameter: Boolean // for text
-  )
+  final case class Local(name: LocalName, typ: Type)
 
   final case class Tag(val name: TagName, val typ: TypeName)
 

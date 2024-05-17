@@ -262,12 +262,12 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   private def writeFunc(buf: Buffer, func: Function): Unit = {
     emitStartFuncPosition(buf, func.pos)
 
-    buf.vec(func.locals.filter(!_.isParameter)) { local =>
+    buf.vec(func.locals) { local =>
       buf.u32(1)
       writeType(buf, local.typ)
     }
 
-    withLocalIdxValues(func.locals.map(_.name).zipWithIndex.toMap) {
+    withLocalIdxValues((func.params ::: func.locals).map(_.name).zipWithIndex.toMap) {
       writeExpr(buf, func.body)
     }
 
