@@ -11,6 +11,11 @@ import Types._
   *   [[https://webassembly.github.io/spec/core/syntax/instructions.html]]
   */
 object Instructions {
+
+  /** A WebAssembly `expr`. */
+  sealed case class Expr(instr: List[Instr])
+
+  /** A WebAssembly `instr`. */
   sealed abstract class Instr(val mnemonic: String, val opcode: Int)
 
   // Semantic categories of instructions

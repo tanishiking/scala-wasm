@@ -97,7 +97,7 @@ final class Emitter(config: Emitter.Config) {
       wamod.Global(
         genGlobalName.stringLiteralCache,
         watpe.RefType(genTypeName.anyArray),
-        wamod.Expr(
+        wa.Expr(
           List(
             wa.I32Const(stringPoolCount),
             wa.ArrayNewDefault(genTypeName.anyArray)
@@ -265,7 +265,7 @@ final class Emitter(config: Emitter.Config) {
        * introduce these declarations.
        */
       val exprs = funcDeclarations.map { name =>
-        wamod.Expr(List(wa.RefFunc(name)))
+        wa.Expr(List(wa.RefFunc(name)))
       }
       ctx.moduleBuilder.addElement(
         wamod.Element(watpe.RefType.funcref, exprs, wamod.Element.Mode.Declarative)

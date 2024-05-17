@@ -12,8 +12,6 @@ import Types._
   *   [[https://webassembly.github.io/gc/core/syntax/modules.html]]
   */
 object Modules {
-  sealed case class Expr(instr: List[Instr])
-
   sealed abstract class Export {
     val exportName: String
   }

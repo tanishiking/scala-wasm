@@ -40,7 +40,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         genGlobalName.forStaticField(name.name),
         transformType(ftpe),
-        wamod.Expr(List(genZeroOf(ftpe))),
+        wa.Expr(List(genZeroOf(ftpe))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -263,7 +263,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       wamod.Global(
         genGlobalName.forVTable(className),
         watpe.RefType(typeDataTypeName),
-        wamod.Expr(instrs),
+        wa.Expr(instrs),
         isMutable = false
       )
     )
@@ -340,7 +340,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         genGlobalName.forModuleInstance(clazz.name.name),
         watpe.RefType.nullable(heapType),
-        wamod.Expr(List(wa.RefNull(heapType))),
+        wa.Expr(List(wa.RefNull(heapType))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -596,7 +596,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         globalName,
         watpe.RefType(genTypeName.itables),
-        wamod.Expr(itablesInit),
+        wa.Expr(itablesInit),
         isMutable = false
       )
       ctx.addGlobalITable(clazz.className, global)
@@ -635,7 +635,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
             wamod.Global(
               genGlobalName.forJSPrivateField(name.name),
               watpe.RefType.anyref,
-              wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+              wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
               isMutable = true
             )
           )
@@ -946,7 +946,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val cachedJSClassGlobal = wamod.Global(
       genGlobalName.forJSClassValue(clazz.className),
       watpe.RefType.anyref,
-      wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+      wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
       isMutable = true
     )
     ctx.addGlobal(cachedJSClassGlobal)
@@ -979,7 +979,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       wamod.Global(
         cacheGlobalName,
         watpe.RefType.anyref,
-        wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+        wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
         isMutable = true
       )
     )
