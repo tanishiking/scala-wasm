@@ -31,7 +31,7 @@ final class WasmContext {
   private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
 
-  private val functionTypes = LinkedHashMap.empty[wamod.FunctionSignature, wanme.TypeName]
+  private val functionTypes = LinkedHashMap.empty[wamod.FunctionType, wanme.TypeName]
   private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeName]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
@@ -39,12 +39,12 @@ final class WasmContext {
   private val reflectiveProxies = LinkedHashMap.empty[MethodName, Int]
 
   val moduleBuilder: ModuleBuilder = {
-    new ModuleBuilder(new ModuleBuilder.FunctionSignatureProvider {
-      def signatureToTypeName(sig: wamod.FunctionSignature): wanme.TypeName = {
+    new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
+      def functionTypeToTypeName(sig: wamod.FunctionType): wanme.TypeName = {
         functionTypes.getOrElseUpdate(
           sig, {
             val typeName = genTypeName.forFunction(functionTypes.size)
-            moduleBuilder.addRecType(typeName, wamod.FunctionType(sig))
+            moduleBuilder.addRecType(typeName, sig)
             typeName
           }
         )

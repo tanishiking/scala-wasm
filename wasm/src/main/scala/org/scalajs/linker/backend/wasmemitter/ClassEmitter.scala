@@ -474,8 +474,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
        * If `expr` is `undefined`, it would be `(1 << 4) == 0b00010000`, which
        * would give `false`.
        */
-      val anyRefToVoidSig =
-        wamod.FunctionSignature(List(watpe.RefType.anyref), Nil)
+      val anyRefToVoidSig = wamod.FunctionType(List(watpe.RefType.anyref), Nil)
 
       instrs.block(anyRefToVoidSig) { isNullLabel =>
         // exprNonNull := expr; branch to isNullLabel if it is null
@@ -1113,8 +1112,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
   /** Generates the function import for a top-level export setter. */
   private def genTopLevelExportSetter(exportedName: String)(implicit ctx: WasmContext): Unit = {
     val functionName = genFunctionName.forTopLevelExportSetter(exportedName)
-    val functionSig = wamod.FunctionSignature(List(watpe.RefType.anyref), Nil)
-    val functionType = ctx.moduleBuilder.signatureToTypeName(functionSig)
+    val functionSig = wamod.FunctionType(List(watpe.RefType.anyref), Nil)
+    val functionType = ctx.moduleBuilder.functionTypeToTypeName(functionSig)
 
     ctx.moduleBuilder.addImport(
       wamod.Import(

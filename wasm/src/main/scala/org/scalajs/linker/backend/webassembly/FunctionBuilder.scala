@@ -74,13 +74,13 @@ final class FunctionBuilder(
 
   // Helpers to build structured control flow
 
-  def sigToBlockType(sig: FunctionSignature): BlockType = sig match {
-    case FunctionSignature(Nil, Nil) =>
+  def sigToBlockType(sig: FunctionType): BlockType = sig match {
+    case FunctionType(Nil, Nil) =>
       BlockType.ValueType()
-    case FunctionSignature(Nil, resultType :: Nil) =>
+    case FunctionType(Nil, resultType :: Nil) =>
       BlockType.ValueType(resultType)
     case _ =>
-      BlockType.FunctionType(moduleBuilder.signatureToTypeName(sig))
+      BlockType.FunctionType(moduleBuilder.functionTypeToTypeName(sig))
   }
 
   def ifThenElse(blockType: BlockType)(thenp: => Unit)(elsep: => Unit): Unit = {
@@ -94,11 +94,11 @@ final class FunctionBuilder(
   def ifThenElse(resultType: Type)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType(resultType))(thenp)(elsep)
 
-  def ifThenElse(sig: FunctionSignature)(thenp: => Unit)(elsep: => Unit): Unit =
+  def ifThenElse(sig: FunctionType)(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(sigToBlockType(sig))(thenp)(elsep)
 
   def ifThenElse(resultTypes: List[Type])(thenp: => Unit)(elsep: => Unit): Unit =
-    ifThenElse(FunctionSignature(Nil, resultTypes))(thenp)(elsep)
+    ifThenElse(FunctionType(Nil, resultTypes))(thenp)(elsep)
 
   def ifThenElse()(thenp: => Unit)(elsep: => Unit): Unit =
     ifThenElse(BlockType.ValueType())(thenp)(elsep)
@@ -109,11 +109,11 @@ final class FunctionBuilder(
     instrs += End
   }
 
-  def ifThen(sig: FunctionSignature)(thenp: => Unit): Unit =
+  def ifThen(sig: FunctionType)(thenp: => Unit): Unit =
     ifThen(sigToBlockType(sig))(thenp)
 
   def ifThen(resultTypes: List[Type])(thenp: => Unit): Unit =
-    ifThen(FunctionSignature(Nil, resultTypes))(thenp)
+    ifThen(FunctionType(Nil, resultTypes))(thenp)
 
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
@@ -132,11 +132,11 @@ final class FunctionBuilder(
   def block[A]()(body: LabelName => A): A =
     block(BlockType.ValueType())(body)
 
-  def block[A](sig: FunctionSignature)(body: LabelName => A): A =
+  def block[A](sig: FunctionType)(body: LabelName => A): A =
     block(sigToBlockType(sig))(body)
 
   def block[A](resultTypes: List[Type])(body: LabelName => A): A =
-    block(FunctionSignature(Nil, resultTypes))(body)
+    block(FunctionType(Nil, resultTypes))(body)
 
   def loop[A](blockType: BlockType)(body: LabelName => A): A = {
     val label = genLabel()
@@ -152,11 +152,11 @@ final class FunctionBuilder(
   def loop[A]()(body: LabelName => A): A =
     loop(BlockType.ValueType())(body)
 
-  def loop[A](sig: FunctionSignature)(body: LabelName => A): A =
+  def loop[A](sig: FunctionType)(body: LabelName => A): A =
     loop(sigToBlockType(sig))(body)
 
   def loop[A](resultTypes: List[Type])(body: LabelName => A): A =
-    loop(FunctionSignature(Nil, resultTypes))(body)
+    loop(FunctionType(Nil, resultTypes))(body)
 
   def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
     loop() { loopLabel =>
@@ -181,11 +181,11 @@ final class FunctionBuilder(
   def tryTable[A]()(clauses: List[CatchClause])(body: => A): A =
     tryTable(BlockType.ValueType())(clauses)(body)
 
-  def tryTable[A](sig: FunctionSignature)(clauses: List[CatchClause])(body: => A): A =
+  def tryTable[A](sig: FunctionType)(clauses: List[CatchClause])(body: => A): A =
     tryTable(sigToBlockType(sig))(clauses)(body)
 
   def tryTable[A](resultTypes: List[Type])(clauses: List[CatchClause])(body: => A): A =
-    tryTable(FunctionSignature(Nil, resultTypes))(clauses)(body)
+    tryTable(FunctionType(Nil, resultTypes))(clauses)(body)
 
   /** Builds a `switch` over a scrutinee using a `br_table` instruction.
     *
@@ -212,8 +212,8 @@ final class FunctionBuilder(
     *   must consume at least all the results of the scrutinee.
     */
   def switch(
-      scrutineeSig: FunctionSignature,
-      clauseSig: FunctionSignature
+      scrutineeSig: FunctionType,
+      clauseSig: FunctionType
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
     val clauseLabels = clauses.map(_ => genLabel())
 
@@ -239,11 +239,11 @@ final class FunctionBuilder(
     )
     val (doneBlockType, clauseBlockType) = {
       val clauseParamsComingFromAbove = clauseSig.params.drop(scrutineeSig.results.size)
-      val doneBlockSig = FunctionSignature(
+      val doneBlockSig = FunctionType(
         clauseParamsComingFromAbove ::: scrutineeSig.params,
         clauseSig.results
       )
-      val clauseBlockSig = FunctionSignature(
+      val clauseBlockSig = FunctionType(
         clauseParamsComingFromAbove ::: scrutineeSig.params,
         clauseSig.params
       )
@@ -277,29 +277,29 @@ final class FunctionBuilder(
   }
 
   def switch(
-      clauseSig: FunctionSignature
+      clauseSig: FunctionType
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(FunctionSignature.NilToNil, clauseSig)(scrutinee)(clauses: _*)(default)
+    switch(FunctionType.NilToNil, clauseSig)(scrutinee)(clauses: _*)(default)
   }
 
   def switch(
       resultType: Type
   )(scrutinee: () => Unit)(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(FunctionSignature(Nil, List(resultType)))(scrutinee)(clauses: _*)(default)
+    switch(FunctionType(Nil, List(resultType)))(scrutinee)(clauses: _*)(default)
   }
 
   def switch()(
       scrutinee: () => Unit
   )(clauses: (List[Int], () => Unit)*)(default: () => Unit): Unit = {
-    switch(FunctionSignature.NilToNil)(scrutinee)(clauses: _*)(default)
+    switch(FunctionType.NilToNil)(scrutinee)(clauses: _*)(default)
   }
 
   // Final result
 
   def buildAndAddToModule(): Function = {
     val functionTypeName = specialFunctionType.getOrElse {
-      val sig = FunctionSignature(params.toList.map(_.typ), resultTypes)
-      moduleBuilder.signatureToTypeName(sig)
+      val sig = FunctionType(params.toList.map(_.typ), resultTypes)
+      moduleBuilder.functionTypeToTypeName(sig)
     }
 
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
