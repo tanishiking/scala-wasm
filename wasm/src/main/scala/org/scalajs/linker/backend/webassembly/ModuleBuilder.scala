@@ -4,6 +4,7 @@ import scala.collection.mutable
 
 import Names._
 import Modules._
+import Types._
 
 final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeProvider) {
   import ModuleBuilder._

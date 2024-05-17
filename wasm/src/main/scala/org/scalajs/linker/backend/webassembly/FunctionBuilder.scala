@@ -7,7 +7,7 @@ import org.scalajs.ir.Position
 import Instructions._
 import Names._
 import Modules._
-import Types.Type
+import Types._
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,

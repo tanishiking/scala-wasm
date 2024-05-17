@@ -8,10 +8,14 @@ import Names._
   *   [[https://webassembly.github.io/gc/core/syntax/types.html]]
   */
 object Types {
+
+  /** A WebAssembly `storagetype`. */
   sealed trait StorageType
 
+  /** A WebAssembly `valtype`. */
   sealed abstract class Type extends StorageType
 
+  /** Convenience superclass for `Type`s that are encoded with a simple opcode. */
   sealed abstract class SimpleType(val textName: String, val binaryCode: Byte) extends Type
 
   case object Int32 extends SimpleType("i32", 0x7F)
@@ -19,10 +23,13 @@ object Types {
   case object Float32 extends SimpleType("f32", 0x7D)
   case object Float64 extends SimpleType("f64", 0x7C)
 
+  /** A WebAssembly `packedtype`. */
   sealed abstract class PackedType(val textName: String, val binaryCode: Byte) extends StorageType
+
   case object Int8 extends PackedType("i8", 0x78)
   case object Int16 extends PackedType("i16", 0x77)
 
+  /** A WebAssembly `reftype`. */
   final case class RefType(nullable: Boolean, heapType: HeapType) extends Type {
     def toNullable: RefType = RefType(true, heapType)
     def toNonNullable: RefType = RefType(false, heapType)
@@ -67,11 +74,15 @@ object Types {
     val nullref: RefType = nullable(HeapType.None)
   }
 
-  sealed trait HeapType
+  /** A WebAssembly `heaptype`. */
+  sealed abstract class HeapType
 
   object HeapType {
+
+    /** Reference to a named composite type. */
     final case class Type(val typ: TypeName) extends HeapType
 
+    /** A WebAssembly `absheaptype`. */
     sealed abstract class AbsHeapType(
         val textName: String,
         val nullableRefTextName: String,
@@ -92,5 +103,57 @@ object Types {
 
     def apply(typ: TypeName): HeapType.Type =
       HeapType.Type(typ)
+  }
+
+  /** A WebAssembly `rectype`. */
+  final case class RecType(subTypes: List[SubType])
+
+  object RecType {
+
+    /** Builds a `rectype` with a single `subtype`. */
+    def apply(singleSubType: SubType): RecType =
+      RecType(singleSubType :: Nil)
+  }
+
+  /** A WebAssembly `subtype` with an associated name. */
+  final case class SubType(
+      name: TypeName,
+      isFinal: Boolean,
+      superType: Option[TypeName],
+      compositeType: CompositeType
+  )
+
+  object SubType {
+
+    /** Builds a `subtype` that is `final` and without any super type. */
+    def apply(name: TypeName, compositeType: CompositeType): SubType =
+      SubType(name, isFinal = true, superType = None, compositeType)
+  }
+
+  /** A WebAssembly `comptype`. */
+  sealed abstract class CompositeType
+
+  /** A WebAssembly `functype`. */
+  final case class FunctionType(params: List[Type], results: List[Type]) extends CompositeType
+
+  object FunctionType {
+    val NilToNil: FunctionType = FunctionType(Nil, Nil)
+  }
+
+  /** A WebAssembly `structtype` with associated field names. */
+  final case class StructType(fields: List[StructField]) extends CompositeType
+
+  /** A member of a `StructType`, with a field name and a WebAssembly `fieldtype`. */
+  final case class StructField(name: FieldName, fieldType: FieldType)
+
+  /** A WebAssembly `arraytype`. */
+  final case class ArrayType(fieldType: FieldType) extends CompositeType
+
+  /** A WebAssembly `fieldtype`. */
+  final case class FieldType(typ: StorageType, isMutable: Boolean)
+
+  object StructField {
+    def apply(name: FieldName, typ: StorageType, isMutable: Boolean): StructField =
+      StructField(name, FieldType(typ, isMutable))
   }
 }

@@ -13,7 +13,7 @@ import org.scalajs.linker.backend.webassembly._
 import org.scalajs.linker.backend.webassembly.{Instructions => wa}
 import org.scalajs.linker.backend.webassembly.{Names => wanme}
 import org.scalajs.linker.backend.webassembly.{Types => watpe}
-import org.scalajs.linker.backend.webassembly.Modules.{FunctionType => Sig}
+import org.scalajs.linker.backend.webassembly.Types.{FunctionType => Sig}
 
 import EmbeddedConstants._
 import SWasmGen._

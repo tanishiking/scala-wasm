@@ -73,50 +73,6 @@ object Modules {
       val isMutable: Boolean
   )
 
-  final case class RecType(subTypes: List[SubType])
-
-  object RecType {
-
-    /** Builds a `rectype` with a single `subtype`. */
-    def apply(singleSubType: SubType): RecType =
-      RecType(singleSubType :: Nil)
-  }
-
-  final case class SubType(
-      name: TypeName,
-      isFinal: Boolean,
-      superType: Option[TypeName],
-      compositeType: CompositeType
-  )
-
-  object SubType {
-
-    /** Builds a `subtype` that is `final` and without any super type. */
-    def apply(name: TypeName, compositeType: CompositeType): SubType =
-      SubType(name, isFinal = true, superType = None, compositeType)
-  }
-
-  sealed abstract class CompositeType
-
-  final case class FunctionType(params: List[Type], results: List[Type]) extends CompositeType
-
-  object FunctionType {
-    val NilToNil: FunctionType = FunctionType(Nil, Nil)
-  }
-
-  final case class StructType(fields: List[StructField]) extends CompositeType
-
-  final case class ArrayType(fieldType: FieldType) extends CompositeType
-
-  final case class FieldType(typ: StorageType, isMutable: Boolean)
-
-  final case class StructField(name: FieldName, fieldType: FieldType)
-
-  object StructField {
-    def apply(name: FieldName, typ: StorageType, isMutable: Boolean): StructField =
-      StructField(name, FieldType(typ, isMutable))
-  }
-
   final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
 
   object Element {
