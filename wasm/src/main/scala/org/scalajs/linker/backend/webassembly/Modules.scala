@@ -49,9 +49,9 @@ object Modules {
 
   final case class Local(name: LocalName, typ: Type)
 
-  final case class Tag(val name: TagName, val typ: TypeName)
+  final case class Tag(name: TagName, typ: TypeName)
 
-  final case class Data(val name: DataName, val bytes: Array[Byte], mode: Data.Mode)
+  final case class Data(name: DataName, bytes: Array[Byte], mode: Data.Mode)
 
   object Data {
     sealed abstract class Mode
@@ -61,12 +61,7 @@ object Modules {
     }
   }
 
-  final case class Global(
-      val name: GlobalName,
-      val typ: Type,
-      val init: Expr,
-      val isMutable: Boolean
-  )
+  final case class Global(name: GlobalName, typ: Type, init: Expr, isMutable: Boolean)
 
   final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
 
