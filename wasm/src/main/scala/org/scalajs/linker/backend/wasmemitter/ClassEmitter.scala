@@ -23,16 +23,13 @@ import TypeTransformer._
 import WasmContext._
 
 class ClassEmitter(coreSpec: CoreSpec) {
-  def transformClassDef(clazz: LinkedClass)(implicit ctx: WasmContext) = {
+  def genClassDef(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val classInfo = ctx.getClassInfo(clazz.className)
 
-    if (!clazz.kind.isClass && classInfo.hasRuntimeTypeInfo) {
-      // Gen typeData -- for classes, we do it as part of the vtable generation
-      val typeRef = ClassRef(clazz.className)
+    if (classInfo.hasRuntimeTypeInfo && !(clazz.kind.isClass && clazz.hasDirectInstances)) {
+      // Gen typeData -- for concrete Scala classes, we do it as part of the vtable generation instead
       val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
-      val typeDataGlobal =
-        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(typeDataGlobal)
+      genTypeDataGlobal(clazz.className, genTypeName.typeData, typeDataFieldValues, Nil)
     }
 
     // Declare static fields
@@ -56,14 +53,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     clazz.kind match {
-      case ClassKind.ModuleClass   => transformModuleClass(clazz)
-      case ClassKind.Class         => transformClass(clazz)
-      case ClassKind.HijackedClass => transformHijackedClass(clazz)
-      case ClassKind.Interface     => transformInterface(clazz)
-
+      case ClassKind.Class | ClassKind.ModuleClass =>
+        genScalaClass(clazz)
+      case ClassKind.Interface =>
+        genInterface(clazz)
       case ClassKind.JSClass | ClassKind.JSModuleClass =>
-        transformJSClass(clazz)
-      case ClassKind.AbstractJSType | ClassKind.NativeJSClass | ClassKind.NativeJSModuleClass =>
+        genJSClass(clazz)
+      case ClassKind.HijackedClass | ClassKind.AbstractJSType | ClassKind.NativeJSClass |
+          ClassKind.NativeJSModuleClass =>
         () // nothing to do
     }
   }
@@ -90,57 +87,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     * for the static field. This is fine because, by spec of ECMAScript modules, JavaScript code
     * that *uses* the export cannot mutate it; it can only read it.
     */
-  def transformTopLevelExport(
+  def genTopLevelExport(
       topLevelExport: LinkedTopLevelExport
   )(implicit ctx: WasmContext): Unit = {
     genTopLevelExportSetter(topLevelExport.exportName)
     topLevelExport.tree match {
-      case d: TopLevelMethodExportDef => transformTopLevelMethodExportDef(d)
+      case d: TopLevelMethodExportDef => genTopLevelMethodExportDef(d)
       case _                          => ()
     }
-  }
-
-  private def genTypeDataFieldValues(
-      clazz: LinkedClass,
-      reflectiveProxies: List[ConcreteMethodInfo]
-  )(implicit
-      ctx: WasmContext
-  ): List[wa.Instr] = {
-    import genFieldName.typeData.{reflectiveProxies => _, _}
-
-    val className = clazz.className
-    val classInfo = ctx.getClassInfo(className)
-
-    val kind = className match {
-      case ObjectClass         => KindObject
-      case BoxedUnitClass      => KindBoxedUnit
-      case BoxedBooleanClass   => KindBoxedBoolean
-      case BoxedCharacterClass => KindBoxedCharacter
-      case BoxedByteClass      => KindBoxedByte
-      case BoxedShortClass     => KindBoxedShort
-      case BoxedIntegerClass   => KindBoxedInteger
-      case BoxedLongClass      => KindBoxedLong
-      case BoxedFloatClass     => KindBoxedFloat
-      case BoxedDoubleClass    => KindBoxedDouble
-      case BoxedStringClass    => KindBoxedString
-
-      case _ =>
-        clazz.kind match {
-          case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
-          case ClassKind.Interface                                               => KindInterface
-          case _                                                                 => KindJSType
-        }
-    }
-
-    val isJSClassInstanceFuncOpt = genIsJSClassInstanceFunction(clazz)
-
-    genTypeDataFieldValues(
-      kind,
-      classInfo.specialInstanceTypes,
-      ClassRef(clazz.className),
-      isJSClassInstanceFuncOpt,
-      reflectiveProxies
-    )
   }
 
   private def genIsJSClassInstanceFunction(clazz: LinkedClass)(implicit
@@ -188,65 +142,70 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genTypeDataFieldValues(
-      kind: Int,
-      specialInstanceTypes: Int,
-      typeRef: NonArrayTypeRef,
-      isJSClassInstanceFuncOpt: Option[wanme.FunctionName],
+      clazz: LinkedClass,
       reflectiveProxies: List[ConcreteMethodInfo]
   )(implicit
       ctx: WasmContext
   ): List[wa.Instr] = {
-    val nameStr = typeRef match {
-      case typeRef: PrimRef =>
-        typeRef.displayName
-      case ClassRef(className) =>
-        RuntimeClassNameMapperImpl.map(
-          coreSpec.semantics.runtimeClassNameMapper,
-          className.nameString
-        )
-    }
+    val className = clazz.className
+    val classInfo = ctx.getClassInfo(className)
 
+    val nameStr = RuntimeClassNameMapperImpl.map(
+      coreSpec.semantics.runtimeClassNameMapper,
+      className.nameString
+    )
     val nameDataValue: List[wa.Instr] = ctx.getConstantStringDataInstr(nameStr)
 
+    val kind = className match {
+      case ObjectClass         => KindObject
+      case BoxedUnitClass      => KindBoxedUnit
+      case BoxedBooleanClass   => KindBoxedBoolean
+      case BoxedCharacterClass => KindBoxedCharacter
+      case BoxedByteClass      => KindBoxedByte
+      case BoxedShortClass     => KindBoxedShort
+      case BoxedIntegerClass   => KindBoxedInteger
+      case BoxedLongClass      => KindBoxedLong
+      case BoxedFloatClass     => KindBoxedFloat
+      case BoxedDoubleClass    => KindBoxedDouble
+      case BoxedStringClass    => KindBoxedString
+
+      case _ =>
+        clazz.kind match {
+          case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass => KindClass
+          case ClassKind.Interface                                               => KindInterface
+          case _                                                                 => KindJSType
+        }
+    }
+
     val strictAncestorsValue: List[wa.Instr] = {
-      typeRef match {
-        case ClassRef(className) =>
-          val ancestors = ctx.getClassInfo(className).ancestors
+      val ancestors = ctx.getClassInfo(className).ancestors
 
-          // By spec, the first element of `ancestors` is always the class itself
-          assert(
-            ancestors.headOption.contains(className),
-            s"The ancestors of ${className.nameString} do not start with itself: $ancestors"
-          )
-          val strictAncestors = ancestors.tail
+      // By spec, the first element of `ancestors` is always the class itself
+      assert(
+        ancestors.headOption.contains(className),
+        s"The ancestors of ${className.nameString} do not start with itself: $ancestors"
+      )
+      val strictAncestors = ancestors.tail
 
-          val elems = for {
-            ancestor <- strictAncestors
-            if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
-          } yield {
-            wa.GlobalGet(genGlobalName.forVTable(ancestor))
-          }
-          elems :+ wa.ArrayNewFixed(genTypeName.typeDataArray, elems.size)
-        case _ =>
-          wa.RefNull(watpe.HeapType.None) :: Nil
+      val elems = for {
+        ancestor <- strictAncestors
+        if ctx.getClassInfo(ancestor).hasRuntimeTypeInfo
+      } yield {
+        wa.GlobalGet(genGlobalName.forVTable(ancestor))
       }
+      elems :+ wa.ArrayNewFixed(genTypeName.typeDataArray, elems.size)
     }
 
     val cloneFunction = {
-      val nullref = wa.RefNull(watpe.HeapType.NoFunc)
-      typeRef match {
-        case ClassRef(className) =>
-          val classInfo = ctx.getClassInfo(className)
-          // If the class is concrete and implements the `java.lang.Cloneable`,
-          // `genCloneFunction` should've generated the clone function
-          if (!classInfo.isAbstract && classInfo.ancestors.contains(CloneableClass))
-            wa.RefFunc(genFunctionName.clone(className))
-          else nullref
-        case _ => nullref
-      }
+      // If the class is concrete and implements the `java.lang.Cloneable`,
+      // `genCloneFunction` should've generated the clone function
+      if (!classInfo.isAbstract && classInfo.ancestors.contains(CloneableClass))
+        wa.RefFunc(genFunctionName.clone(className))
+      else
+        wa.RefNull(watpe.HeapType.NoFunc)
     }
 
-    val isJSClassInstance = isJSClassInstanceFuncOpt match {
+    val isJSClassInstance = genIsJSClassInstanceFunction(clazz) match {
       case None           => wa.RefNull(watpe.HeapType.NoFunc)
       case Some(funcName) => wa.RefFunc(funcName)
     }
@@ -267,7 +226,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         // kind
         wa.I32Const(kind),
         // specialInstanceTypes
-        wa.I32Const(specialInstanceTypes)
+        wa.I32Const(classInfo.specialInstanceTypes)
       ) ::: (
         // strictAncestors
         strictAncestorsValue
@@ -293,28 +252,25 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genTypeDataGlobal(
-      typeRef: NonArrayTypeRef,
+      className: ClassName,
       typeDataTypeName: wanme.TypeName,
       typeDataFieldValues: List[wa.Instr],
       vtableElems: List[wa.RefFunc]
-  )(implicit ctx: WasmContext): wamod.Global = {
+  )(implicit ctx: WasmContext): Unit = {
     val instrs: List[wa.Instr] =
       typeDataFieldValues ::: vtableElems ::: wa.StructNew(typeDataTypeName) :: Nil
-    wamod.Global(
-      genGlobalName.forVTable(typeRef),
-      watpe.RefType(typeDataTypeName),
-      wamod.Expr(instrs),
-      isMutable = false
+    ctx.addGlobal(
+      wamod.Global(
+        genGlobalName.forVTable(className),
+        watpe.RefType(typeDataTypeName),
+        wamod.Expr(instrs),
+        isMutable = false
+      )
     )
   }
 
-  /** @return
-    *   Optionally returns the generated struct type for this class. If the given LinkedClass is an
-    *   abstract class, returns None
-    */
-  private def transformClassCommon(
-      clazz: LinkedClass
-  )(implicit ctx: WasmContext): wamod.StructType = {
+  /** Generates a Scala class or module class. */
+  private def genScalaClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val className = clazz.name.name
     val typeRef = ClassRef(className)
     val classInfo = ctx.getClassInfo(className)
@@ -331,23 +287,17 @@ class ClassEmitter(coreSpec: CoreSpec) {
     // When we don't generate a vtable, we still generate the typeData
 
     if (!isAbstractClass) {
-      // Generate an actual vtable
+      // Generate an actual vtable, which we integrate into the typeData
       val reflectiveProxies =
         classInfo.resolvedMethodInfos.valuesIterator.filter(_.methodName.isReflectiveProxy).toList
       val typeDataFieldValues = genTypeDataFieldValues(clazz, reflectiveProxies)
       val vtableElems = classInfo.tableEntries.map { methodName =>
         wa.RefFunc(classInfo.resolvedMethodInfos(methodName).tableEntryName)
       }
-      val globalVTable =
-        genTypeDataGlobal(typeRef, vtableTypeName, typeDataFieldValues, vtableElems)
-      ctx.addGlobal(globalVTable)
+      genTypeDataGlobal(className, vtableTypeName, typeDataFieldValues, vtableElems)
+
+      // Generate the itable
       genGlobalClassItable(clazz)
-    } else if (classInfo.hasRuntimeTypeInfo) {
-      // Only generate typeData
-      val typeDataFieldValues = genTypeDataFieldValues(clazz, Nil)
-      val globalTypeData =
-        genTypeDataGlobal(typeRef, genTypeName.typeData, typeDataFieldValues, Nil)
-      ctx.addGlobal(globalTypeData)
     }
 
     // Declare the struct type for the class
@@ -361,12 +311,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
       watpe.RefType.nullable(genTypeName.itables),
       isMutable = false
     )
-    val fields = classInfo.allFieldDefs.map(transformField)
+    val fields = classInfo.allFieldDefs.map { field =>
+      wamod.StructField(
+        genFieldName.forClassInstanceField(field.name.name),
+        transformType(field.ftpe),
+        isMutable = true // initialized by the constructors, so always mutable at the Wasm level
+      )
+    }
     val structTypeName = genTypeName.forClass(clazz.name.name)
     val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
-    val structType = wamod.StructType(
-      vtableField +: itablesField +: fields
-    )
+    val structType = wamod.StructType(vtableField :: itablesField :: fields)
     val subType = wamod.SubType(structTypeName, isFinal = false, superType, structType)
     ctx.mainRecType.addSubType(subType)
 
@@ -377,7 +331,22 @@ class ClassEmitter(coreSpec: CoreSpec) {
         genCloneFunction(clazz)
     }
 
-    structType
+    // Generate the module accessor
+    if (clazz.kind == ClassKind.ModuleClass && clazz.hasInstances) {
+      val heapType = watpe.HeapType(genTypeName.forClass(clazz.className))
+
+      // global instance
+      // (global name (ref null type))
+      val global = wamod.Global(
+        genGlobalName.forModuleInstance(clazz.name.name),
+        watpe.RefType.nullable(heapType),
+        wamod.Expr(List(wa.RefNull(heapType))),
+        isMutable = true
+      )
+      ctx.addGlobal(global)
+
+      genModuleAccessor(clazz)
+    }
   }
 
   private def genVTableType(
@@ -406,16 +375,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
     *
     * The expression `isInstanceOf[<interface>]` will be compiled to a CALL to the function
     * generated by this method.
-    *
-    * TODO: Efficient type inclusion test. The current implementation generates a sparse array of
-    * itables, which, although O(1), may not be optimal for large interfaces. More compressed data
-    * structures could potentially improve performance in such cases.
-    *
-    * See https://github.com/tanishiking/scala-wasm/issues/27#issuecomment-2008252049
     */
   private def genInterfaceInstanceTest(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     assert(clazz.kind == ClassKind.Interface)
 
     val classInfo = ctx.getClassInfo(clazz.className)
@@ -423,7 +384,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.instanceTest(clazz.name.name),
-      pos
+      clazz.pos
     )
     val exprParam = fb.addParam("expr", watpe.RefType.anyref)
     fb.setResultType(watpe.Int32)
@@ -505,8 +466,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genNewDefaultFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(className)
     assert(clazz.hasDirectInstances)
@@ -515,7 +474,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.newDefault(className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType(structName))
 
@@ -543,15 +502,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
     * called on the class instance.
     */
   private def genCloneFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.className
     val info = ctx.getClassInfo(className)
 
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.clone(className),
-      pos
+      clazz.pos
     )
     val fromParam = fb.addParam("from", watpe.RefType(genTypeName.ObjectStruct))
     fb.setResultType(watpe.RefType(genTypeName.ObjectStruct))
@@ -583,28 +540,19 @@ class ClassEmitter(coreSpec: CoreSpec) {
     fb.buildAndAddToModule()
   }
 
-  private def genLoadModuleFunc(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
+  private def genModuleAccessor(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.ModuleClass)
-    val ctor = clazz.methods
-      .find(_.methodName.isConstructor)
-      .getOrElse(throw new Error(s"Module class should have a constructor, ${clazz.name}"))
-    val typeName = genTypeName.forClass(clazz.name.name)
-    val globalInstanceName = genGlobalName.forModuleInstance(clazz.name.name)
 
-    val ctorName = genFunctionName.forMethod(
-      ctor.flags.namespace,
-      clazz.name.name,
-      ctor.name.name
-    )
-
-    val resultTyp = watpe.RefType(typeName)
+    val className = clazz.className
+    val globalInstanceName = genGlobalName.forModuleInstance(className)
+    val ctorName =
+      genFunctionName.forMethod(MemberNamespace.Constructor, className, NoArgConstructorName)
+    val resultTyp = watpe.RefType(genTypeName.forClass(className))
 
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadModule(clazz.className),
-      pos
+      clazz.pos
     )
     fb.setResultType(resultTyp)
 
@@ -618,7 +566,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       instrs += wa.BrOnNonNull(nonNullLabel)
 
       // create an instance and call its constructor
-      instrs += wa.Call(genFunctionName.newDefault(clazz.name.name))
+      instrs += wa.Call(genFunctionName.newDefault(className))
       instrs += wa.LocalTee(instanceLocal)
       instrs += wa.Call(ctorName)
 
@@ -636,46 +584,26 @@ class ClassEmitter(coreSpec: CoreSpec) {
   /** Generate global instance of the class itable. Their init value will be an array of null refs
     * of size = number of interfaces. They will be initialized in start function
     */
-  private def genGlobalClassItable(
-      clazz: LinkedClass
-  )(implicit ctx: WasmContext): Unit = {
+  private def genGlobalClassItable(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val info = ctx.getClassInfo(clazz.className)
     val implementsAnyInterface = info.ancestors.exists(a => ctx.getClassInfo(a).isInterface)
     if (implementsAnyInterface) {
       val globalName = genGlobalName.forITable(clazz.className)
-      ctx.addGlobalITable(clazz.className, genITableGlobal(globalName))
+      val itablesInit = List(
+        wa.I32Const(ctx.itablesLength),
+        wa.ArrayNewDefault(genTypeName.itables)
+      )
+      val global = wamod.Global(
+        globalName,
+        watpe.RefType(genTypeName.itables),
+        wamod.Expr(itablesInit),
+        isMutable = false
+      )
+      ctx.addGlobalITable(clazz.className, global)
     }
   }
 
-  private def genArrayClassItable()(implicit ctx: WasmContext): Unit =
-    ctx.addGlobal(genITableGlobal(genGlobalName.arrayClassITable))
-
-  private def genITableGlobal(
-      name: wanme.GlobalName
-  )(implicit ctx: WasmContext): wamod.Global = {
-    val itablesInit = List(
-      wa.I32Const(ctx.itablesLength),
-      wa.ArrayNewDefault(genTypeName.itables)
-    )
-    wamod.Global(
-      name,
-      watpe.RefType(genTypeName.itables),
-      wamod.Expr(itablesInit),
-      isMutable = false
-    )
-  }
-
-  private def transformClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    assert(clazz.kind == ClassKind.Class)
-    transformClassCommon(clazz)
-  }
-
-  private def transformHijackedClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    // nothing to do
-    ()
-  }
-
-  private def transformInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genInterface(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind == ClassKind.Interface)
     // gen itable type
     val className = clazz.name.name
@@ -696,29 +624,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       genInterfaceInstanceTest(clazz)
   }
 
-  private def transformModuleClass(clazz: LinkedClass)(implicit ctx: WasmContext) = {
-    assert(clazz.kind == ClassKind.ModuleClass)
-
-    transformClassCommon(clazz)
-
-    if (clazz.hasInstances) {
-      val heapType = watpe.HeapType(genTypeName.forClass(clazz.className))
-
-      // global instance
-      // (global name (ref null type))
-      val global = wamod.Global(
-        genGlobalName.forModuleInstance(clazz.name.name),
-        watpe.RefType.nullable(heapType),
-        wamod.Expr(List(wa.RefNull(heapType))),
-        isMutable = true
-      )
-      ctx.addGlobal(global)
-
-      genLoadModuleFunc(clazz)
-    }
-  }
-
-  private def transformJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
+  private def genJSClass(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     assert(clazz.kind.isJSClass)
 
     // Define the globals holding the Symbols of private fields
@@ -1018,7 +924,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
 
       // Class initializer
-      for (classInit <- clazz.methods.find(_.methodName.isClassInitializer)) {
+      if (clazz.methods.exists(_.methodName.isClassInitializer)) {
         assert(
           clazz.jsClassCaptures.isEmpty,
           s"Illegal class initializer in non-static class ${clazz.className.nameString}"
@@ -1037,8 +943,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSClassFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val cachedJSClassGlobal = wamod.Global(
       genGlobalName.forJSClassValue(clazz.className),
       watpe.RefType.anyref,
@@ -1050,7 +954,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadJSClass(clazz.className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType.any)
 
@@ -1068,8 +972,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
-    implicit val pos = clazz.pos
-
     val className = clazz.className
     val cacheGlobalName = genGlobalName.forModuleInstance(className)
 
@@ -1085,7 +987,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionName.loadModule(className),
-      pos
+      clazz.pos
     )
     fb.setResultType(watpe.RefType.anyref)
 
@@ -1124,7 +1026,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
   }
 
-  private def transformTopLevelMethodExportDef(
+  private def genTopLevelMethodExportDef(
       exportDef: TopLevelMethodExportDef
   )(implicit ctx: WasmContext): Unit = {
     implicit val pos = exportDef.pos
@@ -1157,7 +1059,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val functionName = genFunctionName.forMethod(namespace, className, methodName)
 
-    val isHijackedClass = ctx.getClassInfo(className).kind == ClassKind.HijackedClass
+    val isHijackedClass = clazz.kind == ClassKind.HijackedClass
 
     val receiverTyp =
       if (namespace.isStatic)
@@ -1223,17 +1125,5 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
       fb.buildAndAddToModule()
     }
-  }
-
-  private def transformField(
-      field: FieldDef
-  )(implicit ctx: WasmContext): wamod.StructField = {
-    wamod.StructField(
-      genFieldName.forClassInstanceField(field.name.name),
-      transformType(field.ftpe),
-      // needs to be mutable even if it's flags.isMutable = false
-      // because it's initialized by constructor
-      isMutable = true // field.flags.isMutable
-    )
   }
 }

@@ -46,10 +46,10 @@ final class Emitter(config: Emitter.Config) {
 
     CoreWasmLib.genPreClasses()
     sortedClasses.foreach { clazz =>
-      classEmitter.transformClassDef(clazz)
+      classEmitter.genClassDef(clazz)
     }
     module.topLevelExports.foreach { tle =>
-      classEmitter.transformTopLevelExport(tle)
+      classEmitter.genTopLevelExport(tle)
     }
     CoreWasmLib.genPostClasses()
 
