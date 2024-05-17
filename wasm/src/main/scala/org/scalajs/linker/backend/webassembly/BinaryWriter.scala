@@ -198,12 +198,12 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeExportSection(buf: Buffer): Unit = {
     buf.vec(module.exports) { exp =>
-      buf.name(exp.exportName)
-      exp match {
-        case Export.Function(_, funcName) =>
+      buf.name(exp.name)
+      exp.desc match {
+        case ExportDesc.Func(funcName) =>
           buf.byte(0x00)
           writeFuncIdx(buf, funcName)
-        case Export.Global(_, globalName) =>
+        case ExportDesc.Global(globalName) =>
           buf.byte(0x03)
           writeGlobalIdx(buf, globalName)
       }

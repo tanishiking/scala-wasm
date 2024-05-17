@@ -12,17 +12,22 @@ import Types._
   *   [[https://webassembly.github.io/gc/core/syntax/modules.html]]
   */
 object Modules {
-  sealed abstract class Export {
-    val exportName: String
+
+  /** A WebAssembly `export`. */
+  final case class Export(name: String, desc: ExportDesc)
+
+  /** A WebAssembly `exportdesc`. */
+  sealed abstract class ExportDesc
+
+  object ExportDesc {
+    final case class Func(funcName: FunctionName) extends ExportDesc
+    final case class Global(globalName: GlobalName) extends ExportDesc
   }
 
-  object Export {
-    final case class Function(exportName: String, funcName: FunctionName) extends Export
-    final case class Global(exportName: String, globalName: GlobalName) extends Export
-  }
-
+  /** A WebAssembly `import`. */
   final case class Import(module: String, name: String, desc: ImportDesc)
 
+  /** A WebAssembly `importdesc`. */
   sealed abstract class ImportDesc
 
   object ImportDesc {

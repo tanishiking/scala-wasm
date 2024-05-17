@@ -219,14 +219,14 @@ class TextWriter {
       b: WatBuilder
   ) = b.newLineList(
     "export", {
-      b.appendElement("\"" + e.exportName + "\"")
-      e match {
-        case Export.Function(_, funcName) =>
+      b.appendElement("\"" + e.name + "\"")
+      e.desc match {
+        case ExportDesc.Func(funcName) =>
           b.sameLineList(
             "func",
             { b.appendName(funcName) }
           )
-        case Export.Global(_, globalName) =>
+        case ExportDesc.Global(globalName) =>
           b.sameLineList(
             "global",
             { b.appendName(globalName) }
