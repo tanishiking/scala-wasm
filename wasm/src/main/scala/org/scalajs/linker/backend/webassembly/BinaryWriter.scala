@@ -360,7 +360,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
           case instr: StructuredLabeledInstr =>
             // We must register even the `None` labels, because they contribute to relative numbering
             labelsInScope ::= instr.label
-          case END =>
+          case End =>
             labelsInScope = labelsInScope.tail
           case _ =>
             ()
@@ -410,16 +410,16 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
       // Specific instructions with unique-ish shapes
 
-      case I32_CONST(v) => buf.i32(v)
-      case I64_CONST(v) => buf.i64(v)
-      case F32_CONST(v) => buf.f32(v)
-      case F64_CONST(v) => buf.f64(v)
+      case I32Const(v) => buf.i32(v)
+      case I64Const(v) => buf.i64(v)
+      case F32Const(v) => buf.f32(v)
+      case F64Const(v) => buf.f64(v)
 
-      case BR_TABLE(labelIdxVector, defaultLabelIdx) =>
+      case BrTable(labelIdxVector, defaultLabelIdx) =>
         buf.vec(labelIdxVector)(writeLabelIdx(buf, _))
         writeLabelIdx(buf, defaultLabelIdx)
 
-      case TRY_TABLE(blockType, clauses, _) =>
+      case TryTable(blockType, clauses, _) =>
         writeBlockType(buf, blockType)
         buf.vec(clauses) { clause =>
           buf.byte(clause.opcode.toByte)
@@ -427,21 +427,21 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
           writeLabelIdx(buf, clause.label)
         }
 
-      case ARRAY_NEW_DATA(typeIdx, dataIdx) =>
+      case ArrayNewData(typeIdx, dataIdx) =>
         writeTypeIdx(buf, typeIdx)
         writeDataIdx(buf, dataIdx)
 
-      case ARRAY_NEW_FIXED(typeIdx, length) =>
+      case ArrayNewFixed(typeIdx, length) =>
         writeTypeIdx(buf, typeIdx)
         buf.u32(length)
 
-      case ARRAY_COPY(destType, srcType) =>
+      case ArrayCopy(destType, srcType) =>
         writeTypeIdx(buf, destType)
         writeTypeIdx(buf, srcType)
 
-      case BR_ON_CAST(labelIdx, from, to) =>
+      case BrOnCast(labelIdx, from, to) =>
         writeBrOnCast(labelIdx, from, to)
-      case BR_ON_CAST_FAIL(labelIdx, from, to) =>
+      case BrOnCastFail(labelIdx, from, to) =>
         writeBrOnCast(labelIdx, from, to)
 
       case PositionMark(pos) =>

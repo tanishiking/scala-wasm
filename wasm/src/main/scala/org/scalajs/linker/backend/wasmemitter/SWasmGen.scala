@@ -15,16 +15,16 @@ object SWasmGen {
   def genZeroOf(tpe: Type)(implicit ctx: WasmContext): Instr = {
     tpe match {
       case BooleanType | CharType | ByteType | ShortType | IntType =>
-        I32_CONST(0)
+        I32Const(0)
 
-      case LongType   => I64_CONST(0L)
-      case FloatType  => F32_CONST(0.0f)
-      case DoubleType => F64_CONST(0.0)
-      case StringType => GLOBAL_GET(genGlobalName.emptyString)
-      case UndefType  => GLOBAL_GET(genGlobalName.undef)
+      case LongType   => I64Const(0L)
+      case FloatType  => F32Const(0.0f)
+      case DoubleType => F64Const(0.0)
+      case StringType => GlobalGet(genGlobalName.emptyString)
+      case UndefType  => GlobalGet(genGlobalName.undef)
 
       case AnyType | ClassType(_) | ArrayType(_) | NullType =>
-        REF_NULL(Types.HeapType.None)
+        RefNull(Types.HeapType.None)
 
       case NoType | NothingType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
@@ -34,15 +34,15 @@ object SWasmGen {
   def genBoxedZeroOf(tpe: Type)(implicit ctx: WasmContext): Instr = {
     tpe match {
       case BooleanType =>
-        GLOBAL_GET(genGlobalName.bFalse)
+        GlobalGet(genGlobalName.bFalse)
       case CharType =>
-        GLOBAL_GET(genGlobalName.bZeroChar)
+        GlobalGet(genGlobalName.bZeroChar)
       case ByteType | ShortType | IntType | FloatType | DoubleType =>
-        GLOBAL_GET(genGlobalName.bZero)
+        GlobalGet(genGlobalName.bZero)
       case LongType =>
-        GLOBAL_GET(genGlobalName.bZeroLong)
+        GlobalGet(genGlobalName.bZeroLong)
       case AnyType | ClassType(_) | ArrayType(_) | StringType | UndefType | NullType =>
-        REF_NULL(Types.HeapType.None)
+        RefNull(Types.HeapType.None)
 
       case NoType | NothingType | _: RecordType =>
         throw new AssertionError(s"Unexpected type for field: ${tpe.show()}")
@@ -57,7 +57,7 @@ object SWasmGen {
     info.jsNativeLoadSpec match {
       case None =>
         // This is a non-native JS class
-        fb += CALL(genFunctionName.loadJSClass(className))
+        fb += Call(genFunctionName.loadJSClass(className))
 
       case Some(loadSpec) =>
         genLoadJSFromSpec(fb, loadSpec)
@@ -70,17 +70,17 @@ object SWasmGen {
     def genFollowPath(path: List[String]): Unit = {
       for (prop <- path) {
         fb ++= ctx.getConstantStringInstr(prop)
-        fb += CALL(genFunctionName.jsSelect)
+        fb += Call(genFunctionName.jsSelect)
       }
     }
 
     loadSpec match {
       case JSNativeLoadSpec.Global(globalRef, path) =>
         fb ++= ctx.getConstantStringInstr(globalRef)
-        fb += CALL(genFunctionName.jsGlobalRefGet)
+        fb += Call(genFunctionName.jsGlobalRefGet)
         genFollowPath(path)
       case JSNativeLoadSpec.Import(module, path) =>
-        fb += GLOBAL_GET(ctx.getImportedModuleGlobal(module))
+        fb += GlobalGet(ctx.getImportedModuleGlobal(module))
         genFollowPath(path)
       case JSNativeLoadSpec.ImportWithGlobalFallback(importSpec, globalSpec) =>
         genLoadJSFromSpec(fb, importSpec)

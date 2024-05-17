@@ -161,17 +161,17 @@ final class WasmContext {
   }
 
   def getConstantStringInstr(str: String): List[wa.Instr] =
-    getConstantStringDataInstr(str) :+ wa.CALL(genFunctionName.stringLiteral)
+    getConstantStringDataInstr(str) :+ wa.Call(genFunctionName.stringLiteral)
 
-  def getConstantStringDataInstr(str: String): List[wa.I32_CONST] = {
+  def getConstantStringDataInstr(str: String): List[wa.I32Const] = {
     val data = addConstantStringGlobal(str)
     List(
-      wa.I32_CONST(data.offset),
+      wa.I32Const(data.offset),
       // Assuming that the stringLiteral method will instantiate the
       // constant string from the data section using "array.newData $i16Array ..."
       // The length of the array should be equal to the length of the WTF-16 encoded string
-      wa.I32_CONST(str.length()),
-      wa.I32_CONST(data.constantStringIndex)
+      wa.I32Const(str.length()),
+      wa.I32Const(data.constantStringIndex)
     )
   }
 
@@ -194,9 +194,9 @@ final class WasmContext {
     )
   }
 
-  def refFuncWithDeclaration(name: wanme.FunctionName): wa.REF_FUNC = {
+  def refFuncWithDeclaration(name: wanme.FunctionName): wa.RefFunc = {
     addFuncDeclaration(name)
-    wa.REF_FUNC(name)
+    wa.RefFunc(name)
   }
 
   def assignBuckets(classes: List[LinkedClass]): Unit =
