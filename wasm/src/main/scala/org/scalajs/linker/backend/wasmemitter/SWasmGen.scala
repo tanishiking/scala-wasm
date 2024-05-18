@@ -20,8 +20,8 @@ object SWasmGen {
       case LongType   => I64Const(0L)
       case FloatType  => F32Const(0.0f)
       case DoubleType => F64Const(0.0)
-      case StringType => GlobalGet(genGlobalName.emptyString)
-      case UndefType  => GlobalGet(genGlobalName.undef)
+      case StringType => GlobalGet(genGlobalID.emptyString)
+      case UndefType  => GlobalGet(genGlobalID.undef)
 
       case AnyType | ClassType(_) | ArrayType(_) | NullType =>
         RefNull(Types.HeapType.None)
@@ -34,13 +34,13 @@ object SWasmGen {
   def genBoxedZeroOf(tpe: Type)(implicit ctx: WasmContext): Instr = {
     tpe match {
       case BooleanType =>
-        GlobalGet(genGlobalName.bFalse)
+        GlobalGet(genGlobalID.bFalse)
       case CharType =>
-        GlobalGet(genGlobalName.bZeroChar)
+        GlobalGet(genGlobalID.bZeroChar)
       case ByteType | ShortType | IntType | FloatType | DoubleType =>
-        GlobalGet(genGlobalName.bZero)
+        GlobalGet(genGlobalID.bZero)
       case LongType =>
-        GlobalGet(genGlobalName.bZeroLong)
+        GlobalGet(genGlobalID.bZeroLong)
       case AnyType | ClassType(_) | ArrayType(_) | StringType | UndefType | NullType =>
         RefNull(Types.HeapType.None)
 
@@ -57,7 +57,7 @@ object SWasmGen {
     info.jsNativeLoadSpec match {
       case None =>
         // This is a non-native JS class
-        fb += Call(genFunctionName.loadJSClass(className))
+        fb += Call(genFunctionID.loadJSClass(className))
 
       case Some(loadSpec) =>
         genLoadJSFromSpec(fb, loadSpec)
@@ -70,14 +70,14 @@ object SWasmGen {
     def genFollowPath(path: List[String]): Unit = {
       for (prop <- path) {
         fb ++= ctx.getConstantStringInstr(prop)
-        fb += Call(genFunctionName.jsSelect)
+        fb += Call(genFunctionID.jsSelect)
       }
     }
 
     loadSpec match {
       case JSNativeLoadSpec.Global(globalRef, path) =>
         fb ++= ctx.getConstantStringInstr(globalRef)
-        fb += Call(genFunctionName.jsGlobalRefGet)
+        fb += Call(genFunctionID.jsGlobalRefGet)
         genFollowPath(path)
       case JSNativeLoadSpec.Import(module, path) =>
         fb += GlobalGet(ctx.getImportedModuleGlobal(module))

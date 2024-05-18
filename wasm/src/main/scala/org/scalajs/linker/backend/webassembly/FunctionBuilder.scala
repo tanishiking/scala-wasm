@@ -2,16 +2,17 @@ package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
-import org.scalajs.ir.Position
+import org.scalajs.ir.{OriginalName, Position}
 
 import Instructions._
-import Names._
+import Identitities._
 import Modules._
 import Types._
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,
-    val functionName: FunctionName,
+    val functionID: FunctionID,
+    val functionOriginalName: OriginalName,
     functionPos: Position
 ) {
   import FunctionBuilder._
@@ -22,12 +23,12 @@ final class FunctionBuilder(
   private val locals = mutable.ListBuffer.empty[Local]
   private var resultTypes: List[Type] = Nil
 
-  private var specialFunctionType: Option[TypeName] = None
+  private var specialFunctionType: Option[TypeID] = None
 
   /** The instructions buffer. */
   private val instrs: mutable.ListBuffer[Instr] = mutable.ListBuffer.empty
 
-  def setFunctionType(typ: TypeName): Unit =
+  def setFunctionType(typ: TypeID): Unit =
     specialFunctionType = Some(typ)
 
   def setResultTypes(typs: List[Type]): Unit =
@@ -36,27 +37,29 @@ final class FunctionBuilder(
   def setResultType(typ: Type): Unit =
     setResultTypes(typ :: Nil)
 
-  def addParam(name: LocalName, typ: Type): LocalName = {
-    params += Local(name, typ)
-    name
+  def addParam(originalName: OriginalName, typ: Type): LocalID = {
+    val id = new ParamIDImpl(params.size, originalName)
+    params += Local(id, originalName, typ)
+    id
   }
 
-  def addParam(name: String, typ: Type): LocalName =
-    addParam(LocalName(name), typ)
+  def addParam(name: String, typ: Type): LocalID =
+    addParam(OriginalName(name), typ)
 
-  def genLabel(): LabelName = {
-    val label = LabelName(labelIdx.toString())
+  def genLabel(): LabelID = {
+    val label = new LabelIDImpl(labelIdx)
     labelIdx += 1
     label
   }
 
-  def addLocal(name: LocalName, typ: Type): LocalName = {
-    locals += Local(name, typ)
-    name
+  def addLocal(originalName: OriginalName, typ: Type): LocalID = {
+    val id = new LocalIDImpl(locals.size, originalName)
+    locals += Local(id, originalName, typ)
+    id
   }
 
-  def addLocal(name: String, typ: Type): LocalName =
-    addLocal(LocalName(name), typ)
+  def addLocal(name: String, typ: Type): LocalID =
+    addLocal(OriginalName(name), typ)
 
   // Instructions
 
@@ -118,7 +121,7 @@ final class FunctionBuilder(
   def ifThen()(thenp: => Unit): Unit =
     ifThen(BlockType.ValueType())(thenp)
 
-  def block[A](blockType: BlockType)(body: LabelName => A): A = {
+  def block[A](blockType: BlockType)(body: LabelID => A): A = {
     val label = genLabel()
     instrs += Block(blockType, Some(label))
     val result = body(label)
@@ -126,19 +129,19 @@ final class FunctionBuilder(
     result
   }
 
-  def block[A](resultType: Type)(body: LabelName => A): A =
+  def block[A](resultType: Type)(body: LabelID => A): A =
     block(BlockType.ValueType(resultType))(body)
 
-  def block[A]()(body: LabelName => A): A =
+  def block[A]()(body: LabelID => A): A =
     block(BlockType.ValueType())(body)
 
-  def block[A](sig: FunctionType)(body: LabelName => A): A =
+  def block[A](sig: FunctionType)(body: LabelID => A): A =
     block(sigToBlockType(sig))(body)
 
-  def block[A](resultTypes: List[Type])(body: LabelName => A): A =
+  def block[A](resultTypes: List[Type])(body: LabelID => A): A =
     block(FunctionType(Nil, resultTypes))(body)
 
-  def loop[A](blockType: BlockType)(body: LabelName => A): A = {
+  def loop[A](blockType: BlockType)(body: LabelID => A): A = {
     val label = genLabel()
     instrs += Loop(blockType, Some(label))
     val result = body(label)
@@ -146,16 +149,16 @@ final class FunctionBuilder(
     result
   }
 
-  def loop[A](resultType: Type)(body: LabelName => A): A =
+  def loop[A](resultType: Type)(body: LabelID => A): A =
     loop(BlockType.ValueType(resultType))(body)
 
-  def loop[A]()(body: LabelName => A): A =
+  def loop[A]()(body: LabelID => A): A =
     loop(BlockType.ValueType())(body)
 
-  def loop[A](sig: FunctionType)(body: LabelName => A): A =
+  def loop[A](sig: FunctionType)(body: LabelID => A): A =
     loop(sigToBlockType(sig))(body)
 
-  def loop[A](resultTypes: List[Type])(body: LabelName => A): A =
+  def loop[A](resultTypes: List[Type])(body: LabelID => A): A =
     loop(FunctionType(Nil, resultTypes))(body)
 
   def whileLoop()(cond: => Unit)(body: => Unit): Unit = {
@@ -221,7 +224,7 @@ final class FunctionBuilder(
     val numCases = clauses.map(_._1.max).max + 1
     if (numCases >= 128)
       throw new IllegalArgumentException(s"Too many cases for switch: $numCases")
-    val dispatchVector = new Array[LabelName](numCases)
+    val dispatchVector = new Array[LabelID](numCases)
     for {
       (clause, clauseLabel) <- clauses.zip(clauseLabels)
       caseValue <- clause._1
@@ -305,7 +308,8 @@ final class FunctionBuilder(
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
     val func = Function(
-      functionName,
+      functionID,
+      functionOriginalName,
       functionTypeName,
       params.toList,
       resultTypes,
@@ -375,5 +379,21 @@ final class FunctionBuilder(
 }
 
 object FunctionBuilder {
+  private final class ParamIDImpl(index: Int, originalName: OriginalName) extends LocalID {
+    override def toString(): String =
+      if (originalName.isDefined) originalName.get.toString()
+      else s"<param $index>"
+  }
+
+  private final class LocalIDImpl(index: Int, originalName: OriginalName) extends LocalID {
+    override def toString(): String =
+      if (originalName.isDefined) originalName.get.toString()
+      else s"<local $index>"
+  }
+
+  private final class LabelIDImpl(index: Int) extends LabelID {
+    override def toString(): String = s"<label $index>"
+  }
+
   final class InstructionIndex(private[FunctionBuilder] val value: Int) extends AnyVal
 }

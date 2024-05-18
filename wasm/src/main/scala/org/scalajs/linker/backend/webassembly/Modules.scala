@@ -1,9 +1,9 @@
 package org.scalajs.linker.backend.webassembly
 
-import org.scalajs.ir.Position
+import org.scalajs.ir.{OriginalName, Position}
 
 import Instructions._
-import Names._
+import Identitities._
 import Types._
 
 /** WebAssembly modules and their structure.
@@ -20,8 +20,8 @@ object Modules {
   sealed abstract class ExportDesc
 
   object ExportDesc {
-    final case class Func(funcName: FunctionName) extends ExportDesc
-    final case class Global(globalName: GlobalName) extends ExportDesc
+    final case class Func(id: FunctionID, originalName: OriginalName) extends ExportDesc
+    final case class Global(id: GlobalID, originalName: OriginalName) extends ExportDesc
   }
 
   /** A WebAssembly `import`. */
@@ -31,15 +31,20 @@ object Modules {
   sealed abstract class ImportDesc
 
   object ImportDesc {
-    final case class Func(id: FunctionName, typeName: TypeName) extends ImportDesc
-    final case class Global(id: GlobalName, typ: Type, isMutable: Boolean) extends ImportDesc
-    final case class Tag(id: TagName, typeName: TypeName) extends ImportDesc
+    final case class Func(id: FunctionID, originalName: OriginalName, typeName: TypeID)
+        extends ImportDesc
+
+    final case class Global(id: GlobalID, originalName: OriginalName, typ: Type, isMutable: Boolean)
+        extends ImportDesc
+
+    final case class Tag(id: TagID, originalName: OriginalName, typeName: TypeID) extends ImportDesc
   }
 
   /** A WebAssembly `func`, including names for parameters and locals. */
   final case class Function(
-      name: FunctionName,
-      typeName: TypeName,
+      id: FunctionID,
+      originalName: OriginalName,
+      typeName: TypeID,
       params: List[Local],
       results: List[Type],
       locals: List[Local],
@@ -47,11 +52,14 @@ object Modules {
       pos: Position
   )
 
-  final case class Local(name: LocalName, typ: Type)
+  /** The index space for locals is only accessible inside a function and includes the parameters of
+    * that function, which precede the local variables.
+    */
+  final case class Local(id: LocalID, originalName: OriginalName, typ: Type)
 
-  final case class Tag(name: TagName, typ: TypeName)
+  final case class Tag(id: TagID, originalName: OriginalName, typ: TypeID)
 
-  final case class Data(name: DataName, bytes: Array[Byte], mode: Data.Mode)
+  final case class Data(id: DataID, originalName: OriginalName, bytes: Array[Byte], mode: Data.Mode)
 
   object Data {
     sealed abstract class Mode
@@ -61,7 +69,13 @@ object Modules {
     }
   }
 
-  final case class Global(name: GlobalName, typ: Type, init: Expr, isMutable: Boolean)
+  final case class Global(
+      id: GlobalID,
+      originalName: OriginalName,
+      typ: Type,
+      init: Expr,
+      isMutable: Boolean
+  )
 
   final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
 
@@ -85,7 +99,7 @@ object Modules {
       val tags: List[Tag],
       val globals: List[Global],
       val exports: List[Export],
-      val start: Option[FunctionName],
+      val start: Option[FunctionID],
       val elems: List[Element],
       val datas: List[Data]
   )

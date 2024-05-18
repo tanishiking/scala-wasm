@@ -14,6 +14,8 @@ object SpecialNames {
   val CharBoxCtor = MethodName.constructor(List(CharRef))
   val LongBoxCtor = MethodName.constructor(List(LongRef))
 
+  val valueFieldSimpleName = SimpleFieldName("value")
+
   // The constructor of java.lang.Class
   val ClassCtor = MethodName.constructor(List(ClassRef(ObjectClass)))
 

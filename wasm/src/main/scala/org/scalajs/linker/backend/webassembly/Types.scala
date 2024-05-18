@@ -1,6 +1,8 @@
 package org.scalajs.linker.backend.webassembly
 
-import Names._
+import org.scalajs.ir.OriginalName
+
+import Identitities._
 
 /** WebAssembly types.
   *
@@ -41,13 +43,13 @@ object Types {
     def apply(ht: HeapType): RefType = RefType(false, ht)
 
     /** Builds a non-nullable `(ref typ)` for the given `typ`. */
-    def apply(typ: TypeName): RefType = apply(HeapType(typ))
+    def apply(typ: TypeID): RefType = apply(HeapType(typ))
 
     /** Builds a nullable `(ref null ht)` for the given `ht`. */
     def nullable(ht: HeapType): RefType = RefType(true, ht)
 
     /** Builds a nullable `(ref null typ)` for the given `typ`. */
-    def nullable(typ: TypeName): RefType = nullable(HeapType(typ))
+    def nullable(typ: TypeID): RefType = nullable(HeapType(typ))
 
     /** `(ref any)`. */
     val any: RefType = apply(HeapType.Any)
@@ -80,7 +82,7 @@ object Types {
   object HeapType {
 
     /** Reference to a named composite type. */
-    final case class Type(val typ: TypeName) extends HeapType
+    final case class Type(val typ: TypeID) extends HeapType
 
     /** A WebAssembly `absheaptype`. */
     sealed abstract class AbsHeapType(
@@ -101,7 +103,7 @@ object Types {
     case object NoFunc extends AbsHeapType("nofunc", "nullfuncref", 0x73)
     case object NoExn extends AbsHeapType("noexn", "nullexnref", 0x74)
 
-    def apply(typ: TypeName): HeapType.Type =
+    def apply(typ: TypeID): HeapType.Type =
       HeapType.Type(typ)
   }
 
@@ -117,17 +119,18 @@ object Types {
 
   /** A WebAssembly `subtype` with an associated name. */
   final case class SubType(
-      name: TypeName,
+      id: TypeID,
+      originalName: OriginalName,
       isFinal: Boolean,
-      superType: Option[TypeName],
+      superType: Option[TypeID],
       compositeType: CompositeType
   )
 
   object SubType {
 
     /** Builds a `subtype` that is `final` and without any super type. */
-    def apply(name: TypeName, compositeType: CompositeType): SubType =
-      SubType(name, isFinal = true, superType = None, compositeType)
+    def apply(id: TypeID, originalName: OriginalName, compositeType: CompositeType): SubType =
+      SubType(id, originalName, isFinal = true, superType = None, compositeType)
   }
 
   /** A WebAssembly `comptype`. */
@@ -144,7 +147,7 @@ object Types {
   final case class StructType(fields: List[StructField]) extends CompositeType
 
   /** A member of a `StructType`, with a field name and a WebAssembly `fieldtype`. */
-  final case class StructField(name: FieldName, fieldType: FieldType)
+  final case class StructField(id: FieldID, originalName: OriginalName, fieldType: FieldType)
 
   /** A WebAssembly `arraytype`. */
   final case class ArrayType(fieldType: FieldType) extends CompositeType
@@ -153,7 +156,13 @@ object Types {
   final case class FieldType(typ: StorageType, isMutable: Boolean)
 
   object StructField {
-    def apply(name: FieldName, typ: StorageType, isMutable: Boolean): StructField =
-      StructField(name, FieldType(typ, isMutable))
+    def apply(
+        id: FieldID,
+        originalName: OriginalName,
+        typ: StorageType,
+        isMutable: Boolean
+    ): StructField = {
+      StructField(id, originalName, FieldType(typ, isMutable))
+    }
   }
 }

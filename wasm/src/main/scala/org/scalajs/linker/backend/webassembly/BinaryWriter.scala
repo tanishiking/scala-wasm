@@ -2,53 +2,60 @@ package org.scalajs.linker.backend.webassembly
 
 import scala.annotation.tailrec
 
-import org.scalajs.ir.Position
+import org.scalajs.ir.{Position, UTF8String}
 import org.scalajs.linker.backend.javascript.SourceMapWriter
 
 import Instructions._
-import Names._
+import Identitities._
 import Modules._
 import Types._
 
 class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   import BinaryWriter._
 
-  private val typeIdxValues: Map[TypeName, Int] =
-    module.types.flatMap(_.subTypes).map(_.name).zipWithIndex.toMap
+  private val typeIdxValues: Map[TypeID, Int] =
+    module.types.flatMap(_.subTypes).map(_.id).zipWithIndex.toMap
 
-  private val dataIdxValues: Map[DataName, Int] =
-    module.datas.map(_.name).zipWithIndex.toMap
+  private val dataIdxValues: Map[DataID, Int] =
+    module.datas.map(_.id).zipWithIndex.toMap
 
-  private val allFunctionNames: List[FunctionName] = {
-    val importedFunctionNames = module.imports.collect {
-      case Import(_, _, ImportDesc.Func(id, _)) => id
+  private val funcIdxValues: Map[FunctionID, Int] = {
+    val importedFunctionIDs = module.imports.collect {
+      case Import(_, _, ImportDesc.Func(id, _, _)) => id
     }
-    importedFunctionNames ::: module.funcs.map(_.name)
+    val allIDs = importedFunctionIDs ::: module.funcs.map(_.id)
+    allIDs.zipWithIndex.toMap
   }
 
-  private val funcIdxValues: Map[FunctionName, Int] =
-    allFunctionNames.zipWithIndex.toMap
-
-  private val tagIdxValues: Map[TagName, Int] = {
-    val importedTagNames = module.imports.collect { case Import(_, _, ImportDesc.Tag(id, _)) =>
+  private val tagIdxValues: Map[TagID, Int] = {
+    val importedTagIDs = module.imports.collect { case Import(_, _, ImportDesc.Tag(id, _, _)) =>
       id
     }
-    val allNames = importedTagNames ::: module.tags.map(_.name)
-    allNames.zipWithIndex.toMap
+    val allIDs = importedTagIDs ::: module.tags.map(_.id)
+    allIDs.zipWithIndex.toMap
   }
 
-  private val globalIdxValues: Map[GlobalName, Int] = {
-    val importedGlobalNames = module.imports.collect {
-      case Import(_, _, ImportDesc.Global(id, _, _)) => id
+  private val globalIdxValues: Map[GlobalID, Int] = {
+    val importedGlobalIDs = module.imports.collect {
+      case Import(_, _, ImportDesc.Global(id, _, _, _)) => id
     }
-    val allNames = importedGlobalNames ::: module.globals.map(_.name)
-    allNames.zipWithIndex.toMap
+    val allIDs = importedGlobalIDs ::: module.globals.map(_.id)
+    allIDs.zipWithIndex.toMap
   }
 
-  private var localIdxValues: Option[Map[LocalName, Int]] = None
-  private var labelsInScope: List[Option[LabelName]] = Nil
+  private val fieldIdxValues: Map[TypeID, Map[FieldID, Int]] = {
+    (for {
+      recType <- module.types
+      SubType(typeID, _, _, _, StructType(fields)) <- recType.subTypes
+    } yield {
+      typeID -> fields.map(_.id).zipWithIndex.toMap
+    }).toMap
+  }
 
-  private def withLocalIdxValues(values: Map[LocalName, Int])(f: => Unit): Unit = {
+  private var localIdxValues: Option[Map[LocalID, Int]] = None
+  private var labelsInScope: List[Option[LabelID]] = Nil
+
+  private def withLocalIdxValues(values: Map[LocalID, Int])(f: => Unit): Unit = {
     val saved = localIdxValues
     localIdxValues = Some(values)
     try f
@@ -125,7 +132,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeSubType(buf: Buffer, subType: SubType): Unit = {
     subType match {
-      case SubType(_, true, None, compositeType) =>
+      case SubType(_, _, true, None, compositeType) =>
         writeCompositeType(buf, compositeType)
       case _ =>
         buf.byte(if (subType.isFinal) 0x4F else 0x50)
@@ -160,14 +167,14 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
       buf.name(imprt.name)
 
       imprt.desc match {
-        case ImportDesc.Func(id, typeName) =>
+        case ImportDesc.Func(_, _, typeName) =>
           buf.byte(0x00) // func
           writeTypeIdx(buf, typeName)
-        case ImportDesc.Global(id, typ, isMutable) =>
+        case ImportDesc.Global(_, _, typ, isMutable) =>
           buf.byte(0x03) // global
           writeType(buf, typ)
           buf.boolean(isMutable)
-        case ImportDesc.Tag(id, typeName) =>
+        case ImportDesc.Tag(_, _, typeName) =>
           buf.byte(0x04) // tag
           buf.byte(0x00) // exception kind (that is the only valid kind for now)
           writeTypeIdx(buf, typeName)
@@ -200,12 +207,12 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
     buf.vec(module.exports) { exp =>
       buf.name(exp.name)
       exp.desc match {
-        case ExportDesc.Func(funcName) =>
+        case ExportDesc.Func(id, _) =>
           buf.byte(0x00)
-          writeFuncIdx(buf, funcName)
-        case ExportDesc.Global(globalName) =>
+          writeFuncIdx(buf, id)
+        case ExportDesc.Global(id, _) =>
           buf.byte(0x03)
-          writeGlobalIdx(buf, globalName)
+          writeGlobalIdx(buf, id)
       }
     }
   }
@@ -250,11 +257,19 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   private def writeNameCustomSection(buf: Buffer): Unit = {
     // Currently, we only emit the function names
 
+    val importFunctionNames = module.imports.collect {
+      case Import(_, _, ImportDesc.Func(id, origName, _)) if origName.isDefined =>
+        id -> origName
+    }
+    val definedFunctionNames =
+      module.funcs.filter(_.originalName.isDefined).map(f => f.id -> f.originalName)
+    val allFunctionNames = importFunctionNames ::: definedFunctionNames
+
     buf.byte(0x01) // function names
     buf.byteLengthSubSection { buf =>
-      buf.vec(allFunctionNames.zipWithIndex) { elem =>
-        buf.u32(elem._2)
-        buf.name(elem._1.name)
+      buf.vec(allFunctionNames) { elem =>
+        writeFuncIdx(buf, elem._1)
+        buf.name(elem._2.get)
       }
     }
   }
@@ -267,7 +282,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
       writeType(buf, local.typ)
     }
 
-    withLocalIdxValues((func.params ::: func.locals).map(_.name).zipWithIndex.toMap) {
+    withLocalIdxValues((func.params ::: func.locals).map(_.id).zipWithIndex.toMap) {
       writeExpr(buf, func.body)
     }
 
@@ -298,32 +313,35 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   private def writeResultType(buf: Buffer, resultType: List[Type]): Unit =
     buf.vec(resultType)(writeType(buf, _))
 
-  private def writeTypeIdx(buf: Buffer, typeName: TypeName): Unit =
+  private def writeTypeIdx(buf: Buffer, typeName: TypeID): Unit =
     buf.u32(typeIdxValues(typeName))
 
-  private def writeDataIdx(buf: Buffer, dataName: DataName): Unit =
+  private def writeFieldIdx(buf: Buffer, typeID: TypeID, fieldID: FieldID): Unit =
+    buf.u32(fieldIdxValues(typeID)(fieldID))
+
+  private def writeDataIdx(buf: Buffer, dataName: DataID): Unit =
     buf.u32(dataIdxValues(dataName))
 
-  private def writeTypeIdxs33(buf: Buffer, typeName: TypeName): Unit =
+  private def writeTypeIdxs33(buf: Buffer, typeName: TypeID): Unit =
     buf.s33OfUInt(typeIdxValues(typeName))
 
-  private def writeFuncIdx(buf: Buffer, funcName: FunctionName): Unit =
+  private def writeFuncIdx(buf: Buffer, funcName: FunctionID): Unit =
     buf.u32(funcIdxValues(funcName))
 
-  private def writeTagIdx(buf: Buffer, tagName: TagName): Unit =
+  private def writeTagIdx(buf: Buffer, tagName: TagID): Unit =
     buf.u32(tagIdxValues(tagName))
 
-  private def writeGlobalIdx(buf: Buffer, globalName: GlobalName): Unit =
+  private def writeGlobalIdx(buf: Buffer, globalName: GlobalID): Unit =
     buf.u32(globalIdxValues(globalName))
 
-  private def writeLocalIdx(buf: Buffer, localName: LocalName): Unit = {
+  private def writeLocalIdx(buf: Buffer, localName: LocalID): Unit = {
     localIdxValues match {
       case Some(values) => buf.u32(values(localName))
       case None         => throw new IllegalStateException(s"Local name table is not available")
     }
   }
 
-  private def writeLabelIdx(buf: Buffer, labelIdx: LabelName): Unit = {
+  private def writeLabelIdx(buf: Buffer, labelIdx: LabelID): Unit = {
     val relativeNumber = labelsInScope.indexOf(Some(labelIdx))
     if (relativeNumber < 0)
       throw new IllegalStateException(s"Cannot find $labelIdx in scope")
@@ -370,7 +388,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeInstrImmediates(buf: Buffer, instr: Instr): Unit = {
     def writeBrOnCast(
-        labelIdx: LabelName,
+        labelIdx: LabelID,
         from: RefType,
         to: RefType
     ): Unit = {
@@ -406,7 +424,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
         writeHeapType(buf, instr.refTypeArgument.heapType)
       case instr: StructFieldInstr =>
         writeTypeIdx(buf, instr.structTypeName)
-        buf.u32(instr.fieldIdx.value)
+        writeFieldIdx(buf, instr.structTypeName, instr.fieldIdx)
 
       // Specific instructions with unique-ish shapes
 
@@ -550,8 +568,10 @@ object BinaryWriter {
     def opt[A](elemOpt: Option[A])(op: A => Unit): Unit =
       vec(elemOpt.toList)(op)
 
-    def name(s: String): Unit = {
-      val utf8 = org.scalajs.ir.UTF8String(s)
+    def name(s: String): Unit =
+      name(UTF8String(s))
+
+    def name(utf8: UTF8String): Unit = {
       val len = utf8.length
       u32(len)
       var i = 0
