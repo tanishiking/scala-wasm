@@ -2,6 +2,7 @@ package sample
 
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
+import _root_.scala.scalajs.wasm.io
 
 object Main {
   @JSExportTopLevel("field")
@@ -9,14 +10,17 @@ object Main {
 
   @JSExportTopLevel("test")
   def test(i: Int): Boolean = {
-    println("Hello")
-    exportedField = 53
-    println(exportedField)
     true
   }
 
   def main(args: Array[String]): Unit = {
-    println("hello world")
+    scala.scalajs.wasm.memory.withAllocator { allocator =>
+      val segment = allocator.allocate(4)
+      segment.setInt(0, 100)
+      val result = segment.getInt(0)
+      println(result)
+    }
+    io.printImpl("Hello from WASI!", newLine = true)
   }
 
   // Tested in SampleTest.scala

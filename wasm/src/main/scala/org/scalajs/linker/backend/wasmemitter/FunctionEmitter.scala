@@ -18,6 +18,7 @@ import org.scalajs.linker.backend.webassembly.Modules.{FunctionType => Sig}
 import EmbeddedConstants._
 import SWasmGen._
 import VarGen._
+import _root_.org.scalajs.linker.backend.webassembly.Names.FunctionName
 
 object FunctionEmitter {
 
@@ -36,6 +37,29 @@ object FunctionEmitter {
     * implementation for `try` would be a nightmare, given how complex it is already.
     */
   private final val UseLegacyExceptionsForTryCatch = true
+
+  def emitIntrinsicFunction(
+      functionName: wanme.FunctionName,
+      enclosingClassName: Option[ClassName],
+      receiverTyp: Option[watpe.Type],
+      paramDefs: List[ParamDef],
+      restParam: Option[ParamDef],
+      body: SWasmTrees.SWasmTree,
+      resultType: Type
+  )(implicit ctx: WasmContext, pos: Position): Unit = {
+    val emitter = prepareEmitter(
+      functionName,
+      enclosingClassName,
+      captureParamDefs = None,
+      preSuperVarDefs = None,
+      hasNewTarget = false,
+      receiverTyp,
+      paramDefs,
+      TypeTransformer.transformResultType(resultType)
+    )
+    emitter.genSWasmTreeAuto(body)
+    emitter.fb.buildAndAddToModule()
+  }
 
   def emitFunction(
       functionName: wanme.FunctionName,
@@ -246,6 +270,36 @@ object FunctionEmitter {
   }
 
   private type Env = Map[LocalName, VarStorage]
+
+  object SWasmTrees {
+    abstract sealed class SWasmTree {
+      val tpe: Type
+    }
+
+    sealed case class Alloc(size: Tree) extends SWasmTree {
+      val tpe: Type = ClassType(SpecialNames.WasmMemorySegmentClass)
+    }
+    sealed case class Free() extends SWasmTree {
+      val tpe: Type = NoType
+    }
+
+    sealed case class Load(size: LoadStore.Size, offset: Tree, val tpe: Type) extends SWasmTree
+    sealed case class Store(size: LoadStore.Size, offset: Tree, value: Tree) extends SWasmTree {
+      val tpe: Type = NoType
+    }
+
+    sealed case class WasmFunctionCall(functionName: FunctionName, args: List[Tree], val tpe: Type)
+        extends SWasmTree
+
+    object LoadStore {
+      abstract sealed class Size
+      final case object I8 extends Size
+      final case object I16 extends Size
+      final case object I32 extends Size
+      final case object I64 extends Size
+    }
+
+  }
 }
 
 private class FunctionEmitter private (
@@ -3355,5 +3409,65 @@ private class FunctionEmitter private (
 
       NothingType
     }
+  }
+
+  import FunctionEmitter.SWasmTrees._
+  def genSWasmTreeAuto(tree: SWasmTree): Type = {
+    tree match {
+      case t: Alloc            => genAlloc(t)
+      case _: Free             => genFree()
+      case t: Load             => genLoad(t)
+      case t: Store            => genStore(t)
+      case t: WasmFunctionCall => genWasmFunctionCall(t)
+    }
+  }
+
+  private def genAlloc(alloc: Alloc): Type = {
+    genTreeAuto(alloc.size)
+    instrs += wa.Call(genFunctionName.allocate)
+    NoType
+  }
+
+  private def genFree(): Type = {
+    instrs += wa.I32Const(0)
+    instrs += wa.GlobalSet(genGlobalName.currentAddress)
+    NoType
+  }
+
+  private def genLoad(load: Load): Type = {
+    genTreeAuto(load.offset)
+    load.size match {
+      case LoadStore.I8 =>
+        instrs += wa.I32Load8S(wa.MemoryArg())
+      case LoadStore.I16 =>
+        instrs += wa.I32Load16S(wa.MemoryArg())
+      case LoadStore.I32 =>
+        instrs += wa.I32Load(wa.MemoryArg())
+      case LoadStore.I64 =>
+        instrs += wa.I64Load(wa.MemoryArg())
+    }
+    load.tpe
+  }
+
+  private def genStore(store: Store): Type = {
+    genTreeAuto(store.offset)
+    genTreeAuto(store.value)
+    store.size match {
+      case LoadStore.I8 =>
+        instrs += wa.I32Store8(wa.MemoryArg())
+      case LoadStore.I16 =>
+        instrs += wa.I32Store16(wa.MemoryArg())
+      case LoadStore.I32 =>
+        instrs += wa.I32Store(wa.MemoryArg())
+      case LoadStore.I64 =>
+        instrs += wa.I64Store(wa.MemoryArg())
+    }
+    NoType
+  }
+
+  private def genWasmFunctionCall(t: WasmFunctionCall): Type = {
+    for (a <- t.args) genTreeAuto(a)
+    instrs += wa.Call(t.functionName)
+    t.tpe
   }
 }

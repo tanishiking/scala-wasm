@@ -29,4 +29,6 @@ object Names {
 
   final case class ExportName(name: String) extends Name
 
+  final case class MemoryName(name: String) extends Name
+
 }

@@ -21,6 +21,7 @@ import SWasmGen._
 import VarGen._
 import TypeTransformer._
 import WasmContext._
+import org.scalajs.linker.backend.wasmemitter.FunctionEmitter.SWasmTrees
 
 class ClassEmitter(coreSpec: CoreSpec) {
   def genClassDef(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
@@ -1071,17 +1072,78 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val body = method.body.getOrElse(throw new Exception("abstract method cannot be transformed"))
 
-    // Emit the function
-    FunctionEmitter.emitFunction(
-      functionName,
-      Some(className),
-      captureParamDefs = None,
-      receiverTyp,
-      method.args,
-      restParam = None,
-      body,
-      method.resultType
-    )
+    val maybeIntrinsic: Option[SWasmTrees.SWasmTree] = className match {
+      case SpecialNames.WasmMemorySegmentClass =>
+        if (SpecialNames.loadMethodNames.contains(methodName)) {
+          val size = methodName match {
+            case SpecialNames.loadByteMethodName => SWasmTrees.LoadStore.I8
+            case SpecialNames.loadIntMethodName  => SWasmTrees.LoadStore.I32
+            case _                               => ???
+          }
+          Some(
+            SWasmTrees.Load(
+              size,
+              VarRef(method.args.head.name)(method.args.head.ptpe),
+              IntType
+            )
+          )
+        } else if (SpecialNames.storeMethodNames.contains(methodName)) {
+          val size = methodName match {
+            case SpecialNames.storeByteMethodName => SWasmTrees.LoadStore.I8
+            case SpecialNames.storeIntMethodName  => SWasmTrees.LoadStore.I32
+            case _                                => ???
+          }
+          Some(
+            SWasmTrees.Store(
+              size,
+              VarRef(method.args(0).name)(method.args(0).ptpe),
+              VarRef(method.args(1).name)(method.args(1).ptpe)
+            )
+          )
+        } else None
+
+      case SpecialNames.WasmMemoryAllocatorClass =>
+        if (methodName == SpecialNames.allocateMethodName)
+          Some(SWasmTrees.Alloc(VarRef(method.args.head.name)(method.args.head.ptpe)))
+        else if (methodName == SpecialNames.freeMethodName)
+          Some(SWasmTrees.Free())
+        else None
+      case SpecialNames.WASI if methodName == SpecialNames.wasiFdWrite =>
+        Some(
+          SWasmTrees.WasmFunctionCall(
+            genFunctionName.wasi.fdWrite,
+            method.args.map(a => VarRef(a.name)(a.ptpe)),
+            method.resultType
+          )
+        )
+      case _ => None
+    }
+    // maybeIntrinsic.foreach(println)
+
+    maybeIntrinsic match {
+      case None =>
+        // Emit the function
+        FunctionEmitter.emitFunction(
+          functionName,
+          Some(className),
+          captureParamDefs = None,
+          receiverTyp,
+          method.args,
+          restParam = None,
+          body,
+          method.resultType
+        )
+      case Some(value) =>
+        FunctionEmitter.emitIntrinsicFunction(
+          functionName,
+          Some(className),
+          receiverTyp,
+          method.args,
+          restParam = None,
+          value,
+          method.resultType
+        )
+    }
 
     if (namespace == MemberNamespace.Public && !isHijackedClass) {
       /* Also generate the bridge that is stored in the table entries. In table

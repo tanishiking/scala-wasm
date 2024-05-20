@@ -21,6 +21,7 @@ class TextWriter {
         module.imports.foreach(writeImport)
         module.funcs.foreach(writeFunction)
         module.tags.foreach(writeTag)
+        module.memories.foreach(writeMemory)
         module.globals.foreach(writeGlobal)
         module.exports.foreach(writeExport)
         module.start.foreach(writeStart)
@@ -204,6 +205,16 @@ class TextWriter {
     )
   }
 
+  private def writeMemory(mem: Memory)(implicit b: WatBuilder) = {
+    b.newLineList(
+      "memory", {
+        b.appendName(mem.name)
+        b.appendElement(mem.limits.min.toString)
+        mem.limits.max.foreach(max => b.appendElement(max.toString))
+      }
+    )
+  }
+
   private def writeGlobal(g: Global)(implicit b: WatBuilder) =
     b.newLineList(
       "global", {
@@ -225,6 +236,11 @@ class TextWriter {
           b.sameLineList(
             "func",
             { b.appendName(funcName) }
+          )
+        case Export.Memory(_, memName) =>
+          b.sameLineList(
+            "memory",
+            { b.appendName(memName) }
           )
         case Export.Global(_, globalName) =>
           b.sameLineList(
@@ -380,6 +396,13 @@ class TextWriter {
       case instr: StructFieldInstr =>
         b.appendName(instr.structTypeName)
         b.appendElement(instr.fieldIdx.value.toString())
+      case instr: MemoryInstr =>
+        b.appendName(instr.memoryName)
+
+      // https://www.w3.org/TR/wasm-core-2/#memory-instructions%E2%91%A8
+      case instr: LoadAndStoreInstr =>
+        if (instr.memoryArg.align != 0) b.appendElement(s"align=${instr.memoryArg.offset}")
+        if (instr.memoryArg.offset != 0) b.appendElement(s"offset=${instr.memoryArg.offset}")
 
       // Specific instructions with unique-ish shapes
 

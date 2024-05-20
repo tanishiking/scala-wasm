@@ -73,6 +73,7 @@ object CoreWasmLib {
 
     genHelperImports()
     genHelperDefinitions()
+    genWASIImports()
   }
 
   /** Generates definitions that must come *after* the code generated for regular classes.
@@ -343,6 +344,8 @@ object CoreWasmLib {
 
     addHelperImport(genFunctionName.isUndef, List(anyref), List(Int32))
 
+    addHelperImport(genFunctionName.print, List(anyref), Nil)
+
     for (primRef <- List(BooleanRef, ByteRef, ShortRef, IntRef, FloatRef, DoubleRef)) {
       val wasmType = primRef match {
         case FloatRef  => Float32
@@ -514,6 +517,26 @@ object CoreWasmLib {
     )
   }
 
+  private def genWASIImports()(implicit ctx: WasmContext): Unit = {
+    def addWASIImport(
+        name: FunctionName,
+        params: List[Type],
+        results: List[Type]
+    ): Unit = {
+      val sig = FunctionType(params, results)
+      val typeName = ctx.moduleBuilder.functionTypeToTypeName(sig)
+      ctx.moduleBuilder.addImport(
+        Import("wasi_snapshot_preview1", name.name, ImportDesc.Func(name, typeName))
+      )
+    }
+
+    addWASIImport(
+      genFunctionName.wasi.fdWrite,
+      List(Int32, Int32, Int32, Int32),
+      List(Int32)
+    )
+  }
+
   /** Generates all the non-type definitions of the core Wasm lib. */
   private def genHelperDefinitions()(implicit ctx: WasmContext): Unit = {
     genStringLiteral()
@@ -533,6 +556,17 @@ object CoreWasmLib {
     genIdentityHashCode()
     genSearchReflectiveProxy()
     genArrayCloneFunctions()
+
+    // memory
+    ctx.addGlobal(
+      Global(
+        genGlobalName.currentAddress,
+        Int32,
+        Expr(List(I32Const(0))),
+        isMutable = true
+      )
+    )
+    genAllocate()
   }
 
   private def newFunctionBuilder(functionName: FunctionName)(implicit
@@ -2166,4 +2200,106 @@ object CoreWasmLib {
     fb.buildAndAddToModule()
   }
 
+  private def genAllocate()(implicit ctx: WasmContext): Unit = {
+    val fb = newFunctionBuilder(genFunctionName.allocate)
+    val sizeParam = fb.addParam("size", Int32) // size in byte
+    fb.setResultType(RefType(genTypeName.WasmMemorySegment))
+
+    val WASM_PAGE_SIZE_IN_BYTES = 65536 // 64 KiB
+    val instrs = fb
+
+    // i32 can represent up to 2Gib
+    // While Wasm linear memory can represent up to 4Gib (and more in future)
+    val currentMemorySizeInByte = fb.addLocal("currentMemorySizeInByte", Int32)
+    val oldCurrentAddress = fb.addLocal("oldCurrentAddress", Int32)
+    val newCurrentAddress = fb.addLocal("newCurrentAddress", Int32)
+    val instanceLocal = fb.addLocal("instanceLocal", RefType(genTypeName.WasmMemorySegment))
+
+    val memorySegmentClassInfo = ctx.getClassInfo(SpecialNames.WasmMemorySegmentClass)
+
+    instrs += GlobalGet(genGlobalName.currentAddress)
+    instrs += LocalTee(oldCurrentAddress)
+    instrs += LocalGet(sizeParam)
+    instrs += I32Add
+    instrs += LocalTee(newCurrentAddress)
+
+    instrs += MemorySize(genMemoryName.mem)
+    instrs += I32Const(WASM_PAGE_SIZE_IN_BYTES)
+    instrs += I32Mul
+    instrs += LocalTee(currentMemorySizeInByte)
+
+    instrs += I32GeU
+    fb.ifThen() { // if (currentAddress + size >= currentMemorySize) then grow memory
+
+      // number of pages to grow
+      // (newCurrentAddress - currentMemorySizeInByte) / WASM_PAGE_SIZE_IN_BYTES + 1
+      instrs += LocalGet(newCurrentAddress)
+      instrs += LocalGet(currentMemorySizeInByte)
+      instrs += I32Sub
+
+      instrs += I32Const(WASM_PAGE_SIZE_IN_BYTES)
+      instrs += I32DivU
+
+      instrs += I32Const(1)
+      instrs += I32Add
+
+      instrs += MemoryGrow(genMemoryName.mem)
+      instrs += I32Const(-1)
+      instrs += I32Eq
+      fb.ifThen() {
+        instrs ++= ctx.getConstantStringInstr("TypeError")
+        instrs += Call(genFunctionName.jsGlobalRefGet)
+        instrs += Call(genFunctionName.jsNewArray)
+        instrs ++= ctx.getConstantStringInstr(
+          "Cannot allocate memory: requested size is larger than the maximum size of WebAssembly linear memory, memory.grow returned -1"
+        )
+        instrs += Call(genFunctionName.jsArrayPush)
+        instrs += Call(genFunctionName.jsNew)
+        instrs += ExternConvertAny
+        instrs += Throw(genTagName.exceptionTagName)
+      }
+    }
+
+    // validate (newCurrentAddress < currentMemorySizeInByte)
+    instrs += LocalGet(newCurrentAddress)
+    // new memory size
+    instrs += MemorySize(genMemoryName.mem)
+    instrs += I32Const(WASM_PAGE_SIZE_IN_BYTES)
+    instrs += I32Mul
+    instrs += I32GeU
+    fb.ifThen() {
+      instrs ++= ctx.getConstantStringInstr("TypeError")
+      instrs += Call(genFunctionName.jsGlobalRefGet)
+      instrs += Call(genFunctionName.jsNewArray)
+      instrs ++= ctx.getConstantStringInstr(
+        "Cannot allocate memory: requested size is larger than the maximum size of WebAssembly linear memory, memory.grow returned -1"
+      )
+      instrs += Call(genFunctionName.jsArrayPush)
+      instrs += Call(genFunctionName.jsNew)
+      instrs += ExternConvertAny
+      instrs += Throw(genTagName.exceptionTagName)
+    }
+
+    instrs += LocalGet(newCurrentAddress)
+    instrs += GlobalSet(genGlobalName.currentAddress)
+
+    // create MemorySegment instance
+    instrs += Call(genFunctionName.newDefault(SpecialNames.WasmMemorySegmentClass))
+    instrs += LocalTee(instanceLocal)
+    instrs += LocalGet(oldCurrentAddress)
+    instrs += StructSet(
+      genTypeName.WasmMemorySegment,
+      memorySegmentClassInfo.getFieldIdx(SpecialNames.WasmMemorySegmentStartAddressField)
+    )
+
+    instrs += LocalGet(instanceLocal)
+    instrs += LocalGet(sizeParam)
+    instrs += StructSet(
+      genTypeName.WasmMemorySegment,
+      memorySegmentClassInfo.getFieldIdx(SpecialNames.WasmMemorySegmentSizeField)
+    )
+
+    instrs += LocalGet(instanceLocal)
+    fb.buildAndAddToModule()
+  }
 }
