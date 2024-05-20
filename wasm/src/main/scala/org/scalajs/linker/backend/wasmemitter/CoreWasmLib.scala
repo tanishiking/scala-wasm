@@ -388,7 +388,6 @@ object CoreWasmLib {
       }
       addHelperImport(genFunctionID.box(primRef), List(wasmType), List(anyref))
       addHelperImport(genFunctionID.unbox(primRef), List(anyref), List(wasmType))
-      addHelperImport(genFunctionID.unboxOrNull(primRef), List(anyref), List(anyref))
       addHelperImport(genFunctionID.typeTest(primRef), List(anyref), List(Int32))
     }
 
