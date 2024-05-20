@@ -2282,25 +2282,15 @@ private class FunctionEmitter private (
   private def genLoadJSModule(tree: LoadJSModule): Type = {
     markPosition(tree)
 
-    val info = ctx.getClassInfo(tree.className)
-
-    info.kind match {
-      case ClassKind.NativeJSModuleClass =>
-        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
-        }
-        genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
-        AnyType
-
-      case ClassKind.JSModuleClass =>
+    ctx.getClassInfo(tree.className).jsNativeLoadSpec match {
+      case Some(loadSpec) =>
+        genLoadJSFromSpec(instrs, loadSpec)(ctx)
+      case None =>
+        // This is a non-native JS module
         instrs += wa.Call(genFunctionID.loadModule(tree.className))
-        AnyType
-
-      case _ =>
-        throw new AssertionError(
-          s"Invalid LoadJSModule for class ${tree.className.nameString} of kind ${info.kind}"
-        )
     }
+
+    AnyType
   }
 
   private def genSelectJSNativeMember(tree: SelectJSNativeMember): Type = {
