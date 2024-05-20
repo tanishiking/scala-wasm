@@ -74,6 +74,7 @@ const scalaJSHelpers = {
   // undefined
   undef: void 0,
   isUndef: (x) => x === (void 0),
+  print: (x) => console.log(x),
 
   // Zero boxes
   bFalse: false,
@@ -308,12 +309,13 @@ const scalaJSHelpers = {
   },
 }
 
-export async function load(wasmFileURL, importedModules, exportSetters) {
+export async function load(wasmFileURL, importedModules, exportSetters, wasi) {
   const myScalaJSHelpers = { ...scalaJSHelpers, idHashCodeMap: new WeakMap() };
   const importsObj = {
     "__scalaJSHelpers": myScalaJSHelpers,
     "__scalaJSImports": importedModules,
     "__scalaJSExportSetters": exportSetters,
+    "wasi_snapshot_preview1": wasi.wasiImport,
   };
   const resolvedURL = new URL(wasmFileURL, import.meta.url);
   var wasmModulePromise;
@@ -327,7 +329,8 @@ export async function load(wasmFileURL, importedModules, exportSetters) {
   } else {
     wasmModulePromise = WebAssembly.instantiateStreaming(fetch(resolvedURL), importsObj);
   }
-  await wasmModulePromise;
+  const instance = (await wasmModulePromise).instance;
+  wasi.start(instance);
 }
     """
   }

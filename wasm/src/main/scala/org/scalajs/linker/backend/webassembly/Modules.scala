@@ -21,6 +21,7 @@ object Modules {
   object Export {
     final case class Function(exportName: String, funcName: FunctionName) extends Export
     final case class Global(exportName: String, globalName: GlobalName) extends Export
+    final case class Memory(exportName: String, memoryName: MemoryName) extends Export
   }
 
   final case class Import(module: String, name: String, desc: ImportDesc)
@@ -55,6 +56,11 @@ object Modules {
   )
 
   final case class Tag(val name: TagName, val typ: TypeName)
+
+  final case class Memory(val name: MemoryName, val limits: Memory.Limits)
+  object Memory {
+    final case class Limits(min: Int, max: Option[Int])
+  }
 
   final case class Data(val name: DataName, val bytes: Array[Byte], mode: Data.Mode)
 
@@ -141,6 +147,7 @@ object Modules {
       val exports: List[Export],
       val start: Option[FunctionName],
       val elems: List[Element],
-      val datas: List[Data]
+      val datas: List[Data],
+      val memories: List[Memory]
   )
 }

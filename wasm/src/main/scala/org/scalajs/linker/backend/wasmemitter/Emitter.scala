@@ -107,6 +107,17 @@ final class Emitter(config: Emitter.Config) {
       )
     )
 
+    // memory
+    ctx.moduleBuilder.addMemory(
+      wamod.Memory(genMemoryName.mem, wamod.Memory.Limits(1, None))
+    )
+    // > all modules accessing WASI APIs also export a linear memory with the name `memory`.
+    // > Data pointers in WASI API calls are relative to this memory's index space.
+    // https://github.com/WebAssembly/WASI/blob/main/legacy/application-abi.md
+    ctx.moduleBuilder.addExport(wamod.Export.Memory("memory", genMemoryName.mem))
+
+    ctx.moduleBuilder.addExport(wamod.Export.Function("_start", genFunctionName.start))
+
     genStartFunction(moduleInitializers, classesWithStaticInit, topLevelExportDefs)
     genDeclarativeElements()
   }
@@ -247,7 +258,7 @@ final class Emitter(config: Emitter.Config) {
     // Finish the start function
 
     fb.buildAndAddToModule()
-    ctx.moduleBuilder.setStart(genFunctionName.start)
+    // ctx.moduleBuilder.setStart(genFunctionName.start)
   }
 
   private def genDeclarativeElements()(implicit ctx: WasmContext): Unit = {
@@ -301,6 +312,12 @@ final class Emitter(config: Emitter.Config) {
       |${moduleImports.mkString("\n")}
       |
       |import { load as __load } from './${config.loaderModuleName}';
+      |import { WASI } from 'wasi';
+      |
+      |const wasi = new WASI({
+      |  version: 'preview1',
+      |  preopens: {},
+      |});
       |
       |${exportDecls.mkString("\n")}
       |
@@ -308,7 +325,7 @@ final class Emitter(config: Emitter.Config) {
       |${importedModulesItems.mkString("\n")}
       |}, {
       |${exportSetters.mkString("\n")}
-      |});
+      |}, wasi);
     """.stripMargin.trim() + "\n"
   }
 }
@@ -349,7 +366,9 @@ object Emitter {
 
       // See genIdentityHashCode in HelperFunctions
       factory.callMethodStatically(BoxedDoubleClass, hashCodeMethodName),
-      factory.callMethodStatically(BoxedStringClass, hashCodeMethodName)
+      factory.callMethodStatically(BoxedStringClass, hashCodeMethodName),
+      factory.instantiateClass(WasmMemorySegmentClass, WasmMemorySegmentCtor),
+      factory.instantiateClass(WasmMemoryAllocatorClass, WasmMemoryAllocatorCtor)
     )
   }
 

@@ -65,6 +65,9 @@ object VarGen {
 
     val idHashCodeMap: GlobalName =
       GlobalName("idHashCodeMap")
+
+    val currentAddress: GlobalName =
+      GlobalName("currentAddress")
   }
 
   object genFunctionName {
@@ -140,6 +143,8 @@ object VarGen {
     val is = make("is")
 
     val isUndef = make("isUndef")
+
+    val print = make("print")
 
     def box(primRef: PrimRef): FunctionName = make("b" + primRef.charCode)
     def unbox(primRef: PrimRef): FunctionName = make("u" + primRef.charCode)
@@ -259,6 +264,13 @@ object VarGen {
     val newArrayObject = make("newArrayObject")
     val identityHashCode = make("identityHashCode")
     val searchReflectiveProxy = make("searchReflectiveProxy")
+    val allocate = make("allocate")
+    val free = make("free")
+
+    // WASI
+    object wasi {
+      val fdWrite = make("fd_write")
+    }
   }
 
   object genFieldName {
@@ -427,6 +439,7 @@ object VarGen {
     val ClassStruct = forClass(ClassClass)
     val ThrowableStruct = forClass(ThrowableClass)
     val JSExceptionStruct = forClass(SpecialNames.JSExceptionClass)
+    val WasmMemorySegment = forClass(SpecialNames.WasmMemorySegmentClass)
 
     def captureData(index: Int): TypeName =
       TypeName(s"captureData.$index")
@@ -517,6 +530,10 @@ object VarGen {
 
   object genDataName {
     val string = DataName("string")
+  }
+
+  object genMemoryName {
+    val mem = MemoryName("mem")
   }
 
 }
