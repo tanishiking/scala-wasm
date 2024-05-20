@@ -12,19 +12,22 @@ import Types._
   *   [[https://webassembly.github.io/gc/core/syntax/modules.html]]
   */
 object Modules {
-  sealed case class Expr(instr: List[Instr])
 
-  sealed abstract class Export {
-    val exportName: String
+  /** A WebAssembly `export`. */
+  final case class Export(name: String, desc: ExportDesc)
+
+  /** A WebAssembly `exportdesc`. */
+  sealed abstract class ExportDesc
+
+  object ExportDesc {
+    final case class Func(funcName: FunctionName) extends ExportDesc
+    final case class Global(globalName: GlobalName) extends ExportDesc
   }
 
-  object Export {
-    final case class Function(exportName: String, funcName: FunctionName) extends Export
-    final case class Global(exportName: String, globalName: GlobalName) extends Export
-  }
-
+  /** A WebAssembly `import`. */
   final case class Import(module: String, name: String, desc: ImportDesc)
 
+  /** A WebAssembly `importdesc`. */
   sealed abstract class ImportDesc
 
   object ImportDesc {
@@ -33,30 +36,22 @@ object Modules {
     final case class Tag(id: TagName, typeName: TypeName) extends ImportDesc
   }
 
-  /** @see
-    *   https://webassembly.github.io/spec/core/syntax/modules.html#functions
-    */
+  /** A WebAssembly `func`, including names for parameters and locals. */
   final case class Function(
-      val name: FunctionName,
-      val typeName: TypeName,
-      val locals: List[Local],
-      val results: List[Type],
-      val body: Expr,
-      val pos: Position
+      name: FunctionName,
+      typeName: TypeName,
+      params: List[Local],
+      results: List[Type],
+      locals: List[Local],
+      body: Expr,
+      pos: Position
   )
 
-  /** The index space for locals is only accessible inside a function and includes the parameters of
-    * that function, which precede the local variables.
-    */
-  case class Local(
-      val name: LocalName,
-      val typ: Type,
-      val isParameter: Boolean // for text
-  )
+  final case class Local(name: LocalName, typ: Type)
 
-  final case class Tag(val name: TagName, val typ: TypeName)
+  final case class Tag(name: TagName, typ: TypeName)
 
-  final case class Data(val name: DataName, val bytes: Array[Byte], mode: Data.Mode)
+  final case class Data(name: DataName, bytes: Array[Byte], mode: Data.Mode)
 
   object Data {
     sealed abstract class Mode
@@ -66,56 +61,7 @@ object Modules {
     }
   }
 
-  final case class Global(
-      val name: GlobalName,
-      val typ: Type,
-      val init: Expr,
-      val isMutable: Boolean
-  )
-
-  final case class RecType(subTypes: List[SubType])
-
-  object RecType {
-
-    /** Builds a `rectype` with a single `subtype`. */
-    def apply(singleSubType: SubType): RecType =
-      RecType(singleSubType :: Nil)
-  }
-
-  final case class SubType(
-      name: TypeName,
-      isFinal: Boolean,
-      superType: Option[TypeName],
-      compositeType: CompositeType
-  )
-
-  object SubType {
-
-    /** Builds a `subtype` that is `final` and without any super type. */
-    def apply(name: TypeName, compositeType: CompositeType): SubType =
-      SubType(name, isFinal = true, superType = None, compositeType)
-  }
-
-  sealed abstract class CompositeType
-
-  final case class FunctionType(params: List[Type], results: List[Type]) extends CompositeType
-
-  object FunctionType {
-    val NilToNil: FunctionType = FunctionType(Nil, Nil)
-  }
-
-  final case class StructType(fields: List[StructField]) extends CompositeType
-
-  final case class ArrayType(fieldType: FieldType) extends CompositeType
-
-  final case class FieldType(typ: StorageType, isMutable: Boolean)
-
-  final case class StructField(name: FieldName, fieldType: FieldType)
-
-  object StructField {
-    def apply(name: FieldName, typ: StorageType, isMutable: Boolean): StructField =
-      StructField(name, FieldType(typ, isMutable))
-  }
+  final case class Global(name: GlobalName, typ: Type, init: Expr, isMutable: Boolean)
 
   final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
 

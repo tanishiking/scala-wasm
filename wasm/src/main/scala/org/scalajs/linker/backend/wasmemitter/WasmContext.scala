@@ -31,7 +31,7 @@ final class WasmContext {
   private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
 
-  private val functionTypes = LinkedHashMap.empty[wamod.FunctionType, wanme.TypeName]
+  private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeName]
   private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeName]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
@@ -40,7 +40,7 @@ final class WasmContext {
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
-      def functionTypeToTypeName(sig: wamod.FunctionType): wanme.TypeName = {
+      def functionTypeToTypeName(sig: watpe.FunctionType): wanme.TypeName = {
         functionTypes.getOrElseUpdate(
           sig, {
             val typeName = genTypeName.forFunction(functionTypes.size)
@@ -133,7 +133,7 @@ final class WasmContext {
           )
         mainRecType.addSubType(
           typeName,
-          wamod.FunctionType(watpe.RefType.any :: regularParamTyps, resultTyp)
+          watpe.FunctionType(watpe.RefType.any :: regularParamTyps, resultTyp)
         )
         typeName
       }
@@ -178,16 +178,16 @@ final class WasmContext {
   def getClosureDataStructType(captureParamTypes: List[Type]): wanme.TypeName = {
     closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
-        val fields: List[wamod.StructField] =
+        val fields: List[watpe.StructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
-            yield wamod.StructField(
+            yield watpe.StructField(
               genFieldName.captureParam(i),
               TypeTransformer.transformType(tpe)(this),
               isMutable = false
             )
         val structTypeName = genTypeName.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
-        val structType = wamod.StructType(fields)
+        val structType = watpe.StructType(fields)
         moduleBuilder.addRecType(structTypeName, structType)
         structTypeName
       }

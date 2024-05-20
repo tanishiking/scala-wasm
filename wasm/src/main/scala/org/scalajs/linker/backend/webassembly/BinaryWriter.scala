@@ -198,12 +198,12 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeExportSection(buf: Buffer): Unit = {
     buf.vec(module.exports) { exp =>
-      buf.name(exp.exportName)
-      exp match {
-        case Export.Function(_, funcName) =>
+      buf.name(exp.name)
+      exp.desc match {
+        case ExportDesc.Func(funcName) =>
           buf.byte(0x00)
           writeFuncIdx(buf, funcName)
-        case Export.Global(_, globalName) =>
+        case ExportDesc.Global(globalName) =>
           buf.byte(0x03)
           writeGlobalIdx(buf, globalName)
       }
@@ -262,12 +262,12 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   private def writeFunc(buf: Buffer, func: Function): Unit = {
     emitStartFuncPosition(buf, func.pos)
 
-    buf.vec(func.locals.filter(!_.isParameter)) { local =>
+    buf.vec(func.locals) { local =>
       buf.u32(1)
       writeType(buf, local.typ)
     }
 
-    withLocalIdxValues(func.locals.map(_.name).zipWithIndex.toMap) {
+    withLocalIdxValues((func.params ::: func.locals).map(_.name).zipWithIndex.toMap) {
       writeExpr(buf, func.body)
     }
 

@@ -40,7 +40,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         genGlobalName.forStaticField(name.name),
         transformType(ftpe),
-        wamod.Expr(List(genZeroOf(ftpe))),
+        wa.Expr(List(genZeroOf(ftpe))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -263,7 +263,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       wamod.Global(
         genGlobalName.forVTable(className),
         watpe.RefType(typeDataTypeName),
-        wamod.Expr(instrs),
+        wa.Expr(instrs),
         isMutable = false
       )
     )
@@ -301,18 +301,18 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     // Declare the struct type for the class
-    val vtableField = wamod.StructField(
+    val vtableField = watpe.StructField(
       genFieldName.objStruct.vtable,
       watpe.RefType(vtableTypeName),
       isMutable = false
     )
-    val itablesField = wamod.StructField(
+    val itablesField = watpe.StructField(
       genFieldName.objStruct.itables,
       watpe.RefType.nullable(genTypeName.itables),
       isMutable = false
     )
     val fields = classInfo.allFieldDefs.map { field =>
-      wamod.StructField(
+      watpe.StructField(
         genFieldName.forClassInstanceField(field.name.name),
         transformType(field.ftpe),
         isMutable = true // initialized by the constructors, so always mutable at the Wasm level
@@ -320,8 +320,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
     val structTypeName = genTypeName.forClass(clazz.name.name)
     val superType = clazz.superClass.map(s => genTypeName.forClass(s.name))
-    val structType = wamod.StructType(vtableField :: itablesField :: fields)
-    val subType = wamod.SubType(structTypeName, isFinal = false, superType, structType)
+    val structType = watpe.StructType(vtableField :: itablesField :: fields)
+    val subType = watpe.SubType(structTypeName, isFinal = false, superType, structType)
     ctx.mainRecType.addSubType(subType)
 
     // Define the `new` function and possibly the `clone` function, unless the class is abstract
@@ -340,7 +340,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         genGlobalName.forModuleInstance(clazz.name.name),
         watpe.RefType.nullable(heapType),
-        wamod.Expr(List(wa.RefNull(heapType))),
+        wa.Expr(List(wa.RefNull(heapType))),
         isMutable = true
       )
       ctx.addGlobal(global)
@@ -355,7 +355,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val typeName = genTypeName.forVTable(classInfo.name)
     val vtableFields =
       classInfo.tableEntries.map { methodName =>
-        wamod.StructField(
+        watpe.StructField(
           genFieldName.forMethodTableEntry(methodName),
           watpe.RefType(ctx.tableFunctionType(methodName)),
           isMutable = false
@@ -365,8 +365,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
       case None    => genTypeName.typeData
       case Some(s) => genTypeName.forVTable(s)
     }
-    val structType = wamod.StructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
-    val subType = wamod.SubType(typeName, isFinal = false, Some(superType), structType)
+    val structType = watpe.StructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
+    val subType = watpe.SubType(typeName, isFinal = false, Some(superType), structType)
     ctx.mainRecType.addSubType(subType)
     typeName
   }
@@ -435,7 +435,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
        * If `expr` is `undefined`, it would be `(1 << 4) == 0b00010000`, which
        * would give `false`.
        */
-      val anyRefToVoidSig = wamod.FunctionType(List(watpe.RefType.anyref), Nil)
+      val anyRefToVoidSig = watpe.FunctionType(List(watpe.RefType.anyref), Nil)
 
       instrs.block(anyRefToVoidSig) { isNullLabel =>
         // exprNonNull := expr; branch to isNullLabel if it is null
@@ -596,7 +596,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val global = wamod.Global(
         globalName,
         watpe.RefType(genTypeName.itables),
-        wamod.Expr(itablesInit),
+        wa.Expr(itablesInit),
         isMutable = false
       )
       ctx.addGlobalITable(clazz.className, global)
@@ -609,9 +609,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(clazz.className)
     val itableTypeName = genTypeName.forITable(className)
-    val itableType = wamod.StructType(
+    val itableType = watpe.StructType(
       classInfo.tableEntries.map { methodName =>
-        wamod.StructField(
+        watpe.StructField(
           genFieldName.forMethodTableEntry(methodName),
           watpe.RefType(ctx.tableFunctionType(methodName)),
           isMutable = false
@@ -635,7 +635,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
             wamod.Global(
               genGlobalName.forJSPrivateField(name.name),
               watpe.RefType.anyref,
-              wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+              wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
               isMutable = true
             )
           )
@@ -946,7 +946,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val cachedJSClassGlobal = wamod.Global(
       genGlobalName.forJSClassValue(clazz.className),
       watpe.RefType.anyref,
-      wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+      wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
       isMutable = true
     )
     ctx.addGlobal(cachedJSClassGlobal)
@@ -979,7 +979,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       wamod.Global(
         cacheGlobalName,
         watpe.RefType.anyref,
-        wamod.Expr(List(wa.RefNull(watpe.HeapType.Any))),
+        wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
         isMutable = true
       )
     )
@@ -1014,7 +1014,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
   /** Generates the function import for a top-level export setter. */
   private def genTopLevelExportSetter(exportedName: String)(implicit ctx: WasmContext): Unit = {
     val functionName = genFunctionName.forTopLevelExportSetter(exportedName)
-    val functionSig = wamod.FunctionType(List(watpe.RefType.anyref), Nil)
+    val functionSig = watpe.FunctionType(List(watpe.RefType.anyref), Nil)
     val functionType = ctx.moduleBuilder.functionTypeToTypeName(functionSig)
 
     ctx.moduleBuilder.addImport(

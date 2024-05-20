@@ -178,18 +178,15 @@ class TextWriter {
 
     b.newLineList(
       "func", {
-        val (params, nonParams) = f.locals.partition(_.isParameter)
         b.appendName(f.name)
         writeTypeUse(f.typeName)
 
         b.newLine()
-        params.foreach(writeParam)
+        f.params.foreach(writeParam)
         f.results.foreach(r => { b.sameLineList("result", writeType(r)) })
 
         b.newLine()
-        if (nonParams.nonEmpty) {
-          nonParams.foreach(writeLocal)
-        }
+        f.locals.foreach(writeLocal)
         f.body.instr.foreach(writeInstr)
       }
     )
@@ -219,14 +216,14 @@ class TextWriter {
       b: WatBuilder
   ) = b.newLineList(
     "export", {
-      b.appendElement("\"" + e.exportName + "\"")
-      e match {
-        case Export.Function(_, funcName) =>
+      b.appendElement("\"" + e.name + "\"")
+      e.desc match {
+        case ExportDesc.Func(funcName) =>
           b.sameLineList(
             "func",
             { b.appendName(funcName) }
           )
-        case Export.Global(_, globalName) =>
+        case ExportDesc.Global(globalName) =>
           b.sameLineList(
             "global",
             { b.appendName(globalName) }

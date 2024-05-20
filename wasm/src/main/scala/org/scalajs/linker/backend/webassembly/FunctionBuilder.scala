@@ -7,7 +7,7 @@ import org.scalajs.ir.Position
 import Instructions._
 import Names._
 import Modules._
-import Types.Type
+import Types._
 
 final class FunctionBuilder(
     moduleBuilder: ModuleBuilder,
@@ -37,7 +37,7 @@ final class FunctionBuilder(
     setResultTypes(typ :: Nil)
 
   def addParam(name: LocalName, typ: Type): LocalName = {
-    params += Local(name, typ, isParameter = true)
+    params += Local(name, typ)
     name
   }
 
@@ -51,7 +51,7 @@ final class FunctionBuilder(
   }
 
   def addLocal(name: LocalName, typ: Type): LocalName = {
-    locals += Local(name, typ, isParameter = false)
+    locals += Local(name, typ)
     name
   }
 
@@ -304,10 +304,15 @@ final class FunctionBuilder(
 
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
 
-    val expr = Expr(dcedInstrs)
-    val allLocals = params.prependToList(locals.toList)
-    val func =
-      Function(functionName, functionTypeName, allLocals, resultTypes, expr, functionPos)
+    val func = Function(
+      functionName,
+      functionTypeName,
+      params.toList,
+      resultTypes,
+      locals.toList,
+      Expr(dcedInstrs),
+      functionPos
+    )
     moduleBuilder.addFunction(func)
     func
   }
