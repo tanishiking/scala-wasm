@@ -678,7 +678,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
               isMutable = true
             )
           )
-          ctx.addJSPrivateFieldName(name.name)
         case _ =>
           ()
       }

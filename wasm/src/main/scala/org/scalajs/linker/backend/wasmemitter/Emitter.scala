@@ -187,9 +187,16 @@ final class Emitter(config: Emitter.Config) {
 
     // Initialize the JS private field symbols
 
-    for (fieldName <- ctx.getAllJSPrivateFieldNames()) {
-      instrs += wa.Call(genFunctionID.newSymbol)
-      instrs += wa.GlobalSet(genGlobalID.forJSPrivateField(fieldName))
+    for (clazz <- sortedClasses if clazz.kind.isJSClass) {
+      for (fieldDef <- clazz.fields) {
+        fieldDef match {
+          case FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
+            instrs += wa.Call(genFunctionID.newSymbol)
+            instrs += wa.GlobalSet(genGlobalID.forJSPrivateField(name.name))
+          case _ =>
+            ()
+        }
+      }
     }
 
     // Emit the static initializers

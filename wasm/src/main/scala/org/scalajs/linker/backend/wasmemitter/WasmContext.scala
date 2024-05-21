@@ -55,8 +55,6 @@ final class WasmContext(
   private var nextConstantStringIndex: Int = 0
   private var nextClosureDataTypeIndex: Int = 1
 
-  private val _jsPrivateFieldNames: mutable.ListBuffer[FieldName] =
-    new mutable.ListBuffer()
   private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionID] =
     new mutable.LinkedHashSet()
 
@@ -202,14 +200,8 @@ final class WasmContext(
   def addFuncDeclaration(name: wanme.FunctionID): Unit =
     _funcDeclarations += name
 
-  def addJSPrivateFieldName(fieldName: FieldName): Unit =
-    _jsPrivateFieldNames += fieldName
-
   def getFinalStringPool(): (Array[Byte], Int) =
     (stringPool.toArray, nextConstantStringIndex)
-
-  def getAllJSPrivateFieldNames(): List[FieldName] =
-    _jsPrivateFieldNames.toList
 
   def getAllFuncDeclarations(): List[wanme.FunctionID] =
     _funcDeclarations.toList
