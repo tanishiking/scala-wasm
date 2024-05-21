@@ -44,6 +44,22 @@ final class Emitter(config: Emitter.Config) {
     implicit val ctx: WasmContext =
       Preprocessor.preprocess(sortedClasses, module.topLevelExports)
 
+    // Sort for stability
+    val allImportedModules: List[String] = module.externalDependencies.toList.sorted
+
+    // Gen imports of external modules on the Wasm side
+    for (moduleName <- allImportedModules) {
+      val id = genGlobalID.forImportedModule(moduleName)
+      val origName = OriginalName("import." + moduleName)
+      ctx.moduleBuilder.addImport(
+        wamod.Import(
+          "__scalaJSImports",
+          moduleName,
+          wamod.ImportDesc.Global(id, origName, watpe.RefType.anyref, isMutable = false)
+        )
+      )
+    }
+
     CoreWasmLib.genPreClasses()
     sortedClasses.foreach { clazz =>
       classEmitter.genClassDef(clazz)
@@ -63,7 +79,7 @@ final class Emitter(config: Emitter.Config) {
 
     val loaderContent = LoaderContent.bytesContent
     val jsFileContent =
-      buildJSFileContent(module, module.id.id + ".wasm", ctx.allImportedModules)
+      buildJSFileContent(module, module.id.id + ".wasm", allImportedModules)
 
     new Result(wasmModule, loaderContent, jsFileContent)
   }

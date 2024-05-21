@@ -55,9 +55,6 @@ final class WasmContext(
   private var nextConstantStringIndex: Int = 0
   private var nextClosureDataTypeIndex: Int = 1
 
-  private val _importedModules: mutable.LinkedHashSet[String] =
-    new mutable.LinkedHashSet()
-
   private val _jsPrivateFieldNames: mutable.ListBuffer[FieldName] =
     new mutable.ListBuffer()
   private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionID] =
@@ -201,23 +198,6 @@ final class WasmContext(
 
   def addGlobal(g: wamod.Global): Unit =
     moduleBuilder.addGlobal(g)
-
-  def getImportedModuleGlobal(moduleName: String): wanme.GlobalID = {
-    val name = genGlobalID.forImportedModule(moduleName)
-    if (_importedModules.add(moduleName)) {
-      val origName = OriginalName("import." + moduleName)
-      moduleBuilder.addImport(
-        wamod.Import(
-          "__scalaJSImports",
-          moduleName,
-          wamod.ImportDesc.Global(name, origName, watpe.RefType.anyref, isMutable = false)
-        )
-      )
-    }
-    name
-  }
-
-  def allImportedModules: List[String] = _importedModules.toList
 
   def addFuncDeclaration(name: wanme.FunctionID): Unit =
     _funcDeclarations += name

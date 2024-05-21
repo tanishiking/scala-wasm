@@ -80,7 +80,7 @@ object SWasmGen {
         fb += Call(genFunctionID.jsGlobalRefGet)
         genFollowPath(path)
       case JSNativeLoadSpec.Import(module, path) =>
-        fb += GlobalGet(ctx.getImportedModuleGlobal(module))
+        fb += GlobalGet(genGlobalID.forImportedModule(module))
         genFollowPath(path)
       case JSNativeLoadSpec.ImportWithGlobalFallback(importSpec, globalSpec) =>
         genLoadJSFromSpec(fb, importSpec)
