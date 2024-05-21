@@ -67,6 +67,7 @@ object Preprocessor {
   private def preprocess(clazz: LinkedClass, staticFieldMirrors: Map[FieldName, List[String]])(
       implicit ctx: WasmContext
   ): Unit = {
+    val className = clazz.className
     val kind = clazz.kind
 
     val allFieldDefs: List[FieldDef] =
@@ -79,7 +80,7 @@ object Preprocessor {
           case fd: FieldDef if !fd.flags.namespace.isStatic =>
             fd
           case fd: JSFieldDef =>
-            throw new AssertionError(s"Illegal $fd in Scala class ${clazz.className}")
+            throw new AssertionError(s"Illegal $fd in Scala class $className")
         }
         inheritedFields ::: myFieldDefs
       } else {
@@ -99,6 +100,13 @@ object Preprocessor {
       }
     }
 
+    val superClass = clazz.superClass.map(sup => ctx.getClassInfo(sup.name))
+
+    // Does this Scala class implement any interface?
+    val classImplementsAnyInterface =
+      if (!kind.isClass && kind != ClassKind.HijackedClass) false
+      else clazz.ancestors.exists(a => a != className && ctx.getClassInfo(a).isInterface)
+
     /* Should we emit a vtable/typeData global for this class?
      *
      * There are essentially three reasons for which we need them:
@@ -117,16 +125,15 @@ object Preprocessor {
     val hasRuntimeTypeInfo = clazz.hasRuntimeTypeInfo || clazz.hasInstanceTests
 
     ctx.putClassInfo(
-      clazz.name.name,
+      className,
       new ClassInfo(
-        ctx,
-        clazz.name.name,
+        className,
         kind,
         clazz.jsClassCaptures,
         classConcretePublicMethodNames,
         allFieldDefs,
-        clazz.superClass.map(_.name),
-        clazz.ancestors,
+        superClass,
+        classImplementsAnyInterface,
         clazz.hasInstances,
         !clazz.hasDirectInstances,
         hasRuntimeTypeInfo,

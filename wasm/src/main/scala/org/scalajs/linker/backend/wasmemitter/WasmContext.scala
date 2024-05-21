@@ -255,14 +255,13 @@ object WasmContext {
   final case class StringData(constantStringIndex: Int, offset: Int)
 
   final class ClassInfo(
-      ctx: WasmContext,
       val name: ClassName,
       val kind: ClassKind,
       val jsClassCaptures: Option[List[ParamDef]],
       classConcretePublicMethodNames: List[MethodName],
       val allFieldDefs: List[FieldDef],
-      superClass: Option[ClassName],
-      ancestors: List[ClassName],
+      superClass: Option[ClassInfo],
+      val classImplementsAnyInterface: Boolean,
       private var _hasInstances: Boolean,
       val isAbstract: Boolean,
       val hasRuntimeTypeInfo: Boolean,
@@ -271,16 +270,10 @@ object WasmContext {
       val staticFieldMirrors: Map[FieldName, List[String]],
       private var _itableIdx: Int
   ) {
-
-    /** Does this Scala class implement any interface? */
-    val classImplementsAnyInterface =
-      if (!kind.isClass && kind != ClassKind.HijackedClass) false
-      else ancestors.exists(a => a != name && ctx.getClassInfo(a).isInterface)
-
     val resolvedMethodInfos: Map[MethodName, ConcreteMethodInfo] = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
         val inherited: Map[MethodName, ConcreteMethodInfo] = superClass match {
-          case Some(superClass) => ctx.getClassInfo(superClass).resolvedMethodInfos
+          case Some(superClass) => superClass.resolvedMethodInfos
           case None             => Map.empty
         }
 
@@ -365,8 +358,7 @@ object WasmContext {
 
       kind match {
         case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass =>
-          val superTableEntries =
-            superClass.fold[List[MethodName]](Nil)(sup => ctx.getClassInfo(sup).tableEntries)
+          val superTableEntries = superClass.fold[List[MethodName]](Nil)(_.tableEntries)
           val superTableEntrySet = superTableEntries.toSet
 
           /* When computing the table entries to add for this class, exclude:
