@@ -184,21 +184,12 @@ final class WasmContext(
   }
 
   def refFuncWithDeclaration(name: wanme.FunctionID): wa.RefFunc = {
-    addFuncDeclaration(name)
+    _funcDeclarations += name
     wa.RefFunc(name)
   }
 
-  def addExport(exprt: wamod.Export): Unit =
-    moduleBuilder.addExport(exprt)
-
-  def addFunction(fun: wamod.Function): Unit =
-    moduleBuilder.addFunction(fun)
-
   def addGlobal(g: wamod.Global): Unit =
     moduleBuilder.addGlobal(g)
-
-  def addFuncDeclaration(name: wanme.FunctionID): Unit =
-    _funcDeclarations += name
 
   def getFinalStringPool(): (Array[Byte], Int) =
     (stringPool.toArray, nextConstantStringIndex)
