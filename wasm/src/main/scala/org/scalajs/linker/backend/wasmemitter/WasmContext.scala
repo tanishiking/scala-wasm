@@ -44,7 +44,6 @@ final class WasmContext {
   private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeID]
   private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeID]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
-  private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
   private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeID]
 
   val moduleBuilder: ModuleBuilder = {
@@ -216,14 +215,6 @@ final class WasmContext {
   def addGlobal(g: wamod.Global): Unit =
     moduleBuilder.addGlobal(g)
 
-  def addGlobalITable(name: ClassName, g: wamod.Global): Unit = {
-    classItableGlobals += name
-    addGlobal(g)
-  }
-
-  def getAllClassesWithITableGlobal(): List[ClassName] =
-    classItableGlobals.toList
-
   def getImportedModuleGlobal(moduleName: String): wanme.GlobalID = {
     val name = genGlobalID.forImportedModule(moduleName)
     if (_importedModules.add(moduleName)) {
@@ -281,6 +272,12 @@ object WasmContext {
       val staticFieldMirrors: Map[FieldName, List[String]],
       private var _itableIdx: Int
   ) {
+
+    /** Does this Scala class implement any interface? */
+    val classImplementsAnyInterface =
+      if (!kind.isClass && kind != ClassKind.HijackedClass) false
+      else ancestors.exists(a => a != name && ctx.getClassInfo(a).isInterface)
+
     val resolvedMethodInfos: Map[MethodName, ConcreteMethodInfo] = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
         val inherited: Map[MethodName, ConcreteMethodInfo] = superClass match {
