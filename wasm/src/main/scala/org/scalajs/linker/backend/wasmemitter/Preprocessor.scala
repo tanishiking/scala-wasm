@@ -126,7 +126,6 @@ object Preprocessor {
         classConcretePublicMethodNames,
         allFieldDefs,
         clazz.superClass.map(_.name),
-        clazz.interfaces.map(_.name),
         clazz.ancestors,
         clazz.hasInstances,
         !clazz.hasDirectInstances,
@@ -282,8 +281,8 @@ object Preprocessor {
       nextIdx += 1
       new Bucket(idx)
     }
-    def getAllInterfaces(info: ClassInfo): List[ClassName] =
-      info.ancestors.filter(ctx.getClassInfo(_).isInterface)
+    def getAllInterfaces(clazz: LinkedClass): List[ClassName] =
+      clazz.ancestors.filter(ctx.getClassInfo(_).isInterface)
 
     val buckets = new mutable.ListBuffer[Bucket]()
 
@@ -297,7 +296,7 @@ object Preprocessor {
 
     for (clazz <- classes.reverseIterator) {
       val info = ctx.getClassInfo(clazz.name.name)
-      val ifaces = getAllInterfaces(info)
+      val ifaces = getAllInterfaces(clazz)
       if (ifaces.nonEmpty) {
         val joins = joinsOf.getOrElse(clazz.name.name, new mutable.HashSet())
 
@@ -336,7 +335,7 @@ object Preprocessor {
 
     for (clazz <- classes) {
       val info = ctx.getClassInfo(clazz.name.name)
-      val ifaces = getAllInterfaces(info)
+      val ifaces = getAllInterfaces(clazz)
       if (ifaces.nonEmpty && !spines.contains(clazz.name.name)) {
         val used = usedOf.getOrElse(clazz.name.name, new mutable.HashSet())
         for {

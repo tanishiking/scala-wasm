@@ -134,7 +134,7 @@ final class Emitter(config: Emitter.Config) {
       val classInfo = ctx.getClassInfo(className)
 
       if (classInfo.classImplementsAnyInterface) {
-        val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
+        val interfaces = clazz.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
         val resolvedMethodInfos = classInfo.resolvedMethodInfos
 
         interfaces.foreach { iface =>
