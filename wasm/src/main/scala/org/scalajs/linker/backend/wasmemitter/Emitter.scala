@@ -141,7 +141,6 @@ final class Emitter(config: Emitter.Config) {
 
     val fb =
       new FunctionBuilder(ctx.moduleBuilder, genFunctionID.start, OriginalName("start"), pos)
-    val instrs: fb.type = fb
 
     // Initialize itables
     for (clazz <- sortedClasses if clazz.kind.isClass && clazz.hasDirectInstances) {
@@ -154,13 +153,13 @@ final class Emitter(config: Emitter.Config) {
 
         interfaces.foreach { iface =>
           val idx = ctx.getItableIdx(iface)
-          instrs += wa.GlobalGet(genGlobalID.forITable(className))
-          instrs += wa.I32Const(idx)
+          fb += wa.GlobalGet(genGlobalID.forITable(className))
+          fb += wa.I32Const(idx)
 
           for (method <- iface.tableEntries)
-            instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-          instrs += wa.StructNew(genTypeID.forITable(iface.name))
-          instrs += wa.ArraySet(genTypeID.itables)
+            fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
+          fb += wa.StructNew(genTypeID.forITable(iface.name))
+          fb += wa.ArraySet(genTypeID.itables)
         }
       }
     }
@@ -175,13 +174,13 @@ final class Emitter(config: Emitter.Config) {
         // Use getClassInfoOption in case the reachability analysis got rid of those interfaces
         interfaceInfo <- ctx.getClassInfoOption(interfaceName)
       } {
-        instrs += wa.GlobalGet(globalName)
-        instrs += wa.I32Const(ctx.getItableIdx(interfaceInfo))
+        fb += wa.GlobalGet(globalName)
+        fb += wa.I32Const(ctx.getItableIdx(interfaceInfo))
 
         for (method <- interfaceInfo.tableEntries)
-          instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += wa.StructNew(genTypeID.forITable(interfaceName))
-        instrs += wa.ArraySet(genTypeID.itables)
+          fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
+        fb += wa.StructNew(genTypeID.forITable(interfaceName))
+        fb += wa.ArraySet(genTypeID.itables)
       }
     }
 
@@ -191,8 +190,8 @@ final class Emitter(config: Emitter.Config) {
       for (fieldDef <- clazz.fields) {
         fieldDef match {
           case FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
-            instrs += wa.Call(genFunctionID.newSymbol)
-            instrs += wa.GlobalSet(genGlobalID.forJSPrivateField(name.name))
+            fb += wa.Call(genFunctionID.newSymbol)
+            fb += wa.GlobalSet(genGlobalID.forJSPrivateField(name.name))
           case _ =>
             ()
         }
@@ -207,7 +206,7 @@ final class Emitter(config: Emitter.Config) {
         clazz.className,
         StaticInitializerName
       )
-      instrs += wa.Call(funcName)
+      fb += wa.Call(funcName)
     }
 
     // Initialize the top-level exports that require it
@@ -216,16 +215,16 @@ final class Emitter(config: Emitter.Config) {
       // Load the (initial) exported value on the stack
       tle.tree match {
         case TopLevelJSClassExportDef(_, exportName) =>
-          instrs += wa.Call(genFunctionID.loadJSClass(tle.owningClass))
+          fb += wa.Call(genFunctionID.loadJSClass(tle.owningClass))
         case TopLevelModuleExportDef(_, exportName) =>
-          instrs += wa.Call(genFunctionID.loadModule(tle.owningClass))
+          fb += wa.Call(genFunctionID.loadModule(tle.owningClass))
         case TopLevelMethodExportDef(_, methodDef) =>
-          instrs += ctx.refFuncWithDeclaration(genFunctionID.forExport(tle.exportName))
+          fb += ctx.refFuncWithDeclaration(genFunctionID.forExport(tle.exportName))
           if (methodDef.restParam.isDefined) {
-            instrs += wa.I32Const(methodDef.args.size)
-            instrs += wa.Call(genFunctionID.makeExportedDefRest)
+            fb += wa.I32Const(methodDef.args.size)
+            fb += wa.Call(genFunctionID.makeExportedDefRest)
           } else {
-            instrs += wa.Call(genFunctionID.makeExportedDef)
+            fb += wa.Call(genFunctionID.makeExportedDef)
           }
         case TopLevelFieldExportDef(_, _, fieldIdent) =>
           /* Usually redundant, but necessary if the static field is never
@@ -233,11 +232,11 @@ final class Emitter(config: Emitter.Config) {
            * case this initial call is required to publish that zero value (as
            * opposed to the default `undefined` value of the JS `let`).
            */
-          instrs += wa.GlobalGet(genGlobalID.forStaticField(fieldIdent.name))
+          fb += wa.GlobalGet(genGlobalID.forStaticField(fieldIdent.name))
       }
 
       // Call the export setter
-      instrs += wa.Call(genFunctionID.forTopLevelExportSetter(tle.exportName))
+      fb += wa.Call(genFunctionID.forTopLevelExportSetter(tle.exportName))
     }
 
     // Emit the module initializers
@@ -246,26 +245,26 @@ final class Emitter(config: Emitter.Config) {
       def genCallStatic(className: ClassName, methodName: MethodName): Unit = {
         val functionName =
           genFunctionID.forMethod(MemberNamespace.PublicStatic, className, methodName)
-        instrs += wa.Call(functionName)
+        fb += wa.Call(functionName)
       }
 
       ModuleInitializerImpl.fromInitializer(init) match {
         case ModuleInitializerImpl.MainMethodWithArgs(className, encodedMainMethodName, args) =>
           // vtable of Array[String]
-          instrs += wa.GlobalGet(genGlobalID.forVTable(BoxedStringClass))
-          instrs += wa.I32Const(1)
-          instrs += wa.Call(genFunctionID.arrayTypeData)
+          fb += wa.GlobalGet(genGlobalID.forVTable(BoxedStringClass))
+          fb += wa.I32Const(1)
+          fb += wa.Call(genFunctionID.arrayTypeData)
 
           // itable of Array[String]
-          instrs += wa.GlobalGet(genGlobalID.arrayClassITable)
+          fb += wa.GlobalGet(genGlobalID.arrayClassITable)
 
           // underlying array of args
-          args.foreach(arg => instrs ++= ctx.getConstantStringInstr(arg))
-          instrs += wa.ArrayNewFixed(genTypeID.anyArray, args.size)
+          args.foreach(arg => fb ++= ctx.getConstantStringInstr(arg))
+          fb += wa.ArrayNewFixed(genTypeID.anyArray, args.size)
 
           // array object
           val stringArrayTypeRef = ArrayTypeRef(ClassRef(BoxedStringClass), 1)
-          instrs += wa.StructNew(genTypeID.forArrayClass(stringArrayTypeRef))
+          fb += wa.StructNew(genTypeID.forArrayClass(stringArrayTypeRef))
 
           // call
           genCallStatic(className, encodedMainMethodName)
