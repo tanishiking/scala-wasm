@@ -1731,64 +1731,44 @@ private class FunctionEmitter private (
     val sourceTpe = tree.expr.tpe
     val targetTpe = tree.tpe
 
-    if (isSubtype(sourceTpe, targetTpe)(isSubclass(_, _))) {
-      // Common case where no cast is necessary
-      genTreeAuto(tree.expr)
-      sourceTpe
+    if (sourceTpe == NothingType) {
+      // We cannot call transformType for NothingType, so we have to handle this case separately.
+      genTree(tree.expr, NothingType)
+      NothingType
     } else {
-      genTree(tree.expr, AnyType)
+      // By IR checker rules, targetTpe is none of NothingType, NullType, NoType or RecordType
 
-      markPosition(tree)
+      val sourceWasmType = TypeTransformer.transformType(sourceTpe)(ctx)
+      val targetWasmType = TypeTransformer.transformType(targetTpe)(ctx)
 
-      def genAsPrimType(targetTpe: PrimType): Unit = {
-        // TODO We could do something better for things like double.asInstanceOf[int]
-        genUnbox(targetTpe)(tree.pos)
-      }
+      if (sourceWasmType == targetWasmType) {
+        /* Common case where no cast is necessary at the Wasm level.
+         * Note that this is not *obviously* correct. It is only correct
+         * because, under our choices of representation and type translation
+         * rules, there is no pair `(sourceTpe, targetTpe)` for which the Wasm
+         * types are equal but a valid cast would require a *conversion*.
+         */
+        genTreeAuto(tree.expr)
+      } else {
+        genTree(tree.expr, AnyType)
 
-      targetTpe match {
-        case targetTpe: PrimType =>
-          genAsPrimType(targetTpe)
+        markPosition(tree)
 
-        case AnyType =>
-          ()
+        targetTpe match {
+          case targetTpe: PrimType =>
+            // TODO Opt: We could do something better for things like double.asInstanceOf[int]
+            genUnbox(targetTpe)(tree.pos)
 
-        case ClassType(targetClassName) =>
-          val info = ctx.getClassInfo(targetClassName)
-          if (info.kind == ClassKind.HijackedClass) {
-            BoxedClassToPrimType(targetClassName) match {
-              case UndefType | StringType =>
-                ()
-              case primType: PrimTypeWithRef =>
-                primType match {
-                  case CharType =>
-                    val structTypeName = genTypeID.forClass(SpecialNames.CharBoxClass)
-                    instrs += wa.RefCast(watpe.RefType.nullable(structTypeName))
-                  case LongType =>
-                    val structTypeName = genTypeID.forClass(SpecialNames.LongBoxClass)
-                    instrs += wa.RefCast(watpe.RefType.nullable(structTypeName))
-                  case NoType | NothingType | NullType =>
-                    throw new AssertionError(s"Unexpected prim type $primType for $targetClassName")
-                  case _ =>
-                    instrs += wa.Call(genFunctionID.unboxOrNull(primType.primRef))
-                }
+          case _ =>
+            targetWasmType match {
+              case watpe.RefType(true, watpe.HeapType.Any) =>
+                () // nothing to do
+              case targetWasmType: watpe.RefType =>
+                instrs += wa.RefCast(targetWasmType)
+              case _ =>
+                throw new AssertionError(s"Unexpected type in AsInstanceOf: $targetTpe")
             }
-          } else if (info.isAncestorOfHijackedClass) {
-            // Nothing to do; the translation is `anyref`
-            ()
-          } else if (info.kind.isClass) {
-            instrs += wa.RefCast(
-              watpe.RefType.nullable(genTypeID.forClass(targetClassName))
-            )
-          } else if (info.isInterface) {
-            instrs += wa.RefCast(watpe.RefType.nullable(genTypeID.ObjectStruct))
-          }
-
-        case ArrayType(arrayTypeRef) =>
-          val structTypeName = genTypeID.forArrayClass(arrayTypeRef)
-          instrs += wa.RefCast(watpe.RefType.nullable(structTypeName))
-
-        case targetTpe: RecordType =>
-          throw new AssertionError(s"Illegal type in AsInstanceOf: $targetTpe")
+        }
       }
 
       targetTpe
@@ -1841,9 +1821,6 @@ private class FunctionEmitter private (
         }
     }
   }
-
-  private def isSubclass(subClass: ClassName, superClass: ClassName): Boolean =
-    ctx.getClassInfo(subClass).ancestors.contains(superClass)
 
   private def genGetClass(tree: GetClass): Type = {
     /* Unlike in `genApply` or `genStringConcat`, here we make no effort to
@@ -2282,25 +2259,15 @@ private class FunctionEmitter private (
   private def genLoadJSModule(tree: LoadJSModule): Type = {
     markPosition(tree)
 
-    val info = ctx.getClassInfo(tree.className)
-
-    info.kind match {
-      case ClassKind.NativeJSModuleClass =>
-        val jsNativeLoadSpec = info.jsNativeLoadSpec.getOrElse {
-          throw new AssertionError(s"Found $tree for class without jsNativeLoadSpec at ${tree.pos}")
-        }
-        genLoadJSFromSpec(instrs, jsNativeLoadSpec)(ctx)
-        AnyType
-
-      case ClassKind.JSModuleClass =>
+    ctx.getClassInfo(tree.className).jsNativeLoadSpec match {
+      case Some(loadSpec) =>
+        genLoadJSFromSpec(instrs, loadSpec)(ctx)
+      case None =>
+        // This is a non-native JS module
         instrs += wa.Call(genFunctionID.loadModule(tree.className))
-        AnyType
-
-      case _ =>
-        throw new AssertionError(
-          s"Invalid LoadJSModule for class ${tree.className.nameString} of kind ${info.kind}"
-        )
     }
+
+    AnyType
   }
 
   private def genSelectJSNativeMember(tree: SelectJSNativeMember): Type = {

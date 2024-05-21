@@ -545,26 +545,28 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val instrs = fb
 
-    val heapType = watpe.HeapType(genTypeID.forClass(className))
+    val structTypeID = genTypeID.forClass(className)
+    val structRefType = watpe.RefType(structTypeID)
 
-    val from = fb.addLocal("fromTyped", watpe.RefType.nullable(heapType))
-    val result = fb.addLocal("result", watpe.RefType.nullable(heapType))
+    val fromTypedLocal = fb.addLocal("fromTyped", structRefType)
 
+    // Downcast fromParam to fromTyped
     instrs += wa.LocalGet(fromParam)
-    instrs += wa.RefCast(watpe.RefType(heapType))
-    instrs += wa.LocalSet(from)
+    instrs += wa.RefCast(structRefType)
+    instrs += wa.LocalSet(fromTypedLocal)
 
-    instrs += wa.Call(genFunctionID.newDefault(className))
-    instrs += wa.LocalSet(result)
+    // Push vtable and itables on the stack (there is at least Cloneable in the itables)
+    instrs += wa.GlobalGet(genGlobalID.forVTable(className))
+    instrs += wa.GlobalGet(genGlobalID.forITable(className))
+
+    // Push every field of `fromTyped` on the stack
     info.allFieldDefs.foreach { field =>
-      val fieldIdx = genFieldID.forClassInstanceField(field.name.name)
-      instrs += wa.LocalGet(result)
-      instrs += wa.LocalGet(from)
-      instrs += wa.StructGet(genTypeID.forClass(className), fieldIdx)
-      instrs += wa.StructSet(genTypeID.forClass(className), fieldIdx)
+      instrs += wa.LocalGet(fromTypedLocal)
+      instrs += wa.StructGet(structTypeID, genFieldID.forClassInstanceField(field.name.name))
     }
-    instrs += wa.LocalGet(result)
-    instrs += wa.RefAsNotNull
+
+    // Create the result
+    instrs += wa.StructNew(structTypeID)
 
     fb.buildAndAddToModule()
   }

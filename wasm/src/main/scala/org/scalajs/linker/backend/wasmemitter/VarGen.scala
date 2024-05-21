@@ -154,17 +154,12 @@ object VarGen {
       override def toString(): String = "u" + primRef.charCode
     }
 
-    private final case class UnboxOrNullID(primRef: PrimRef) extends JSHelperFunctionID {
-      override def toString(): String = "uN" + primRef.charCode
-    }
-
     private final case class TypeTestID(primRef: PrimRef) extends JSHelperFunctionID {
       override def toString(): String = "t" + primRef.charCode
     }
 
     def box(primRef: PrimRef): JSHelperFunctionID = BoxID(primRef)
     def unbox(primRef: PrimRef): JSHelperFunctionID = UnboxID(primRef)
-    def unboxOrNull(primRef: PrimRef): JSHelperFunctionID = UnboxOrNullID(primRef)
     def typeTest(primRef: PrimRef): JSHelperFunctionID = TypeTestID(primRef)
 
     case object fmod extends JSHelperFunctionID

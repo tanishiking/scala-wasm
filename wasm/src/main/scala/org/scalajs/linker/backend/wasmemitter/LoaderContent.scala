@@ -95,14 +95,6 @@ const scalaJSHelpers = {
   uF: (x) => Math.fround(x),
   uD: (x) => +x,
 
-  // Unboxes to primitive or null (downcast to the boxed classes)
-  uNZ: (x) => (x !== null) ? (x | 0) : null,
-  uNB: (x) => (x !== null) ? ((x << 24) >> 24) : null,
-  uNS: (x) => (x !== null) ? ((x << 16) >> 16) : null,
-  uNI: (x) => (x !== null) ? (x | 0) : null,
-  uNF: (x) => (x !== null) ? Math.fround(x) : null,
-  uND: (x) => (x !== null) ? +x : null,
-
   // Type tests
   tZ: (x) => typeof x === 'boolean',
   tB: (x) => typeof x === 'number' && Object.is((x << 24) >> 24, x),
