@@ -32,8 +32,6 @@ final class Emitter(config: Emitter.Config) {
   def injectedIRFiles: Seq[IRFile] = Nil
 
   def emit(module: ModuleSet.Module, logger: Logger): Result = {
-    implicit val ctx: WasmContext = new WasmContext()
-
     /* Sort by ancestor count so that superclasses always appear before
      * subclasses, then tie-break by name for stability.
      */
@@ -43,7 +41,8 @@ final class Emitter(config: Emitter.Config) {
       else a.className.compareTo(b.className) < 0
     }
 
-    Preprocessor.preprocess(sortedClasses, module.topLevelExports)
+    implicit val ctx: WasmContext =
+      Preprocessor.preprocess(sortedClasses, module.topLevelExports)
 
     CoreWasmLib.genPreClasses()
     sortedClasses.foreach { clazz =>

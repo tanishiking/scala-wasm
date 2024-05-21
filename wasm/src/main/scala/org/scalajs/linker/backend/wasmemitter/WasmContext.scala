@@ -25,21 +25,12 @@ import org.scalajs.linker.backend.webassembly.{Types => watpe}
 import VarGen._
 import org.scalajs.ir.OriginalName
 
-final class WasmContext {
+final class WasmContext(
+    classInfo: Map[ClassName, WasmContext.ClassInfo],
+    reflectiveProxies: Map[MethodName, Int],
+    val itablesLength: Int
+) {
   import WasmContext._
-
-  private val classInfo = mutable.Map[ClassName, ClassInfo]()
-  private var reflectiveProxies: Map[MethodName, Int] = null
-  private var _itablesLength: Int = -1
-
-  /** Sets the length of the itables arrays, only for use by `Preprocessor`. */
-  def setItablesLength(length: Int): Unit =
-    _itablesLength = length
-
-  def itablesLength: Int = {
-    require(_itablesLength != -1, s"itablesLength was not yet assigned")
-    _itablesLength
-  }
 
   private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeID]
   private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeID]
@@ -101,10 +92,6 @@ final class WasmContext {
     case typeRef: ArrayTypeRef =>
       ArrayType(typeRef)
   }
-
-  /** Sets the map of reflexity proxy IDs, only for use by `Preprocessor`. */
-  def setReflectiveProxyIDs(proxyIDs: Map[MethodName, Int]): Unit =
-    reflectiveProxies = proxyIDs
 
   /** Retrieves a unique identifier for a reflective proxy with the given name.
     *
@@ -234,9 +221,6 @@ final class WasmContext {
 
   def addFuncDeclaration(name: wanme.FunctionID): Unit =
     _funcDeclarations += name
-
-  def putClassInfo(name: ClassName, info: ClassInfo): Unit =
-    classInfo.put(name, info)
 
   def addJSPrivateFieldName(fieldName: FieldName): Unit =
     _jsPrivateFieldNames += fieldName

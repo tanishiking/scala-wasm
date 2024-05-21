@@ -13,15 +13,19 @@ import EmbeddedConstants._
 import WasmContext._
 
 object Preprocessor {
-  def preprocess(classes: List[LinkedClass], tles: List[LinkedTopLevelExport])(implicit
-      ctx: WasmContext
-  ): Unit = {
+  def preprocess(classes: List[LinkedClass], tles: List[LinkedTopLevelExport]): WasmContext = {
     val staticFieldMirrors = computeStaticFieldMirrors(tles)
 
+    val classInfosBuilder = mutable.HashMap.empty[ClassName, ClassInfo]
     val definedReflectiveProxyNames = mutable.HashSet.empty[MethodName]
 
     for (clazz <- classes) {
-      preprocess(clazz, staticFieldMirrors.getOrElse(clazz.className, Map.empty))
+      val classInfo = preprocess(
+        clazz,
+        staticFieldMirrors.getOrElse(clazz.className, Map.empty),
+        classInfosBuilder
+      )
+      classInfosBuilder += clazz.className -> classInfo
 
       // For Scala classes, collect the reflective proxy method names that it defines
       if (clazz.kind.isClass || clazz.kind == ClassKind.HijackedClass) {
@@ -30,19 +34,23 @@ object Preprocessor {
       }
     }
 
-    // sort for stability
-    ctx.setReflectiveProxyIDs(definedReflectiveProxyNames.toList.sorted.zipWithIndex.toMap)
+    val classInfos = classInfosBuilder.toMap
 
-    val collector = new AbstractMethodCallCollector(ctx)
+    // sort for stability
+    val reflectiveProxyIDs = definedReflectiveProxyNames.toList.sorted.zipWithIndex.toMap
+
+    val collector = new AbstractMethodCallCollector(classInfos)
     for (clazz <- classes)
       collector.collectAbstractMethodCalls(clazz)
     for (tle <- tles)
       collector.collectAbstractMethodCalls(tle)
 
     for (clazz <- classes) {
-      ctx.getClassInfo(clazz.className).buildMethodTable()
+      classInfos(clazz.className).buildMethodTable()
     }
-    assignBuckets(classes)
+    val itablesLength = assignBuckets(classes, classInfos)
+
+    new WasmContext(classInfos, reflectiveProxyIDs, itablesLength)
   }
 
   private def computeStaticFieldMirrors(
@@ -64,9 +72,11 @@ object Preprocessor {
     result
   }
 
-  private def preprocess(clazz: LinkedClass, staticFieldMirrors: Map[FieldName, List[String]])(
-      implicit ctx: WasmContext
-  ): Unit = {
+  private def preprocess(
+      clazz: LinkedClass,
+      staticFieldMirrors: Map[FieldName, List[String]],
+      previousClassInfos: collection.Map[ClassName, ClassInfo]
+  ): ClassInfo = {
     val className = clazz.className
     val kind = clazz.kind
 
@@ -74,7 +84,7 @@ object Preprocessor {
       if (kind.isClass) {
         val inheritedFields = clazz.superClass match {
           case None      => Nil
-          case Some(sup) => ctx.getClassInfo(sup.name).allFieldDefs
+          case Some(sup) => previousClassInfos(sup.name).allFieldDefs
         }
         val myFieldDefs = clazz.fields.collect {
           case fd: FieldDef if !fd.flags.namespace.isStatic =>
@@ -100,12 +110,15 @@ object Preprocessor {
       }
     }
 
-    val superClass = clazz.superClass.map(sup => ctx.getClassInfo(sup.name))
+    val superClass = clazz.superClass.map(sup => previousClassInfos(sup.name))
+
+    val strictClassAncestors =
+      if (kind.isClass || kind == ClassKind.HijackedClass) clazz.ancestors.tail
+      else Nil
 
     // Does this Scala class implement any interface?
     val classImplementsAnyInterface =
-      if (!kind.isClass && kind != ClassKind.HijackedClass) false
-      else clazz.ancestors.exists(a => a != className && ctx.getClassInfo(a).isInterface)
+      strictClassAncestors.exists(a => previousClassInfos(a).isInterface)
 
     /* Should we emit a vtable/typeData global for this class?
      *
@@ -124,8 +137,7 @@ object Preprocessor {
      */
     val hasRuntimeTypeInfo = clazz.hasRuntimeTypeInfo || clazz.hasInstanceTests
 
-    ctx.putClassInfo(
-      className,
+    val classInfo = {
       new ClassInfo(
         className,
         kind,
@@ -142,12 +154,12 @@ object Preprocessor {
         staticFieldMirrors,
         _itableIdx = -1
       )
-    )
+    }
 
     // Update specialInstanceTypes for ancestors of hijacked classes
     if (clazz.kind == ClassKind.HijackedClass) {
       def addSpecialInstanceTypeOnAllAncestors(jsValueType: Int): Unit =
-        clazz.ancestors.foreach(ctx.getClassInfo(_).addSpecialInstanceType(jsValueType))
+        strictClassAncestors.foreach(previousClassInfos(_).addSpecialInstanceType(jsValueType))
 
       clazz.className match {
         case BoxedBooleanClass =>
@@ -168,7 +180,9 @@ object Preprocessor {
      * Manually mark all ancestors of instantiated classes as having instances.
      */
     if (clazz.hasDirectInstances && !kind.isJSType)
-      clazz.ancestors.foreach(ancestor => ctx.getClassInfo(ancestor).setHasInstances())
+      strictClassAncestors.foreach(ancestor => previousClassInfos(ancestor).setHasInstances())
+
+    classInfo
   }
 
   /** Collect FunctionInfo based on the abstract method call
@@ -191,7 +205,8 @@ object Preprocessor {
     * It keeps B.c because it's concrete and used. But because `C.c` isn't there at all anymore, if
     * we have val `x: C` and we call `x.c`, we don't find the method at all.
     */
-  private class AbstractMethodCallCollector(ctx: WasmContext) extends Traversers.Traverser {
+  private class AbstractMethodCallCollector(classInfos: Map[ClassName, ClassInfo])
+      extends Traversers.Traverser {
     def collectAbstractMethodCalls(clazz: LinkedClass): Unit = {
       for (method <- clazz.methods)
         traverseMethodDef(method)
@@ -217,11 +232,11 @@ object Preprocessor {
         case Apply(flags, receiver, methodName, _) if !methodName.name.isReflectiveProxy =>
           receiver.tpe match {
             case ClassType(className) =>
-              val classInfo = ctx.getClassInfo(className)
+              val classInfo = classInfos(className)
               if (classInfo.hasInstances)
                 classInfo.registerDynamicCall(methodName.name)
             case AnyType =>
-              ctx.getClassInfo(ObjectClass).registerDynamicCall(methodName.name)
+              classInfos(ObjectClass).registerDynamicCall(methodName.name)
             case _ =>
               // For all other cases, including arrays, we will always perform a static dispatch
               ()
@@ -279,7 +294,10 @@ object Preprocessor {
     *   Inclusion Tests"
     *   [[https://www.researchgate.net/publication/2438441_Efficient_Type_Inclusion_Tests]]
     */
-  private def assignBuckets(allClasses: List[LinkedClass])(implicit ctx: WasmContext): Unit = {
+  private def assignBuckets(
+      allClasses: List[LinkedClass],
+      classInfos: Map[ClassName, ClassInfo]
+  ): Int = {
     val classes = allClasses.filterNot(_.kind.isJSType)
 
     var nextIdx = 0
@@ -289,7 +307,7 @@ object Preprocessor {
       new Bucket(idx)
     }
     def getAllInterfaces(clazz: LinkedClass): List[ClassName] =
-      clazz.ancestors.filter(ctx.getClassInfo(_).isInterface)
+      clazz.ancestors.filter(classInfos(_).isInterface)
 
     val buckets = new mutable.ListBuffer[Bucket]()
 
@@ -302,7 +320,7 @@ object Preprocessor {
     val spines = new mutable.HashSet[ClassName]()
 
     for (clazz <- classes.reverseIterator) {
-      val info = ctx.getClassInfo(clazz.name.name)
+      val info = classInfos(clazz.name.name)
       val ifaces = getAllInterfaces(clazz)
       if (ifaces.nonEmpty) {
         val joins = joinsOf.getOrElse(clazz.name.name, new mutable.HashSet())
@@ -341,7 +359,7 @@ object Preprocessor {
     }
 
     for (clazz <- classes) {
-      val info = ctx.getClassInfo(clazz.name.name)
+      val info = classInfos(clazz.name.name)
       val ifaces = getAllInterfaces(clazz)
       if (ifaces.nonEmpty && !spines.contains(clazz.name.name)) {
         val used = usedOf.getOrElse(clazz.name.name, new mutable.HashSet())
@@ -369,7 +387,7 @@ object Preprocessor {
       }
     }
 
-    ctx.setItablesLength(buckets.length)
+    buckets.length
   }
 
   private final class Bucket(idx: Int) {
