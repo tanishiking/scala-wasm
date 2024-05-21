@@ -57,7 +57,6 @@ final class WasmContext {
   private var stringPool = new mutable.ArrayBuffer[Byte]()
   private var nextConstantStringIndex: Int = 0
   private var nextConstatnStringOffset: Int = 0
-  private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
 
   private val _importedModules: mutable.LinkedHashSet[String] =
