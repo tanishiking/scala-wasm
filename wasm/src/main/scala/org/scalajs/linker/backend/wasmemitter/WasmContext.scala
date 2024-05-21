@@ -56,7 +56,6 @@ final class WasmContext {
 
   private var stringPool = new mutable.ArrayBuffer[Byte]()
   private var nextConstantStringIndex: Int = 0
-  private var nextConstatnStringOffset: Int = 0
   private var nextClosureDataTypeIndex: Int = 1
 
   private val _importedModules: mutable.LinkedHashSet[String] =
@@ -151,13 +150,12 @@ final class WasmContext {
         val bytes = str.toCharArray.flatMap { char =>
           Array((char & 0xFF).toByte, (char >> 8).toByte)
         }
-        val offset = nextConstatnStringOffset
+        val offset = stringPool.size
         val data = StringData(nextConstantStringIndex, offset)
         constantStringGlobals(str) = data
 
         stringPool ++= bytes
         nextConstantStringIndex += 1
-        nextConstatnStringOffset += bytes.length
         data
     }
   }
