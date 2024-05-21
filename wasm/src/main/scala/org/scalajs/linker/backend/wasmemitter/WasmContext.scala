@@ -29,6 +29,7 @@ final class WasmContext {
   import WasmContext._
 
   private val classInfo = mutable.Map[ClassName, ClassInfo]()
+  private var reflectiveProxies: Map[MethodName, Int] = null
 
   private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
@@ -38,7 +39,6 @@ final class WasmContext {
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
   private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeID]
-  private val reflectiveProxies = LinkedHashMap.empty[MethodName, Int]
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
@@ -59,7 +59,6 @@ final class WasmContext {
   private var nextConstatnStringOffset: Int = 0
   private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
-  private var nextReflectiveProxyIdx: Int = 0
 
   private val _importedModules: mutable.LinkedHashSet[String] =
     new mutable.LinkedHashSet()
@@ -99,15 +98,16 @@ final class WasmContext {
       ArrayType(typeRef)
   }
 
-  /** Retrieves a unique identifier for a reflective proxy with the given name */
+  /** Sets the map of reflexity proxy IDs, only for use by `Preprocessor`. */
+  def setReflectiveProxyIDs(proxyIDs: Map[MethodName, Int]): Unit =
+    reflectiveProxies = proxyIDs
+
+  /** Retrieves a unique identifier for a reflective proxy with the given name.
+    *
+    * If no class defines a reflective proxy with the given name, returns `-1`.
+    */
   def getReflectiveProxyId(name: MethodName): Int =
-    reflectiveProxies.getOrElseUpdate(
-      name, {
-        val idx = nextReflectiveProxyIdx
-        nextReflectiveProxyIdx += 1
-        idx
-      }
-    )
+    reflectiveProxies.getOrElse(name, -1)
 
   /** Adds or reuses a function type for a table function.
     *

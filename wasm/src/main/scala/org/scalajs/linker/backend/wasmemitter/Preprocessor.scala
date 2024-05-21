@@ -1,5 +1,7 @@
 package org.scalajs.linker.backend.wasmemitter
 
+import scala.collection.mutable
+
 import org.scalajs.ir.Names._
 import org.scalajs.ir.Trees._
 import org.scalajs.ir.Types._
@@ -16,8 +18,20 @@ object Preprocessor {
   ): Unit = {
     val staticFieldMirrors = computeStaticFieldMirrors(tles)
 
-    for (clazz <- classes)
+    val definedReflectiveProxyNames = mutable.HashSet.empty[MethodName]
+
+    for (clazz <- classes) {
       preprocess(clazz, staticFieldMirrors.getOrElse(clazz.className, Map.empty))
+
+      // For Scala classes, collect the reflective proxy method names that it defines
+      if (clazz.kind.isClass || clazz.kind == ClassKind.HijackedClass) {
+        for (method <- clazz.methods if method.methodName.isReflectiveProxy)
+          definedReflectiveProxyNames += method.methodName
+      }
+    }
+
+    // sort for stability
+    ctx.setReflectiveProxyIDs(definedReflectiveProxyNames.toList.sorted.zipWithIndex.toMap)
 
     val collector = new AbstractMethodCallCollector(ctx)
     for (clazz <- classes)
