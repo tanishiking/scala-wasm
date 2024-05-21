@@ -39,12 +39,12 @@ final class WasmContext(
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
-      def functionTypeToTypeName(sig: watpe.FunctionType): wanme.TypeID = {
+      def functionTypeToTypeID(sig: watpe.FunctionType): wanme.TypeID = {
         functionTypes.getOrElseUpdate(
           sig, {
-            val typeName = genTypeID.forFunction(functionTypes.size)
-            moduleBuilder.addRecType(typeName, NoOriginalName, sig)
-            typeName
+            val typeID = genTypeID.forFunction(functionTypes.size)
+            moduleBuilder.addRecType(typeID, NoOriginalName, sig)
+            typeID
           }
         )
       }
@@ -111,20 +111,20 @@ final class WasmContext(
 
     tableFunctionTypes.getOrElseUpdate(
       normalizedName, {
-        val typeName = genTypeID.forTableFunctionType(normalizedName)
+        val typeID = genTypeID.forTableFunctionType(normalizedName)
         val regularParamTyps = normalizedName.paramTypeRefs.map { typeRef =>
           TypeTransformer.transformType(inferTypeFromTypeRef(typeRef))(this)
         }
-        val resultTyp =
+        val resultType =
           TypeTransformer.transformResultType(inferTypeFromTypeRef(normalizedName.resultTypeRef))(
             this
           )
         mainRecType.addSubType(
-          typeName,
+          typeID,
           NoOriginalName,
-          watpe.FunctionType(watpe.RefType.any :: regularParamTyps, resultTyp)
+          watpe.FunctionType(watpe.RefType.any :: regularParamTyps, resultType)
         )
-        typeName
+        typeID
       }
     )
   }
@@ -174,18 +174,18 @@ final class WasmContext(
               TypeTransformer.transformType(tpe)(this),
               isMutable = false
             )
-        val structTypeName = genTypeID.captureData(nextClosureDataTypeIndex)
+        val structTypeID = genTypeID.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
         val structType = watpe.StructType(fields)
-        moduleBuilder.addRecType(structTypeName, NoOriginalName, structType)
-        structTypeName
+        moduleBuilder.addRecType(structTypeID, NoOriginalName, structType)
+        structTypeID
       }
     )
   }
 
-  def refFuncWithDeclaration(name: wanme.FunctionID): wa.RefFunc = {
-    _funcDeclarations += name
-    wa.RefFunc(name)
+  def refFuncWithDeclaration(funcID: wanme.FunctionID): wa.RefFunc = {
+    _funcDeclarations += funcID
+    wa.RefFunc(funcID)
   }
 
   def addGlobal(g: wamod.Global): Unit =
@@ -341,7 +341,7 @@ object WasmContext {
       val ownerClass: ClassName,
       val methodName: MethodName
   ) {
-    val tableEntryName = genFunctionID.forTableEntry(ownerClass, methodName)
+    val tableEntryID = genFunctionID.forTableEntry(ownerClass, methodName)
 
     private var effectivelyFinal: Boolean = true
 

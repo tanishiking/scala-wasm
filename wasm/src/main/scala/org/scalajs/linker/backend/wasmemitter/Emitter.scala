@@ -157,7 +157,7 @@ final class Emitter(config: Emitter.Config) {
           fb += wa.I32Const(idx)
 
           for (method <- iface.tableEntries)
-            fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
+            fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryID)
           fb += wa.StructNew(genTypeID.forITable(iface.name))
           fb += wa.ArraySet(genTypeID.itables)
         }
@@ -166,7 +166,7 @@ final class Emitter(config: Emitter.Config) {
 
     locally {
       // For array classes, resolve methods in jl.Object
-      val globalName = genGlobalID.arrayClassITable
+      val globalID = genGlobalID.arrayClassITable
       val resolvedMethodInfos = ctx.getClassInfo(ObjectClass).resolvedMethodInfos
 
       for {
@@ -174,11 +174,11 @@ final class Emitter(config: Emitter.Config) {
         // Use getClassInfoOption in case the reachability analysis got rid of those interfaces
         interfaceInfo <- ctx.getClassInfoOption(interfaceName)
       } {
-        fb += wa.GlobalGet(globalName)
+        fb += wa.GlobalGet(globalID)
         fb += wa.I32Const(ctx.getItableIdx(interfaceInfo))
 
         for (method <- interfaceInfo.tableEntries)
-          fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
+          fb += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryID)
         fb += wa.StructNew(genTypeID.forITable(interfaceName))
         fb += wa.ArraySet(genTypeID.itables)
       }
@@ -201,12 +201,12 @@ final class Emitter(config: Emitter.Config) {
     // Emit the static initializers
 
     for (clazz <- sortedClasses if clazz.hasStaticInitializer) {
-      val funcName = genFunctionID.forMethod(
+      val funcID = genFunctionID.forMethod(
         MemberNamespace.StaticConstructor,
         clazz.className,
         StaticInitializerName
       )
-      fb += wa.Call(funcName)
+      fb += wa.Call(funcID)
     }
 
     // Initialize the top-level exports that require it
@@ -243,9 +243,8 @@ final class Emitter(config: Emitter.Config) {
 
     moduleInitializers.foreach { init =>
       def genCallStatic(className: ClassName, methodName: MethodName): Unit = {
-        val functionName =
-          genFunctionID.forMethod(MemberNamespace.PublicStatic, className, methodName)
-        fb += wa.Call(functionName)
+        val funcID = genFunctionID.forMethod(MemberNamespace.PublicStatic, className, methodName)
+        fb += wa.Call(funcID)
       }
 
       ModuleInitializerImpl.fromInitializer(init) match {
@@ -294,8 +293,8 @@ final class Emitter(config: Emitter.Config) {
        * Element section with the declarative mode is the recommended way to
        * introduce these declarations.
        */
-      val exprs = funcDeclarations.map { name =>
-        wa.Expr(List(wa.RefFunc(name)))
+      val exprs = funcDeclarations.map { funcID =>
+        wa.Expr(List(wa.RefFunc(funcID)))
       }
       ctx.moduleBuilder.addElement(
         wamod.Element(watpe.RefType.funcref, exprs, wamod.Element.Mode.Declarative)

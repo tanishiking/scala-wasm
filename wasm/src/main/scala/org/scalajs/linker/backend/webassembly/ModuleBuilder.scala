@@ -23,11 +23,11 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
   private val elems: mutable.ListBuffer[Element] = new mutable.ListBuffer()
   private val datas: mutable.ListBuffer[Data] = new mutable.ListBuffer()
 
-  def functionTypeToTypeName(sig: FunctionType): TypeID =
-    functionSignatureProvider.functionTypeToTypeName(sig)
+  def functionTypeToTypeID(sig: FunctionType): TypeID =
+    functionSignatureProvider.functionTypeToTypeID(sig)
 
-  def addRecType(typ: RecType): Unit = types += typ
-  def addRecType(typ: SubType): Unit = addRecType(RecType(typ))
+  def addRecType(recType: RecType): Unit = types += recType
+  def addRecType(subType: SubType): Unit = addRecType(RecType(subType))
 
   def addRecType(id: TypeID, originalName: OriginalName, compositeType: CompositeType): Unit =
     addRecType(SubType(id, originalName, compositeType))
@@ -38,7 +38,7 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
   def addImport(imprt: Import): Unit = imports += imprt
   def addFunction(function: Function): Unit = funcs += function
   def addTag(tag: Tag): Unit = tags += tag
-  def addGlobal(typ: Global): Unit = globals += typ
+  def addGlobal(global: Global): Unit = globals += global
   def addExport(exprt: Export): Unit = exports += exprt
   def setStart(startFunction: FunctionID): Unit = start = Some(startFunction)
   def addElement(element: Element): Unit = elems += element
@@ -68,7 +68,7 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
 
 object ModuleBuilder {
   trait FunctionTypeProvider {
-    def functionTypeToTypeName(sig: FunctionType): TypeID
+    def functionTypeToTypeID(sig: FunctionType): TypeID
   }
 
   final class RecTypeBuilder {

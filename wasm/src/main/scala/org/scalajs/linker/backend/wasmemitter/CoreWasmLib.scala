@@ -26,14 +26,14 @@ object CoreWasmLib {
     * definition.
     *
     * @see
-    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
+    *   [[VarGen.genFieldID.typeData]], which contains documentation of what is in each field.
     */
   val typeDataStructFields: List[StructField] = {
     import genFieldID.typeData._
     import RefType.nullable
 
-    def make(id: FieldID, typ: Type, isMutable: Boolean): StructField =
-      StructField(id, OriginalName(id.toString()), typ, isMutable)
+    def make(id: FieldID, tpe: Type, isMutable: Boolean): StructField =
+      StructField(id, OriginalName(id.toString()), tpe, isMutable)
 
     List(
       make(nameOffset, Int32, isMutable = false),
@@ -169,11 +169,11 @@ object CoreWasmLib {
 
   private def genArrayClassTypes()(implicit ctx: WasmContext): Unit = {
     // The vtable type is always the same as j.l.Object
-    val vtableTypeName = genTypeID.ObjectVTable
+    val vtableTypeID = genTypeID.ObjectVTable
     val vtableField = StructField(
       genFieldID.objStruct.vtable,
       OriginalName(genFieldID.objStruct.vtable.toString()),
-      RefType(vtableTypeName),
+      RefType(vtableTypeID),
       isMutable = false
     )
     val itablesField = StructField(
@@ -196,13 +196,13 @@ object CoreWasmLib {
         (genTypeID.ObjectArray, genTypeID.anyArray)
       )
 
-    for ((structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
-      val origName = OriginalName(structTypeName.toString())
+    for ((structTypeID, underlyingArrayTypeID) <- typeRefsWithArrays) {
+      val origName = OriginalName(structTypeID.toString())
 
       val underlyingArrayField = StructField(
         genFieldID.objStruct.arrayUnderlying,
         OriginalName(genFieldID.objStruct.arrayUnderlying.toString()),
-        RefType(underlyingArrayTypeName),
+        RefType(underlyingArrayTypeID),
         isMutable = false
       )
 
@@ -210,14 +210,14 @@ object CoreWasmLib {
       val structType = StructType(
         List(vtableField, itablesField, underlyingArrayField)
       )
-      val subType = SubType(structTypeName, origName, isFinal = true, Some(superType), structType)
+      val subType = SubType(structTypeID, origName, isFinal = true, Some(superType), structType)
       ctx.mainRecType.addSubType(subType)
     }
   }
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
     val exceptionSig = FunctionType(List(RefType.externref), Nil)
-    val typeName = ctx.moduleBuilder.functionTypeToTypeName(exceptionSig)
+    val typeID = ctx.moduleBuilder.functionTypeToTypeID(exceptionSig)
     ctx.moduleBuilder.addImport(
       Import(
         "__scalaJSHelpers",
@@ -225,7 +225,7 @@ object CoreWasmLib {
         ImportDesc.Tag(
           genTagID.exception,
           OriginalName(genTagID.exception.toString()),
-          typeName
+          typeID
         )
       )
     )
@@ -234,14 +234,14 @@ object CoreWasmLib {
   private def genGlobalImports()(implicit ctx: WasmContext): Unit = {
     def addGlobalHelperImport(
         id: genGlobalID.JSHelperGlobalID,
-        typ: Type,
+        tpe: Type,
         isMutable: Boolean
     ): Unit = {
       ctx.moduleBuilder.addImport(
         Import(
           "__scalaJSHelpers",
           id.toString(), // import name, guaranteed by JSHelperGlobalID
-          ImportDesc.Global(id, OriginalName(id.toString()), typ, isMutable)
+          ImportDesc.Global(id, OriginalName(id.toString()), tpe, isMutable)
         )
       )
     }
@@ -268,7 +268,7 @@ object CoreWasmLib {
       DoubleRef -> KindDouble
     )
 
-    val typeDataTypeName = genTypeID.typeData
+    val typeDataTypeID = genTypeID.typeData
 
     // Other than `name` and `kind`, all the fields have the same value for all primitives
     val commonFieldValues = List(
@@ -319,7 +319,7 @@ object CoreWasmLib {
       (genGlobalID.bZeroLong, SpecialNames.LongBoxClass, I64Const(0))
     )
 
-    for ((globalName, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
+    for ((globalID, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
       val boxStruct = genTypeID.forClass(boxClassName)
       val instrs: List[Instr] = List(
         GlobalGet(genGlobalID.forVTable(boxClassName)),
@@ -330,8 +330,8 @@ object CoreWasmLib {
 
       ctx.addGlobal(
         Global(
-          globalName,
-          OriginalName(globalName.toString()),
+          globalID,
+          OriginalName(globalID.toString()),
           RefType(boxStruct),
           Expr(instrs),
           isMutable = false
@@ -366,12 +366,12 @@ object CoreWasmLib {
         results: List[Type]
     ): Unit = {
       val sig = FunctionType(params, results)
-      val typeName = ctx.moduleBuilder.functionTypeToTypeName(sig)
+      val typeID = ctx.moduleBuilder.functionTypeToTypeID(sig)
       ctx.moduleBuilder.addImport(
         Import(
           "__scalaJSHelpers",
           id.toString(), // import name, guaranteed by JSHelperFunctionID
-          ImportDesc.Func(id, OriginalName(id.toString()), typeName)
+          ImportDesc.Func(id, OriginalName(id.toString()), typeID)
         )
       )
     }
@@ -487,14 +487,14 @@ object CoreWasmLib {
     addHelperImport(genFunctionID.jsIsTruthy, List(anyref), List(Int32))
     addHelperImport(genFunctionID.jsLinkingInfo, Nil, List(anyref))
 
-    for ((op, name) <- genFunctionID.jsUnaryOps)
-      addHelperImport(name, List(anyref), List(anyref))
+    for ((op, funcID) <- genFunctionID.jsUnaryOps)
+      addHelperImport(funcID, List(anyref), List(anyref))
 
-    for ((op, name) <- genFunctionID.jsBinaryOps) {
+    for ((op, funcID) <- genFunctionID.jsBinaryOps) {
       val resultType =
         if (op == JSBinaryOp.=== || op == JSBinaryOp.!==) Int32
         else anyref
-      addHelperImport(name, List(anyref, anyref), List(resultType))
+      addHelperImport(funcID, List(anyref, anyref), List(resultType))
     }
 
     addHelperImport(genFunctionID.newSymbol, Nil, List(anyref))
@@ -1052,7 +1052,7 @@ object CoreWasmLib {
 
         val objectClassInfo = ctx.getClassInfo(ObjectClass)
         fb ++= objectClassInfo.tableEntries.map { methodName =>
-          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryName)
+          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryID)
         }
         fb += StructNew(genTypeID.ObjectVTable)
         fb += LocalTee(arrayTypeDataLocal)
@@ -1133,8 +1133,8 @@ object CoreWasmLib {
       },
       List(KindBoxedCharacter) -> { () =>
         fb += LocalGet(valueParam)
-        val structTypeName = genTypeID.forClass(SpecialNames.CharBoxClass)
-        fb += RefTest(RefType(structTypeName))
+        val structTypeID = genTypeID.forClass(SpecialNames.CharBoxClass)
+        fb += RefTest(RefType(structTypeID))
       },
       List(KindBoxedByte) -> { () =>
         fb += LocalGet(valueParam)
@@ -1150,8 +1150,8 @@ object CoreWasmLib {
       },
       List(KindBoxedLong) -> { () =>
         fb += LocalGet(valueParam)
-        val structTypeName = genTypeID.forClass(SpecialNames.LongBoxClass)
-        fb += RefTest(RefType(structTypeName))
+        val structTypeID = genTypeID.forClass(SpecialNames.LongBoxClass)
+        fb += RefTest(RefType(structTypeID))
       },
       List(KindBoxedFloat) -> { () =>
         fb += LocalGet(valueParam)
@@ -2116,11 +2116,11 @@ object CoreWasmLib {
 
     val arrayTypeRef = ArrayTypeRef(baseRef, 1)
 
-    val arrayStructTypeName = genTypeID.forArrayClass(arrayTypeRef)
-    val arrayClassType = RefType(arrayStructTypeName)
+    val arrayStructTypeID = genTypeID.forArrayClass(arrayTypeRef)
+    val arrayClassType = RefType(arrayStructTypeID)
 
-    val underlyingArrayTypeName = genTypeID.underlyingOf(arrayTypeRef)
-    val underlyingArrayType = RefType(underlyingArrayTypeName)
+    val underlyingArrayTypeID = genTypeID.underlyingOf(arrayTypeRef)
+    val underlyingArrayType = RefType(underlyingArrayTypeID)
 
     val fromLocal = fb.addLocal("fromTyped", arrayClassType)
     val fromUnderlyingLocal = fb.addLocal("fromUnderlying", underlyingArrayType)
@@ -2133,26 +2133,26 @@ object CoreWasmLib {
     fb += LocalTee(fromLocal)
 
     // Load the underlying array
-    fb += StructGet(arrayStructTypeName, genFieldID.objStruct.arrayUnderlying)
+    fb += StructGet(arrayStructTypeID, genFieldID.objStruct.arrayUnderlying)
     fb += LocalTee(fromUnderlyingLocal)
 
     // Make a copy of the underlying array
     fb += ArrayLen
     fb += LocalTee(lengthLocal)
-    fb += ArrayNewDefault(underlyingArrayTypeName)
+    fb += ArrayNewDefault(underlyingArrayTypeID)
     fb += LocalTee(resultUnderlyingLocal) // also dest for array.copy
     fb += I32Const(0) // destOffset
     fb += LocalGet(fromUnderlyingLocal) // src
     fb += I32Const(0) // srcOffset
     fb += LocalGet(lengthLocal) // length
-    fb += ArrayCopy(underlyingArrayTypeName, underlyingArrayTypeName)
+    fb += ArrayCopy(underlyingArrayTypeID, underlyingArrayTypeID)
 
     // Build the result arrayStruct
     fb += LocalGet(fromLocal)
-    fb += StructGet(arrayStructTypeName, genFieldID.objStruct.vtable) // vtable
+    fb += StructGet(arrayStructTypeID, genFieldID.objStruct.vtable) // vtable
     fb += GlobalGet(genGlobalID.arrayClassITable) // itable
     fb += LocalGet(resultUnderlyingLocal)
-    fb += StructNew(arrayStructTypeName)
+    fb += StructNew(arrayStructTypeID)
 
     fb.buildAndAddToModule()
   }
