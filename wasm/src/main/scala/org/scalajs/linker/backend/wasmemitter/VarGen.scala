@@ -4,286 +4,315 @@ import org.scalajs.ir.Names.{FieldName => IRFieldName, _}
 import org.scalajs.ir.Trees.{JSUnaryOp, JSBinaryOp, MemberNamespace}
 import org.scalajs.ir.Types._
 
-import org.scalajs.linker.backend.webassembly.Names._
+import org.scalajs.linker.backend.webassembly.Identitities._
 
-/** Manages name generation for non-local, generated variable names. */
+/** Manages generation of non-local IDs.
+  *
+  * `LocalID`s and `LabelID`s are directly managed by `FunctionBuilder` instead.
+  */
 object VarGen {
 
-  object genGlobalName {
-    def forImportedModule(moduleName: String): GlobalName =
-      GlobalName(s"imported.$moduleName")
+  object genGlobalID {
+    private final case class ImportedModuleID(moduleName: String) extends GlobalID
+    private final case class ModuleInstanceID(className: ClassName) extends GlobalID
+    private final case class JSClassValueID(className: ClassName) extends GlobalID
+    private final case class VTableID(typeRef: NonArrayTypeRef) extends GlobalID
+    private final case class ITableID(className: ClassName) extends GlobalID
+    private final case class StaticFieldID(fieldName: IRFieldName) extends GlobalID
+    private final case class JSPrivateFieldID(fieldName: IRFieldName) extends GlobalID
 
-    def forModuleInstance(className: ClassName): GlobalName =
-      GlobalName(s"modinstace.${className.nameString}")
+    def forImportedModule(moduleName: String): GlobalID =
+      ImportedModuleID(moduleName)
 
-    def forJSClassValue(className: ClassName): GlobalName =
-      GlobalName(s"jsclass.${className.nameString}")
+    def forModuleInstance(className: ClassName): GlobalID =
+      ModuleInstanceID(className)
 
-    def forVTable(className: ClassName): GlobalName =
-      GlobalName(s"vtable.L${className.nameString}")
+    def forJSClassValue(className: ClassName): GlobalID =
+      JSClassValueID(className)
 
-    def forVTable(typeRef: NonArrayTypeRef): GlobalName = typeRef match {
-      case typeRef: PrimRef    => GlobalName(s"vtable.${typeRef.charCode}")
-      case ClassRef(className) => forVTable(className)
-    }
+    def forVTable(className: ClassName): GlobalID =
+      forVTable(ClassRef(className))
 
-    def forITable(className: ClassName): GlobalName =
-      GlobalName(s"itable.L${className.nameString}")
+    def forVTable(typeRef: NonArrayTypeRef): GlobalID =
+      VTableID(typeRef)
 
-    def forStaticField(fieldName: IRFieldName): GlobalName =
-      GlobalName(s"static.${fieldName.nameString}")
+    def forITable(className: ClassName): GlobalID =
+      ITableID(className)
 
-    def forJSPrivateField(fieldName: IRFieldName): GlobalName =
-      GlobalName(s"jspfield.${fieldName.nameString}")
+    def forStaticField(fieldName: IRFieldName): GlobalID =
+      StaticFieldID(fieldName)
 
-    val undef: GlobalName =
-      GlobalName("undef")
+    def forJSPrivateField(fieldName: IRFieldName): GlobalID =
+      JSPrivateFieldID(fieldName)
 
-    val bFalse: GlobalName =
-      GlobalName("bFalse")
+    /** A `GlobalID` for a JS helper global.
+      *
+      * Its `toString()` is guaranteed to correspond to the import name of the helper.
+      */
+    sealed abstract class JSHelperGlobalID extends GlobalID
 
-    val bZero: GlobalName =
-      GlobalName("bZero")
+    case object undef extends JSHelperGlobalID
 
-    val bZeroChar: GlobalName =
-      GlobalName("bZeroChar")
+    case object bFalse extends JSHelperGlobalID
 
-    val bZeroLong: GlobalName =
-      GlobalName("bZeroLong")
+    case object bZero extends JSHelperGlobalID
 
-    val emptyString: GlobalName =
-      GlobalName("emptyString")
+    case object bZeroChar extends GlobalID
 
-    val stringLiteralCache: GlobalName =
-      GlobalName("string_literal")
+    case object bZeroLong extends GlobalID
 
-    val arrayClassITable: GlobalName =
-      GlobalName("itable.A")
+    case object emptyString extends JSHelperGlobalID
 
-    val lastIDHashCode: GlobalName =
-      GlobalName("lastIDHashCode")
+    case object stringLiteralCache extends GlobalID
 
-    val idHashCodeMap: GlobalName =
-      GlobalName("idHashCodeMap")
+    case object arrayClassITable extends GlobalID
+
+    case object lastIDHashCode extends GlobalID
+
+    case object idHashCodeMap extends JSHelperGlobalID
   }
 
-  object genFunctionName {
-    private def make(str: String): FunctionName =
-      FunctionName(str)
-
-    private def make(namespace: String, simpleName: String): FunctionName =
-      make(namespace + "#" + simpleName)
-
-    def forMethod(
+  object genFunctionID {
+    private final case class MethodID(
         namespace: MemberNamespace,
-        clazz: ClassName,
-        method: MethodName
-    ): FunctionName =
-      make(namespaceString(namespace) + "#" + clazz.nameString + "#" + method.nameString)
+        className: ClassName,
+        methodName: MethodName
+    ) extends FunctionID
 
-    private def namespaceString(namespace: MemberNamespace): String = {
-      import MemberNamespace._
+    private final case class TableEntryID(className: ClassName, methodName: MethodName)
+        extends FunctionID
 
-      // These strings are the same ones that the JS back-end uses
-      namespace match {
-        case Public            => "f"
-        case Private           => "p"
-        case PublicStatic      => "s"
-        case PrivateStatic     => "ps"
-        case Constructor       => "ct"
-        case StaticConstructor => "sct"
-      }
-    }
+    private final case class ExportID(exportedName: String) extends FunctionID
+    private final case class TopLevelExportSetterID(exportedName: String) extends FunctionID
 
-    def forTableEntry(clazz: ClassName, method: MethodName): FunctionName =
-      make("t#" + clazz.nameString, method.nameString)
+    private final case class LoadModuleID(className: ClassName) extends FunctionID
+    private final case class NewDefaultID(className: ClassName) extends FunctionID
+    private final case class InstanceTestID(className: ClassName) extends FunctionID
+    private final case class CloneID(className: ClassName) extends FunctionID
+    private final case class CloneArrayID(arrayBaseRef: NonArrayTypeRef) extends FunctionID
 
-    def forExport(exportedName: String): FunctionName =
-      make("export", exportedName)
-    def forTopLevelExportSetter(exportedName: String): FunctionName =
-      make("setexport", exportedName)
+    private final case class IsJSClassInstanceID(className: ClassName) extends FunctionID
+    private final case class LoadJSClassID(className: ClassName) extends FunctionID
+    private final case class CreateJSClassOfID(className: ClassName) extends FunctionID
+    private final case class PreSuperStatsID(className: ClassName) extends FunctionID
+    private final case class SuperArgsID(className: ClassName) extends FunctionID
+    private final case class PostSuperStatsID(className: ClassName) extends FunctionID
 
-    def loadModule(clazz: ClassName): FunctionName =
-      make("loadModule", clazz.nameString)
-    def newDefault(clazz: ClassName): FunctionName =
-      make("new", clazz.nameString)
-    def instanceTest(clazz: ClassName): FunctionName =
-      make("instanceTest", clazz.nameString)
-    def clone(clazz: ClassName): FunctionName =
-      make("clone", clazz.nameString)
+    def forMethod(namespace: MemberNamespace, clazz: ClassName, method: MethodName): FunctionID =
+      MethodID(namespace, clazz, method)
+    def forTableEntry(clazz: ClassName, method: MethodName): FunctionID =
+      TableEntryID(clazz, method)
 
-    def clone(arrayBaseRef: NonArrayTypeRef): FunctionName = {
-      val simpleName = arrayBaseRef match {
-        case ClassRef(_)  => "O"
-        case PrimRef(tpe) => tpe.primRef.charCode.toString()
-      }
-      make("cloneArray", simpleName)
-    }
+    def forExport(exportedName: String): FunctionID =
+      ExportID(exportedName)
+    def forTopLevelExportSetter(exportedName: String): FunctionID =
+      TopLevelExportSetterID(exportedName)
 
-    def isJSClassInstance(clazz: ClassName): FunctionName =
-      make("isJSClassInstance", clazz.nameString)
-    def loadJSClass(clazz: ClassName): FunctionName =
-      make("loadJSClass", clazz.nameString)
-    def createJSClassOf(clazz: ClassName): FunctionName =
-      make("createJSClassOf", clazz.nameString)
-    def preSuperStats(clazz: ClassName): FunctionName =
-      make("preSuperStats", clazz.nameString)
-    def superArgs(clazz: ClassName): FunctionName =
-      make("superArgs", clazz.nameString)
-    def postSuperStats(clazz: ClassName): FunctionName =
-      make("postSuperStats", clazz.nameString)
+    def loadModule(clazz: ClassName): FunctionID =
+      LoadModuleID(clazz)
+    def newDefault(clazz: ClassName): FunctionID =
+      NewDefaultID(clazz)
+    def instanceTest(clazz: ClassName): FunctionID =
+      InstanceTestID(clazz)
+    def clone(clazz: ClassName): FunctionID =
+      CloneID(clazz)
+    def clone(arrayBaseRef: NonArrayTypeRef): FunctionID =
+      CloneArrayID(arrayBaseRef)
 
-    val start = make("start")
+    def isJSClassInstance(clazz: ClassName): FunctionID =
+      IsJSClassInstanceID(clazz)
+    def loadJSClass(clazz: ClassName): FunctionID =
+      LoadJSClassID(clazz)
+    def createJSClassOf(clazz: ClassName): FunctionID =
+      CreateJSClassOfID(clazz)
+    def preSuperStats(clazz: ClassName): FunctionID =
+      PreSuperStatsID(clazz)
+    def superArgs(clazz: ClassName): FunctionID =
+      SuperArgsID(clazz)
+    def postSuperStats(clazz: ClassName): FunctionID =
+      PostSuperStatsID(clazz)
+
+    case object start extends FunctionID
 
     // JS helpers
 
-    val is = make("is")
+    /** A `FunctionID` for a JS helper function.
+      *
+      * Its `toString()` is guaranteed to correspond to the import name of the helper.
+      */
+    sealed abstract class JSHelperFunctionID extends FunctionID
 
-    val isUndef = make("isUndef")
+    case object is extends JSHelperFunctionID
 
-    def box(primRef: PrimRef): FunctionName = make("b" + primRef.charCode)
-    def unbox(primRef: PrimRef): FunctionName = make("u" + primRef.charCode)
-    def unboxOrNull(primRef: PrimRef): FunctionName = make("uN" + primRef.charCode)
-    def typeTest(primRef: PrimRef): FunctionName = make("t" + primRef.charCode)
+    case object isUndef extends JSHelperFunctionID
 
-    val fmod = make("fmod")
+    private final case class BoxID(primRef: PrimRef) extends JSHelperFunctionID {
+      override def toString(): String = "b" + primRef.charCode
+    }
 
-    val closure = make("closure")
-    val closureThis = make("closureThis")
-    val closureRest = make("closureRest")
-    val closureThisRest = make("closureThisRest")
+    private final case class UnboxID(primRef: PrimRef) extends JSHelperFunctionID {
+      override def toString(): String = "u" + primRef.charCode
+    }
 
-    val makeExportedDef = make("makeExportedDef")
-    val makeExportedDefRest = make("makeExportedDefRest")
+    private final case class UnboxOrNullID(primRef: PrimRef) extends JSHelperFunctionID {
+      override def toString(): String = "uN" + primRef.charCode
+    }
 
-    val stringLength = make("stringLength")
-    val stringCharAt = make("stringCharAt")
-    val jsValueToString = make("jsValueToString") // for actual toString() call
-    val jsValueToStringForConcat = make("jsValueToStringForConcat")
-    val booleanToString = make("booleanToString")
-    val charToString = make("charToString")
-    val intToString = make("intToString")
-    val longToString = make("longToString")
-    val doubleToString = make("doubleToString")
-    val stringConcat = make("stringConcat")
-    val isString = make("isString")
+    private final case class TypeTestID(primRef: PrimRef) extends JSHelperFunctionID {
+      override def toString(): String = "t" + primRef.charCode
+    }
 
-    val jsValueType = make("jsValueType")
-    val bigintHashCode = make("bigintHashCode")
-    val symbolDescription = make("symbolDescription")
-    val idHashCodeGet = make("idHashCodeGet")
-    val idHashCodeSet = make("idHashCodeSet")
+    def box(primRef: PrimRef): JSHelperFunctionID = BoxID(primRef)
+    def unbox(primRef: PrimRef): JSHelperFunctionID = UnboxID(primRef)
+    def unboxOrNull(primRef: PrimRef): JSHelperFunctionID = UnboxOrNullID(primRef)
+    def typeTest(primRef: PrimRef): JSHelperFunctionID = TypeTestID(primRef)
 
-    val jsGlobalRefGet = make("jsGlobalRefGet")
-    val jsGlobalRefSet = make("jsGlobalRefSet")
-    val jsGlobalRefTypeof = make("jsGlobalRefTypeof")
-    val jsNewArray = make("jsNewArray")
-    val jsArrayPush = make("jsArrayPush")
-    val jsArraySpreadPush = make("jsArraySpreadPush")
-    val jsNewObject = make("jsNewObject")
-    val jsObjectPush = make("jsObjectPush")
-    val jsSelect = make("jsSelect")
-    val jsSelectSet = make("jsSelectSet")
-    val jsNew = make("jsNew")
-    val jsFunctionApply = make("jsFunctionApply")
-    val jsMethodApply = make("jsMethodApply")
-    val jsImportCall = make("jsImportCall")
-    val jsImportMeta = make("jsImportMeta")
-    val jsDelete = make("jsDelete")
-    val jsForInSimple = make("jsForInSimple")
-    val jsIsTruthy = make("jsIsTruthy")
-    val jsLinkingInfo = make("jsLinkingInfo")
+    case object fmod extends JSHelperFunctionID
 
-    val jsUnaryOps: Map[JSUnaryOp.Code, FunctionName] = {
+    case object closure extends JSHelperFunctionID
+    case object closureThis extends JSHelperFunctionID
+    case object closureRest extends JSHelperFunctionID
+    case object closureThisRest extends JSHelperFunctionID
+
+    case object makeExportedDef extends JSHelperFunctionID
+    case object makeExportedDefRest extends JSHelperFunctionID
+
+    case object stringLength extends JSHelperFunctionID
+    case object stringCharAt extends JSHelperFunctionID
+    case object jsValueToString extends JSHelperFunctionID // for actual toString() call
+    case object jsValueToStringForConcat extends JSHelperFunctionID
+    case object booleanToString extends JSHelperFunctionID
+    case object charToString extends JSHelperFunctionID
+    case object intToString extends JSHelperFunctionID
+    case object longToString extends JSHelperFunctionID
+    case object doubleToString extends JSHelperFunctionID
+    case object stringConcat extends JSHelperFunctionID
+    case object isString extends JSHelperFunctionID
+
+    case object jsValueType extends JSHelperFunctionID
+    case object bigintHashCode extends JSHelperFunctionID
+    case object symbolDescription extends JSHelperFunctionID
+    case object idHashCodeGet extends JSHelperFunctionID
+    case object idHashCodeSet extends JSHelperFunctionID
+
+    case object jsGlobalRefGet extends JSHelperFunctionID
+    case object jsGlobalRefSet extends JSHelperFunctionID
+    case object jsGlobalRefTypeof extends JSHelperFunctionID
+    case object jsNewArray extends JSHelperFunctionID
+    case object jsArrayPush extends JSHelperFunctionID
+    case object jsArraySpreadPush extends JSHelperFunctionID
+    case object jsNewObject extends JSHelperFunctionID
+    case object jsObjectPush extends JSHelperFunctionID
+    case object jsSelect extends JSHelperFunctionID
+    case object jsSelectSet extends JSHelperFunctionID
+    case object jsNew extends JSHelperFunctionID
+    case object jsFunctionApply extends JSHelperFunctionID
+    case object jsMethodApply extends JSHelperFunctionID
+    case object jsImportCall extends JSHelperFunctionID
+    case object jsImportMeta extends JSHelperFunctionID
+    case object jsDelete extends JSHelperFunctionID
+    case object jsForInSimple extends JSHelperFunctionID
+    case object jsIsTruthy extends JSHelperFunctionID
+    case object jsLinkingInfo extends JSHelperFunctionID
+
+    private final case class JSUnaryOpHelperID(name: String) extends JSHelperFunctionID {
+      override def toString(): String = name
+    }
+
+    val jsUnaryOps: Map[JSUnaryOp.Code, JSHelperFunctionID] = {
       Map(
-        JSUnaryOp.+ -> make("jsUnaryPlus"),
-        JSUnaryOp.- -> make("jsUnaryMinus"),
-        JSUnaryOp.~ -> make("jsUnaryTilde"),
-        JSUnaryOp.! -> make("jsUnaryBang"),
-        JSUnaryOp.typeof -> make("jsUnaryTypeof")
+        JSUnaryOp.+ -> JSUnaryOpHelperID("jsUnaryPlus"),
+        JSUnaryOp.- -> JSUnaryOpHelperID("jsUnaryMinus"),
+        JSUnaryOp.~ -> JSUnaryOpHelperID("jsUnaryTilde"),
+        JSUnaryOp.! -> JSUnaryOpHelperID("jsUnaryBang"),
+        JSUnaryOp.typeof -> JSUnaryOpHelperID("jsUnaryTypeof")
       )
     }
 
-    val jsBinaryOps: Map[JSBinaryOp.Code, FunctionName] = {
+    private final case class JSBinaryOpHelperID(name: String) extends JSHelperFunctionID {
+      override def toString(): String = name
+    }
+
+    val jsBinaryOps: Map[JSBinaryOp.Code, JSHelperFunctionID] = {
       Map(
-        JSBinaryOp.=== -> make("jsStrictEquals"),
-        JSBinaryOp.!== -> make("jsNotStrictEquals"),
-        JSBinaryOp.+ -> make("jsPlus"),
-        JSBinaryOp.- -> make("jsMinus"),
-        JSBinaryOp.* -> make("jsTimes"),
-        JSBinaryOp./ -> make("jsDivide"),
-        JSBinaryOp.% -> make("jsModulus"),
-        JSBinaryOp.| -> make("jsBinaryOr"),
-        JSBinaryOp.& -> make("jsBinaryAnd"),
-        JSBinaryOp.^ -> make("jsBinaryXor"),
-        JSBinaryOp.<< -> make("jsShiftLeft"),
-        JSBinaryOp.>> -> make("jsArithmeticShiftRight"),
-        JSBinaryOp.>>> -> make("jsLogicalShiftRight"),
-        JSBinaryOp.< -> make("jsLessThan"),
-        JSBinaryOp.<= -> make("jsLessEqual"),
-        JSBinaryOp.> -> make("jsGreaterThan"),
-        JSBinaryOp.>= -> make("jsGreaterEqual"),
-        JSBinaryOp.in -> make("jsIn"),
-        JSBinaryOp.instanceof -> make("jsInstanceof"),
-        JSBinaryOp.** -> make("jsExponent")
+        JSBinaryOp.=== -> JSBinaryOpHelperID("jsStrictEquals"),
+        JSBinaryOp.!== -> JSBinaryOpHelperID("jsNotStrictEquals"),
+        JSBinaryOp.+ -> JSBinaryOpHelperID("jsPlus"),
+        JSBinaryOp.- -> JSBinaryOpHelperID("jsMinus"),
+        JSBinaryOp.* -> JSBinaryOpHelperID("jsTimes"),
+        JSBinaryOp./ -> JSBinaryOpHelperID("jsDivide"),
+        JSBinaryOp.% -> JSBinaryOpHelperID("jsModulus"),
+        JSBinaryOp.| -> JSBinaryOpHelperID("jsBinaryOr"),
+        JSBinaryOp.& -> JSBinaryOpHelperID("jsBinaryAnd"),
+        JSBinaryOp.^ -> JSBinaryOpHelperID("jsBinaryXor"),
+        JSBinaryOp.<< -> JSBinaryOpHelperID("jsShiftLeft"),
+        JSBinaryOp.>> -> JSBinaryOpHelperID("jsArithmeticShiftRight"),
+        JSBinaryOp.>>> -> JSBinaryOpHelperID("jsLogicalShiftRight"),
+        JSBinaryOp.< -> JSBinaryOpHelperID("jsLessThan"),
+        JSBinaryOp.<= -> JSBinaryOpHelperID("jsLessEqual"),
+        JSBinaryOp.> -> JSBinaryOpHelperID("jsGreaterThan"),
+        JSBinaryOp.>= -> JSBinaryOpHelperID("jsGreaterEqual"),
+        JSBinaryOp.in -> JSBinaryOpHelperID("jsIn"),
+        JSBinaryOp.instanceof -> JSBinaryOpHelperID("jsInstanceof"),
+        JSBinaryOp.** -> JSBinaryOpHelperID("jsExponent")
       )
     }
 
-    val newSymbol = make("newSymbol")
-    val createJSClass = make("createJSClass")
-    val createJSClassRest = make("createJSClassRest")
-    val installJSField = make("installJSField")
-    val installJSMethod = make("installJSMethod")
-    val installJSStaticMethod = make("installJSStaticMethod")
-    val installJSProperty = make("installJSProperty")
-    val installJSStaticProperty = make("installJSStaticProperty")
-    val jsSuperGet = make("jsSuperGet")
-    val jsSuperSet = make("jsSuperSet")
-    val jsSuperCall = make("jsSuperCall")
+    case object newSymbol extends JSHelperFunctionID
+    case object createJSClass extends JSHelperFunctionID
+    case object createJSClassRest extends JSHelperFunctionID
+    case object installJSField extends JSHelperFunctionID
+    case object installJSMethod extends JSHelperFunctionID
+    case object installJSStaticMethod extends JSHelperFunctionID
+    case object installJSProperty extends JSHelperFunctionID
+    case object installJSStaticProperty extends JSHelperFunctionID
+    case object jsSuperGet extends JSHelperFunctionID
+    case object jsSuperSet extends JSHelperFunctionID
+    case object jsSuperCall extends JSHelperFunctionID
 
-    // Wasm internal makes
+    // Wasm internal helpers
 
-    val createStringFromData = make("createStringFromData")
-    val stringLiteral = make("stringLiteral")
-    val typeDataName = make("typeDataName")
-    val createClassOf = make("createClassOf")
-    val getClassOf = make("getClassOf")
-    val arrayTypeData = make("arrayTypeData")
-    val isInstance = make("isInstance")
-    val isAssignableFromExternal = make("isAssignableFromExternal")
-    val isAssignableFrom = make("isAssignableFrom")
-    val checkCast = make("checkCast")
-    val getComponentType = make("getComponentType")
-    val newArrayOfThisClass = make("newArrayOfThisClass")
-    val anyGetClass = make("anyGetClass")
-    val newArrayObject = make("newArrayObject")
-    val identityHashCode = make("identityHashCode")
-    val searchReflectiveProxy = make("searchReflectiveProxy")
+    case object createStringFromData extends FunctionID
+    case object stringLiteral extends FunctionID
+    case object typeDataName extends FunctionID
+    case object createClassOf extends FunctionID
+    case object getClassOf extends FunctionID
+    case object arrayTypeData extends FunctionID
+    case object isInstance extends FunctionID
+    case object isAssignableFromExternal extends FunctionID
+    case object isAssignableFrom extends FunctionID
+    case object checkCast extends FunctionID
+    case object getComponentType extends FunctionID
+    case object newArrayOfThisClass extends FunctionID
+    case object anyGetClass extends FunctionID
+    case object newArrayObject extends FunctionID
+    case object identityHashCode extends FunctionID
+    case object searchReflectiveProxy extends FunctionID
   }
 
-  object genFieldName {
-    def forClassInstanceField(name: IRFieldName): FieldName =
-      FieldName(name.nameString)
+  object genFieldID {
+    private final case class ClassInstanceFieldID(name: IRFieldName) extends FieldID
+    private final case class MethodTableEntryID(methodName: MethodName) extends FieldID
+    private final case class CaptureParamID(i: Int) extends FieldID
 
-    /** For class itable fields, each fields point to an itable of the interfaces */
-    def forITable(className: ClassName): FieldName =
-      FieldName(className.nameString)
+    def forClassInstanceField(name: IRFieldName): FieldID =
+      ClassInstanceFieldID(name)
 
-    def forMethodTableEntry(name: MethodName): FieldName =
-      FieldName("m." + name.nameString)
+    def forMethodTableEntry(name: MethodName): FieldID =
+      MethodTableEntryID(name)
 
-    def captureParam(i: Int): FieldName =
-      FieldName("c" + i)
+    def captureParam(i: Int): FieldID =
+      CaptureParamID(i)
 
     object objStruct {
-      val vtable = FieldName("vtable")
-      val itables = FieldName("itables")
-      val arrayUnderlying = FieldName("underlying")
+      case object vtable extends FieldID
+      case object itables extends FieldID
+      case object arrayUnderlying extends FieldID
     }
 
     object reflectiveProxy {
-      val func_name = FieldName("reflective_proxy_func_name")
-      val func_ref = FieldName("reflective_proxy_func_ref")
+      case object func_name extends FieldID
+      case object func_ref extends FieldID
     }
 
     // Fields of the typeData structs
@@ -294,26 +323,26 @@ object VarGen {
         * It is only meaningful for primitives and for classes. For array types, they are all 0, as
         * array types compute their `name` from the `name` of their component type.
         */
-      val nameOffset = FieldName("nameOffset")
+      case object nameOffset extends FieldID
 
       /** See `nameOffset`. */
-      val nameSize = FieldName("nameSize")
+      case object nameSize extends FieldID
 
       /** See `nameOffset`. */
-      val nameStringIndex = FieldName("nameStringIndex")
+      case object nameStringIndex extends FieldID
 
       /** The kind of type data, an `i32`.
         *
         * Possible values are the the `KindX` constants in `EmbeddedConstants`.
         */
-      val kind = FieldName("kind")
+      case object kind extends FieldID
 
       /** A bitset of special (primitive) instance types that are instances of this type, an `i32`.
         *
         * From 0 to 5, the bits correspond to the values returned by the helper `jsValueType`. In
         * addition, bits 6 and 7 represent `char` and `long`, respectively.
         */
-      val specialInstanceTypes = FieldName("specialInstanceTypes")
+      case object specialInstanceTypes extends FieldID
 
       /** Array of the strict ancestor classes of this class.
         *
@@ -323,7 +352,7 @@ object VarGen {
         *   - are not themselves (hence the *strict* ancestors),
         *   - have typeData to begin with.
         */
-      val strictAncestors = FieldName("strictAncestors")
+      case object strictAncestors extends FieldID
 
       /** The typeData of a component of this array type, or `null` if this is not an array type.
         *
@@ -331,7 +360,7 @@ object VarGen {
         *   - the `componentType` for class `Foo` is `null`,
         *   - the `componentType` for the array type `Array[Foo]` is the `typeData` of `Foo`.
         */
-      val componentType = FieldName("componentType")
+      case object componentType extends FieldID
 
       /** The name as nullable string (`anyref`), lazily initialized from the nameData.
         *
@@ -350,13 +379,13 @@ object VarGen {
         * ¹ We use the Unicode character `⟦` to represent two consecutive `[` characters in order
         * not to confuse Scaladoc.
         */
-      val name = FieldName("name")
+      case object name extends FieldID
 
       /** The `classOf` value, a nullable `java.lang.Class`, lazily initialized from this typeData.
         *
         * This field is initialized by the `createClassOf` helper.
         */
-      val classOfValue = FieldName("classOf")
+      case object classOfValue extends FieldID
 
       /** The typeData/vtable of an array of this type, a nullable `typeData`, lazily initialized.
         *
@@ -366,15 +395,15 @@ object VarGen {
         *   - in the `typeData` of class `Foo`, it contains the `typeData` of `Array[Foo]`,
         *   - in the `typeData` of `Array[Int]`, it contains the `typeData` of `Array[Array[Int]]`.
         */
-      val arrayOf = FieldName("arrayOf")
+      case object arrayOf extends FieldID
 
       /** The function to clone the object of this type, a nullable function reference. This field
         * is instantiated only with the classes that implement java.lang.Cloneable.
         */
-      val cloneFunction = FieldName("clone")
+      case object cloneFunction extends FieldID
 
       /** `isInstance` func ref for top-level JS classes. */
-      val isJSClassInstance = FieldName("isJSClassInstance")
+      case object isJSClassInstance extends FieldID
 
       /** The reflective proxies in this type, used for reflective call on the class at runtime.
         * This field contains an array of reflective proxy structs, where each struct contains the
@@ -383,69 +412,44 @@ object VarGen {
         *
         * See `genSearchReflectivePRoxy` in `HelperFunctions`
         */
-      val reflectiveProxies = FieldName("reflectiveProxies")
+      case object reflectiveProxies extends FieldID
     }
   }
 
-  object genFieldIdx {
-    object objStruct {
-      val vtable = FieldIdx(0)
-      val itables = FieldIdx(1)
-      val uniqueRegularField = FieldIdx(2)
-    }
+  object genTypeID {
+    private final case class ClassStructID(className: ClassName) extends TypeID
+    private final case class CaptureDataID(index: Int) extends TypeID
+    private final case class VTableID(className: ClassName) extends TypeID
+    private final case class ITableID(className: ClassName) extends TypeID
+    private final case class FunctionTypeID(index: Int) extends TypeID
+    private final case class TableFunctionTypeID(methodName: MethodName) extends TypeID
 
-    object typeData {
-      val nameOffsetIdx = FieldIdx(0)
-      val nameSizeIdx = FieldIdx(1)
-      val nameStringIndexIdx = FieldIdx(2)
-      val kindIdx = FieldIdx(3)
-      val specialInstanceTypesIdx = FieldIdx(4)
-      val strictAncestorsIdx = FieldIdx(5)
-      val componentTypeIdx = FieldIdx(6)
-      val nameIdx = FieldIdx(7)
-      val classOfIdx = FieldIdx(8)
-      val arrayOfIdx = FieldIdx(9)
-      val cloneFunctionIdx = FieldIdx(10)
-      val isJSClassInstanceIdx = FieldIdx(11)
-      val reflectiveProxiesIdx = FieldIdx(12)
-
-      /** Index of a method in the actual vtable. */
-      def vtableMethodIdx(methodIdx: Int): FieldIdx = FieldIdx(13 + methodIdx)
-    }
-
-    object reflectiveProxy {
-      val nameIdx = FieldIdx(0)
-      val funcIdx = FieldIdx(1)
-    }
-  }
-
-  object genTypeName {
-    def forClass(name: ClassName): TypeName =
-      TypeName(s"c.L${name.nameString}")
+    def forClass(name: ClassName): TypeID =
+      ClassStructID(name)
 
     val ObjectStruct = forClass(ObjectClass)
     val ClassStruct = forClass(ClassClass)
     val ThrowableStruct = forClass(ThrowableClass)
     val JSExceptionStruct = forClass(SpecialNames.JSExceptionClass)
 
-    def captureData(index: Int): TypeName =
-      TypeName(s"captureData.$index")
+    def captureData(index: Int): TypeID =
+      CaptureDataID(index)
 
-    val typeData = TypeName("typeData")
-    val reflectiveProxy = TypeName("reflective_proxy")
+    case object typeData extends TypeID
+    case object reflectiveProxy extends TypeID
 
     // Array types -- they extend j.l.Object
-    val BooleanArray = TypeName("c.AZ")
-    val CharArray = TypeName("c.AC")
-    val ByteArray = TypeName("c.AB")
-    val ShortArray = TypeName("c.AS")
-    val IntArray = TypeName("c.AI")
-    val LongArray = TypeName("c.AJ")
-    val FloatArray = TypeName("c.AF")
-    val DoubleArray = TypeName("c.AD")
-    val ObjectArray = TypeName("c.AO")
+    case object BooleanArray extends TypeID
+    case object CharArray extends TypeID
+    case object ByteArray extends TypeID
+    case object ShortArray extends TypeID
+    case object IntArray extends TypeID
+    case object LongArray extends TypeID
+    case object FloatArray extends TypeID
+    case object DoubleArray extends TypeID
+    case object ObjectArray extends TypeID
 
-    def forArrayClass(arrayTypeRef: ArrayTypeRef): TypeName = {
+    def forArrayClass(arrayTypeRef: ArrayTypeRef): TypeID = {
       if (arrayTypeRef.dimensions > 1) {
         ObjectArray
       } else {
@@ -463,28 +467,28 @@ object VarGen {
       }
     }
 
-    def forVTable(className: ClassName): TypeName =
-      TypeName(s"v.${className.nameString}")
+    def forVTable(className: ClassName): TypeID =
+      VTableID(className)
 
-    val ObjectVTable: TypeName = forVTable(ObjectClass)
+    val ObjectVTable: TypeID = forVTable(ObjectClass)
 
-    def forITable(className: ClassName): TypeName =
-      TypeName(s"i.${className.nameString}")
+    def forITable(className: ClassName): TypeID =
+      ITableID(className)
 
-    val typeDataArray = TypeName("a.typeDataArray")
-    val itables = TypeName("a.itable")
-    val reflectiveProxies = TypeName("a.reflectiveProxies")
+    case object typeDataArray extends TypeID
+    case object itables extends TypeID
+    case object reflectiveProxies extends TypeID
 
     // primitive array types, underlying the Array[T] classes
-    val i8Array = TypeName("a.i8Array")
-    val i16Array = TypeName("a.i16Array")
-    val i32Array = TypeName("a.i32Array")
-    val i64Array = TypeName("a.i64Array")
-    val f32Array = TypeName("a.f32Array")
-    val f64Array = TypeName("a.f64Array")
-    val anyArray = TypeName("a.anyArray")
+    case object i8Array extends TypeID
+    case object i16Array extends TypeID
+    case object i32Array extends TypeID
+    case object i64Array extends TypeID
+    case object f32Array extends TypeID
+    case object f64Array extends TypeID
+    case object anyArray extends TypeID
 
-    def underlyingOf(arrayTypeRef: ArrayTypeRef): TypeName = {
+    def underlyingOf(arrayTypeRef: ArrayTypeRef): TypeID = {
       if (arrayTypeRef.dimensions > 1) {
         anyArray
       } else {
@@ -502,21 +506,21 @@ object VarGen {
       }
     }
 
-    def forFunction(idx: Int): TypeName = TypeName(s"f.$idx")
+    def forFunction(idx: Int): TypeID = FunctionTypeID(idx)
 
-    val cloneFunctionType = TypeName("cloneFuncType")
-    val isJSClassInstanceFuncType = TypeName("isJSClassInstanceFuncType")
+    case object cloneFunctionType extends TypeID
+    case object isJSClassInstanceFuncType extends TypeID
 
-    def forTableFunctionType(methodName: MethodName): TypeName =
-      TypeName("m." + methodName.nameString)
+    def forTableFunctionType(methodName: MethodName): TypeID =
+      TableFunctionTypeID(methodName)
   }
 
-  object genTagName {
-    val exceptionTagName: TagName = TagName("exception")
+  object genTagID {
+    case object exception extends TagID
   }
 
-  object genDataName {
-    val string = DataName("string")
+  object genDataID {
+    case object string extends DataID
   }
 
 }

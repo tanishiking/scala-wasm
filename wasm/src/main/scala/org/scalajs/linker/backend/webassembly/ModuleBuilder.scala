@@ -2,7 +2,9 @@ package org.scalajs.linker.backend.webassembly
 
 import scala.collection.mutable
 
-import Names._
+import org.scalajs.ir.OriginalName
+
+import Identitities._
 import Modules._
 import Types._
 
@@ -17,18 +19,18 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
   private val tags: mutable.ListBuffer[Tag] = new mutable.ListBuffer()
   private val globals: mutable.ListBuffer[Global] = new mutable.ListBuffer()
   private val exports: mutable.ListBuffer[Export] = new mutable.ListBuffer()
-  private var start: Option[FunctionName] = None
+  private var start: Option[FunctionID] = None
   private val elems: mutable.ListBuffer[Element] = new mutable.ListBuffer()
   private val datas: mutable.ListBuffer[Data] = new mutable.ListBuffer()
 
-  def functionTypeToTypeName(sig: FunctionType): TypeName =
+  def functionTypeToTypeName(sig: FunctionType): TypeID =
     functionSignatureProvider.functionTypeToTypeName(sig)
 
   def addRecType(typ: RecType): Unit = types += typ
   def addRecType(typ: SubType): Unit = addRecType(RecType(typ))
 
-  def addRecType(name: TypeName, compositeType: CompositeType): Unit =
-    addRecType(SubType(name, compositeType))
+  def addRecType(id: TypeID, originalName: OriginalName, compositeType: CompositeType): Unit =
+    addRecType(SubType(id, originalName, compositeType))
 
   def addRecTypeBuilder(recTypeBuilder: RecTypeBuilder): Unit =
     types += recTypeBuilder
@@ -38,7 +40,7 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
   def addTag(tag: Tag): Unit = tags += tag
   def addGlobal(typ: Global): Unit = globals += typ
   def addExport(exprt: Export): Unit = exports += exprt
-  def setStart(startFunction: FunctionName): Unit = start = Some(startFunction)
+  def setStart(startFunction: FunctionID): Unit = start = Some(startFunction)
   def addElement(element: Element): Unit = elems += element
   def addData(data: Data): Unit = datas += data
 
@@ -66,7 +68,7 @@ final class ModuleBuilder(functionSignatureProvider: ModuleBuilder.FunctionTypeP
 
 object ModuleBuilder {
   trait FunctionTypeProvider {
-    def functionTypeToTypeName(sig: FunctionType): TypeName
+    def functionTypeToTypeName(sig: FunctionType): TypeID
   }
 
   final class RecTypeBuilder {
@@ -75,8 +77,8 @@ object ModuleBuilder {
     def addSubType(subType: SubType): Unit =
       subTypes += subType
 
-    def addSubType(name: TypeName, compositeType: CompositeType): Unit =
-      addSubType(SubType(name, compositeType))
+    def addSubType(id: TypeID, originalName: OriginalName, compositeType: CompositeType): Unit =
+      addSubType(SubType(id, originalName, compositeType))
 
     def build(): RecType = RecType(subTypes.toList)
   }

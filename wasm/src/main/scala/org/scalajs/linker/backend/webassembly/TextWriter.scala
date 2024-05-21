@@ -1,18 +1,99 @@
 package org.scalajs.linker.backend.webassembly
 
+import scala.collection.mutable
+
+import org.scalajs.ir.OriginalName
+import org.scalajs.ir.OriginalName.NoOriginalName
+
 import Instructions._
-import Names._
+import Identitities._
 import Modules._
 import Types._
 
-class TextWriter {
+class TextWriter(module: Module) {
   import TextWriter._
 
-  def write(module: Module): String = {
+  private val typeNames: Map[TypeID, String] = {
+    val nameGen = new FreshNameGenerator
+    module.types.flatMap(_.subTypes).map(st => st.id -> nameGen.genName(st.originalName)).toMap
+  }
+
+  private val dataNames: Map[DataID, String] = {
+    val nameGen = new FreshNameGenerator
+    module.datas.map(data => data.id -> nameGen.genName(data.originalName)).toMap
+  }
+
+  private val funcNames: Map[FunctionID, String] = {
+    val nameGen = new FreshNameGenerator
+    val importedFunctionNames = module.imports.collect {
+      case Import(_, _, ImportDesc.Func(id, origName, _)) => id -> nameGen.genName(origName)
+    }
+    val definedFunctionNames = module.funcs.map(f => f.id -> nameGen.genName(f.originalName))
+    (importedFunctionNames ::: definedFunctionNames).toMap
+  }
+
+  private val tagNames: Map[TagID, String] = {
+    val nameGen = new FreshNameGenerator
+    val importedTagNames = module.imports.collect {
+      case Import(_, _, ImportDesc.Tag(id, origName, _)) =>
+        id -> nameGen.genName(origName)
+    }
+    val definedTagNames = module.tags.map(t => t.id -> nameGen.genName(t.originalName))
+    (importedTagNames ::: definedTagNames).toMap
+  }
+
+  private val globalNames: Map[GlobalID, String] = {
+    val nameGen = new FreshNameGenerator
+    val importedGlobalNames = module.imports.collect {
+      case Import(_, _, ImportDesc.Global(id, origName, _, _)) => id -> nameGen.genName(origName)
+    }
+    val definedGlobalNames = module.globals.map(g => g.id -> nameGen.genName(g.originalName))
+    (importedGlobalNames ::: definedGlobalNames).toMap
+  }
+
+  private val fieldNames: Map[TypeID, Map[FieldID, String]] = {
+    (for {
+      recType <- module.types
+      SubType(typeID, _, _, _, StructType(fields)) <- recType.subTypes
+    } yield {
+      val nameGen = new FreshNameGenerator
+      typeID -> fields.map(f => f.id -> nameGen.genName(f.originalName)).toMap
+    }).toMap
+  }
+
+  private var localNames: Option[Map[LocalID, String]] = None
+  private var labelNames: Option[mutable.Map[LabelID, String]] = None
+  private var labelNameGen: Option[FreshNameGenerator] = None
+
+  def write(): String = {
     implicit val b = new WatBuilder()
     writeModule(module)
     b.toString()
   }
+
+  private def appendName(typeID: TypeID)(implicit b: WatBuilder): Unit =
+    b.appendElement(typeNames(typeID))
+
+  private def appendName(dataID: DataID)(implicit b: WatBuilder): Unit =
+    b.appendElement(dataNames(dataID))
+
+  private def appendName(functionID: FunctionID)(implicit b: WatBuilder): Unit =
+    b.appendElement(funcNames(functionID))
+
+  private def appendName(tagID: TagID)(implicit b: WatBuilder): Unit =
+    b.appendElement(tagNames(tagID))
+
+  private def appendName(globalID: GlobalID)(implicit b: WatBuilder): Unit =
+    b.appendElement(globalNames(globalID))
+
+  private def appendName(typeID: TypeID, fieldID: FieldID)(implicit b: WatBuilder): Unit =
+    b.appendElement(fieldNames(typeID)(fieldID))
+
+  private def appendName(localID: LocalID)(implicit b: WatBuilder): Unit =
+    b.appendElement(localNames.get(localID))
+
+  private def appendName(labelID: LabelID)(implicit b: WatBuilder): Unit =
+    b.appendElement(labelNames.get(labelID))
 
   private def writeModule(module: Module)(implicit b: WatBuilder): Unit = {
     b.newLineList(
@@ -46,18 +127,18 @@ class TextWriter {
   private def writeTypeDefinition(subType: SubType)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "type", {
-        b.appendName(subType.name)
+        appendName(subType.id)
         subType match {
-          case SubType(_, true, None, compositeType) =>
-            writeCompositeType(compositeType)
+          case SubType(_, _, true, None, compositeType) =>
+            writeCompositeType(subType.id, compositeType)
           case _ =>
             b.sameLineList(
               "sub", {
                 if (subType.isFinal)
                   b.appendElement("final")
                 for (superType <- subType.superType)
-                  b.appendName(superType)
-                writeCompositeType(subType.compositeType)
+                  appendName(superType)
+                writeCompositeType(subType.id, subType.compositeType)
               }
             )
         }
@@ -65,7 +146,7 @@ class TextWriter {
     )
   }
 
-  private def writeCompositeType(t: CompositeType)(implicit b: WatBuilder): Unit = {
+  private def writeCompositeType(typeID: TypeID, t: CompositeType)(implicit b: WatBuilder): Unit = {
     def writeFieldType(fieldType: FieldType): Unit = {
       if (fieldType.isMutable)
         b.sameLineList(
@@ -79,7 +160,7 @@ class TextWriter {
     def writeField(field: StructField): Unit = {
       b.sameLineList(
         "field", {
-          b.appendName(field.name)
+          appendName(typeID, field.id)
           writeFieldType(field.fieldType)
         }
       )
@@ -121,27 +202,27 @@ class TextWriter {
         b.appendElement("\"" + i.name + "\"")
 
         i.desc match {
-          case ImportDesc.Func(id, typeName) =>
+          case ImportDesc.Func(id, _, typeName) =>
             b.sameLineList(
               "func", {
-                b.appendName(id)
+                appendName(id)
                 writeTypeUse(typeName)
               }
             )
-          case ImportDesc.Global(id, typ, isMutable) =>
+          case ImportDesc.Global(id, _, typ, isMutable) =>
             b.sameLineList(
               "global", {
-                b.appendName(id)
+                appendName(id)
                 if (isMutable)
                   b.sameLineList("mut", writeType(typ))
                 else
                   writeType(typ)
               }
             )
-          case ImportDesc.Tag(id, typeName) =>
+          case ImportDesc.Tag(id, _, typeName) =>
             b.sameLineList(
               "tag", {
-                b.appendName(id)
+                appendName(id)
                 writeTypeUse(typeName)
               }
             )
@@ -161,7 +242,7 @@ class TextWriter {
     def writeParam(l: Local)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "param", {
-          b.appendName(l.name)
+          appendName(l.id)
           writeType(l.typ)
         }
       )
@@ -170,15 +251,22 @@ class TextWriter {
     def writeLocal(l: Local)(implicit b: WatBuilder): Unit = {
       b.sameLineList(
         "local", {
-          b.appendName(l.name)
+          appendName(l.id)
           writeType(l.typ)
         }
       )
     }
 
+    localNames = {
+      val nameGen = new FreshNameGenerator
+      Some((f.params ::: f.locals).map(l => l.id -> nameGen.genName(l.originalName)).toMap)
+    }
+    labelNames = Some(mutable.HashMap.empty)
+    labelNameGen = Some(new FreshNameGenerator)
+
     b.newLineList(
       "func", {
-        b.appendName(f.name)
+        appendName(f.id)
         writeTypeUse(f.typeName)
 
         b.newLine()
@@ -190,12 +278,16 @@ class TextWriter {
         f.body.instr.foreach(writeInstr)
       }
     )
+
+    localNames = None
+    labelNames = None
+    labelNameGen = None
   }
 
   private def writeTag(tag: Tag)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "tag", {
-        b.appendName(tag.name)
+        appendName(tag.id)
         writeTypeUse(tag.typ)
       }
     )
@@ -204,7 +296,7 @@ class TextWriter {
   private def writeGlobal(g: Global)(implicit b: WatBuilder) =
     b.newLineList(
       "global", {
-        b.appendName(g.name)
+        appendName(g.id)
         if (g.isMutable)
           b.sameLineList("mut", writeType(g.typ))
         else writeType(g.typ)
@@ -218,24 +310,24 @@ class TextWriter {
     "export", {
       b.appendElement("\"" + e.name + "\"")
       e.desc match {
-        case ExportDesc.Func(funcName) =>
+        case ExportDesc.Func(funcName, _) =>
           b.sameLineList(
             "func",
-            { b.appendName(funcName) }
+            { appendName(funcName) }
           )
-        case ExportDesc.Global(globalName) =>
+        case ExportDesc.Global(globalName, _) =>
           b.sameLineList(
             "global",
-            { b.appendName(globalName) }
+            { appendName(globalName) }
           )
       }
     }
   )
 
-  private def writeStart(startFunction: FunctionName)(implicit b: WatBuilder): Unit = {
+  private def writeStart(startFunction: FunctionID)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "start", {
-        b.appendName(startFunction)
+        appendName(startFunction)
       }
     )
   }
@@ -261,7 +353,7 @@ class TextWriter {
   private def writeData(data: Data)(implicit b: WatBuilder): Unit = {
     b.newLineList(
       "data", {
-        b.appendName(data.name)
+        appendName(data.id)
         data.mode match {
           case Data.Mode.Passive => ()
         }
@@ -270,8 +362,8 @@ class TextWriter {
     )
   }
 
-  private def writeTypeUse(typeName: TypeName)(implicit b: WatBuilder): Unit = {
-    b.sameLineList("type", b.appendName(typeName))
+  private def writeTypeUse(typeName: TypeID)(implicit b: WatBuilder): Unit = {
+    b.sameLineList("type", appendName(typeName))
   }
 
   private def writeType(typ: StorageType)(implicit b: WatBuilder): Unit = {
@@ -295,7 +387,7 @@ class TextWriter {
 
   private def writeHeapType(heapType: HeapType)(implicit b: WatBuilder): Unit = {
     heapType match {
-      case HeapType.Type(typeName)        => b.appendName(typeName)
+      case HeapType.Type(typeName)        => appendName(typeName)
       case heapType: HeapType.AbsHeapType => b.appendElement(heapType.textName)
     }
   }
@@ -318,8 +410,8 @@ class TextWriter {
     }
   }
 
-  private def writeLabelIdx(labelIdx: LabelName)(implicit b: WatBuilder): Unit =
-    b.appendName(labelIdx)
+  private def writeLabelIdx(labelIdx: LabelID)(implicit b: WatBuilder): Unit =
+    appendName(labelIdx)
 
   private def writeInstr(instr: Instr)(implicit b: WatBuilder): Unit = {
     instr match {
@@ -336,7 +428,10 @@ class TextWriter {
         b.appendElement(instr.mnemonic)
         instr match {
           case instr: StructuredLabeledInstr =>
-            instr.label.foreach(writeLabelIdx(_))
+            for (label <- instr.label) {
+              labelNames.get += label -> labelNameGen.get.genName(NoOriginalName)
+              appendName(label)
+            }
           case _ =>
             ()
         }
@@ -361,22 +456,22 @@ class TextWriter {
       case instr: LabelInstr =>
         writeLabelIdx(instr.labelArgument)
       case instr: FuncInstr =>
-        b.appendName(instr.funcArgument)
+        appendName(instr.funcArgument)
       case instr: TypeInstr =>
-        b.appendName(instr.typeArgument)
+        appendName(instr.typeArgument)
       case instr: TagInstr =>
-        b.appendName(instr.tagArgument)
+        appendName(instr.tagArgument)
       case instr: LocalInstr =>
-        b.appendName(instr.localArgument)
+        appendName(instr.localArgument)
       case instr: GlobalInstr =>
-        b.appendName(instr.globalArgument)
+        appendName(instr.globalArgument)
       case instr: HeapTypeInstr =>
         writeHeapType(instr.heapTypeArgument)
       case instr: RefTypeInstr =>
         writeType(instr.refTypeArgument)
       case instr: StructFieldInstr =>
-        b.appendName(instr.structTypeName)
-        b.appendElement(instr.fieldIdx.value.toString())
+        appendName(instr.structTypeName)
+        appendName(instr.structTypeName, instr.fieldIdx)
 
       // Specific instructions with unique-ish shapes
 
@@ -394,23 +489,23 @@ class TextWriter {
         for (clause <- clauses) {
           b.sameLineList(
             clause.mnemonic, {
-              clause.tag.foreach(tag => b.appendName(tag))
+              clause.tag.foreach(tag => appendName(tag))
               writeLabelIdx(clause.label)
             }
           )
         }
 
       case ArrayNewData(typeIdx, dataIdx) =>
-        b.appendName(typeIdx)
-        b.appendName(dataIdx)
+        appendName(typeIdx)
+        appendName(dataIdx)
 
       case ArrayNewFixed(typeIdx, length) =>
-        b.appendName(typeIdx)
+        appendName(typeIdx)
         b.appendElement(Integer.toUnsignedString(length))
 
       case ArrayCopy(destType, srcType) =>
-        b.appendName(destType)
-        b.appendName(srcType)
+        appendName(destType)
+        appendName(srcType)
 
       case BrOnCast(labelIdx, from, to) =>
         writeLabelIdx(labelIdx)
@@ -428,6 +523,24 @@ class TextWriter {
 }
 
 object TextWriter {
+  private class FreshNameGenerator {
+    private val generated = mutable.HashSet.empty[String]
+
+    def genName(originalName: OriginalName): String = {
+      val base =
+        if (originalName.isDefined) "$" + sanitizeWatIdentifier(originalName.get.toString())
+        else "$"
+      if (originalName.isDefined && generated.add(base)) {
+        base
+      } else {
+        var index = 1
+        while (!generated.add(base + index))
+          index += 1
+        base + index
+      }
+    }
+  }
+
   private class WatBuilder {
     private val builder = new StringBuilder
     private var level = 0
@@ -468,24 +581,21 @@ object TextWriter {
       builder.append(value)
     }
 
-    def appendName(name: Name): Unit =
-      appendElement("$" + sanitizeWatIdentifier(name.name))
-
-    /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
-    private def sanitizeWatIdentifier(name: String): String = {
-      if (name.isEmpty) "_"
-      else if (name.forall(isValidWatIdentifierChar)) name
-      else name.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
-    }
-
-    private def isValidWatIdentifierChar(c: Char): Boolean = {
-      c.isDigit || c.isLetter ||
-      "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
-      "$.@_".contains(c)
-    }
-
     override def toString: String =
       builder.toString()
+  }
+
+  /** @see https://webassembly.github.io/spec/core/text/values.html#text-id */
+  private def sanitizeWatIdentifier(name: String): String = {
+    if (name.isEmpty) "_"
+    else if (name.forall(isValidWatIdentifierChar)) name
+    else name.map(c => if (isValidWatIdentifierChar(c)) c else '_').mkString
+  }
+
+  private def isValidWatIdentifierChar(c: Char): Boolean = {
+    c.isDigit || c.isLetter ||
+    "!#$%&'*+-./:<=>?@\\^_`|~".contains(c) ||
+    "$.@_".contains(c)
   }
 
 }

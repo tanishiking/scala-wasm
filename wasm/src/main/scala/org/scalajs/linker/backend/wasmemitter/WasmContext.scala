@@ -7,6 +7,7 @@ import scala.collection.mutable.LinkedHashMap
 
 import org.scalajs.ir.ClassKind
 import org.scalajs.ir.Names._
+import org.scalajs.ir.OriginalName.NoOriginalName
 import org.scalajs.ir.Trees.{FieldDef, ParamDef, JSNativeLoadSpec}
 import org.scalajs.ir.Types._
 
@@ -18,10 +19,11 @@ import org.scalajs.linker.standard.LinkedClass
 import org.scalajs.linker.backend.webassembly.ModuleBuilder
 import org.scalajs.linker.backend.webassembly.{Instructions => wa}
 import org.scalajs.linker.backend.webassembly.{Modules => wamod}
-import org.scalajs.linker.backend.webassembly.{Names => wanme}
+import org.scalajs.linker.backend.webassembly.{Identitities => wanme}
 import org.scalajs.linker.backend.webassembly.{Types => watpe}
 
 import VarGen._
+import org.scalajs.ir.OriginalName
 
 final class WasmContext {
   import WasmContext._
@@ -31,20 +33,20 @@ final class WasmContext {
   private var _itablesLength: Int = 0
   def itablesLength = _itablesLength
 
-  private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeName]
-  private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeName]
+  private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeID]
+  private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeID]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
   private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
-  private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeName]
+  private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeID]
   private val reflectiveProxies = LinkedHashMap.empty[MethodName, Int]
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
-      def functionTypeToTypeName(sig: watpe.FunctionType): wanme.TypeName = {
+      def functionTypeToTypeName(sig: watpe.FunctionType): wanme.TypeID = {
         functionTypes.getOrElseUpdate(
           sig, {
-            val typeName = genTypeName.forFunction(functionTypes.size)
-            moduleBuilder.addRecType(typeName, sig)
+            val typeName = genTypeID.forFunction(functionTypes.size)
+            moduleBuilder.addRecType(typeName, NoOriginalName, sig)
             typeName
           }
         )
@@ -64,7 +66,7 @@ final class WasmContext {
 
   private val _jsPrivateFieldNames: mutable.ListBuffer[FieldName] =
     new mutable.ListBuffer()
-  private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionName] =
+  private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionID] =
     new mutable.LinkedHashSet()
 
   /** The main `rectype` containing the object model types. */
@@ -112,7 +114,7 @@ final class WasmContext {
     * Table function types are part of the main `rectype`, and have names derived from the
     * `methodName`.
     */
-  def tableFunctionType(methodName: MethodName): wanme.TypeName = {
+  def tableFunctionType(methodName: MethodName): wanme.TypeID = {
     // Project all the names with the same *signatures* onto a normalized `MethodName`
     val normalizedName = MethodName(
       SpecialNames.normalizedSimpleMethodName,
@@ -123,7 +125,7 @@ final class WasmContext {
 
     tableFunctionTypes.getOrElseUpdate(
       normalizedName, {
-        val typeName = genTypeName.forTableFunctionType(normalizedName)
+        val typeName = genTypeID.forTableFunctionType(normalizedName)
         val regularParamTyps = normalizedName.paramTypeRefs.map { typeRef =>
           TypeTransformer.transformType(inferTypeFromTypeRef(typeRef))(this)
         }
@@ -133,6 +135,7 @@ final class WasmContext {
           )
         mainRecType.addSubType(
           typeName,
+          NoOriginalName,
           watpe.FunctionType(watpe.RefType.any :: regularParamTyps, resultTyp)
         )
         typeName
@@ -161,7 +164,7 @@ final class WasmContext {
   }
 
   def getConstantStringInstr(str: String): List[wa.Instr] =
-    getConstantStringDataInstr(str) :+ wa.Call(genFunctionName.stringLiteral)
+    getConstantStringDataInstr(str) :+ wa.Call(genFunctionID.stringLiteral)
 
   def getConstantStringDataInstr(str: String): List[wa.I32Const] = {
     val data = addConstantStringGlobal(str)
@@ -175,26 +178,27 @@ final class WasmContext {
     )
   }
 
-  def getClosureDataStructType(captureParamTypes: List[Type]): wanme.TypeName = {
+  def getClosureDataStructType(captureParamTypes: List[Type]): wanme.TypeID = {
     closureDataTypes.getOrElseUpdate(
       captureParamTypes, {
         val fields: List[watpe.StructField] =
           for ((tpe, i) <- captureParamTypes.zipWithIndex)
             yield watpe.StructField(
-              genFieldName.captureParam(i),
+              genFieldID.captureParam(i),
+              NoOriginalName,
               TypeTransformer.transformType(tpe)(this),
               isMutable = false
             )
-        val structTypeName = genTypeName.captureData(nextClosureDataTypeIndex)
+        val structTypeName = genTypeID.captureData(nextClosureDataTypeIndex)
         nextClosureDataTypeIndex += 1
         val structType = watpe.StructType(fields)
-        moduleBuilder.addRecType(structTypeName, structType)
+        moduleBuilder.addRecType(structTypeName, NoOriginalName, structType)
         structTypeName
       }
     )
   }
 
-  def refFuncWithDeclaration(name: wanme.FunctionName): wa.RefFunc = {
+  def refFuncWithDeclaration(name: wanme.FunctionID): wa.RefFunc = {
     addFuncDeclaration(name)
     wa.RefFunc(name)
   }
@@ -219,14 +223,15 @@ final class WasmContext {
   def getAllClassesWithITableGlobal(): List[ClassName] =
     classItableGlobals.toList
 
-  def getImportedModuleGlobal(moduleName: String): wanme.GlobalName = {
-    val name = genGlobalName.forImportedModule(moduleName)
+  def getImportedModuleGlobal(moduleName: String): wanme.GlobalID = {
+    val name = genGlobalID.forImportedModule(moduleName)
     if (_importedModules.add(moduleName)) {
+      val origName = OriginalName("import." + moduleName)
       moduleBuilder.addImport(
         wamod.Import(
           "__scalaJSImports",
           moduleName,
-          wamod.ImportDesc.Global(name, watpe.RefType.anyref, isMutable = false)
+          wamod.ImportDesc.Global(name, origName, watpe.RefType.anyref, isMutable = false)
         )
       )
     }
@@ -235,7 +240,7 @@ final class WasmContext {
 
   def allImportedModules: List[String] = _importedModules.toList
 
-  def addFuncDeclaration(name: wanme.FunctionName): Unit =
+  def addFuncDeclaration(name: wanme.FunctionID): Unit =
     _funcDeclarations += name
 
   def putClassInfo(name: ClassName, info: ClassInfo): Unit =
@@ -250,7 +255,7 @@ final class WasmContext {
   def getAllJSPrivateFieldNames(): List[FieldName] =
     _jsPrivateFieldNames.toList
 
-  def getAllFuncDeclarations(): List[wanme.FunctionName] =
+  def getAllFuncDeclarations(): List[wanme.FunctionID] =
     _funcDeclarations.toList
 
   /** Group interface types + types that implements any interfaces into buckets, where no two types
@@ -391,8 +396,6 @@ final class WasmContext {
 }
 
 object WasmContext {
-  private val classFieldOffset = 2 // vtable, itables
-
   final case class StringData(constantStringIndex: Int, offset: Int)
 
   final class ClassInfo(
@@ -413,9 +416,6 @@ object WasmContext {
       val staticFieldMirrors: Map[FieldName, List[String]],
       private var _itableIdx: Int
   ) {
-    private val fieldIdxByName: Map[FieldName, Int] =
-      allFieldDefs.map(_.name.name).zipWithIndex.map(p => p._1 -> (p._2 + classFieldOffset)).toMap
-
     val resolvedMethodInfos: Map[MethodName, ConcreteMethodInfo] = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
         val inherited: Map[MethodName, ConcreteMethodInfo] = superClass match {
@@ -436,8 +436,8 @@ object WasmContext {
 
     private val methodsCalledDynamically = mutable.HashSet.empty[MethodName]
 
+    /** For a class or interface, its table entries in definition order. */
     private var _tableEntries: List[MethodName] = null
-    private var _tableMethodInfos: Map[MethodName, TableMethodInfo] = null
 
     // See caller in Preprocessor.preprocess
     def setHasInstances(): Unit =
@@ -504,13 +504,9 @@ object WasmContext {
 
       kind match {
         case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass =>
-          val superClassInfo = superClass.map(ctx.getClassInfo(_))
           val superTableEntries =
-            superClassInfo.fold[List[MethodName]](Nil)(_.tableEntries)
-          val superTableMethodInfos =
-            superClassInfo.fold[Map[MethodName, TableMethodInfo]](Map.empty)(
-              _.tableMethodInfos
-            )
+            superClass.fold[List[MethodName]](Nil)(sup => ctx.getClassInfo(sup).tableEntries)
+          val superTableEntrySet = superTableEntries.toSet
 
           /* When computing the table entries to add for this class, exclude:
            * - methods that are already in the super class' table entries, and
@@ -518,27 +514,17 @@ object WasmContext {
            *   statically resolved instead of using the table dispatch.
            */
           val newTableEntries = methodsCalledDynamically.toList
-            .filter(!superTableMethodInfos.contains(_))
+            .filter(!superTableEntrySet.contains(_))
             .filterNot(m => resolvedMethodInfos.get(m).exists(_.isEffectivelyFinal))
             .sorted // for stability
 
-          val baseIndex = superTableMethodInfos.size
-          val newTableMethodInfos = newTableEntries.zipWithIndex.map { case (m, index) =>
-            m -> new TableMethodInfo(m, baseIndex + index)
-          }
-
           _tableEntries = superTableEntries ::: newTableEntries
-          _tableMethodInfos = superTableMethodInfos ++ newTableMethodInfos
 
         case ClassKind.Interface =>
           _tableEntries = methodsCalledDynamically.toList.sorted // for stability
-          _tableMethodInfos = tableEntries.zipWithIndex.map { case (m, index) =>
-            m -> new TableMethodInfo(m, index)
-          }.toMap
 
         case _ =>
           _tableEntries = Nil
-          _tableMethodInfos = Map.empty
       }
 
       methodsCalledDynamically.clear() // gc
@@ -549,31 +535,13 @@ object WasmContext {
         throw new IllegalStateException(s"Table not yet built for $name")
       _tableEntries
     }
-
-    def tableMethodInfos: Map[MethodName, TableMethodInfo] = {
-      if (_tableMethodInfos == null)
-        throw new IllegalStateException(s"Table not yet built for $name")
-      _tableMethodInfos
-    }
-
-    def getFieldIdx(name: FieldName): wanme.FieldIdx = {
-      wanme.FieldIdx(
-        fieldIdxByName.getOrElse(
-          name, {
-            throw new AssertionError(
-              s"Unknown field ${name.nameString} in class ${this.name.nameString}"
-            )
-          }
-        )
-      )
-    }
   }
 
   final class ConcreteMethodInfo(
       val ownerClass: ClassName,
       val methodName: MethodName
   ) {
-    val tableEntryName = genFunctionName.forTableEntry(ownerClass, methodName)
+    val tableEntryName = genFunctionID.forTableEntry(ownerClass, methodName)
 
     private var effectivelyFinal: Boolean = true
 
@@ -582,8 +550,6 @@ object WasmContext {
 
     def isEffectivelyFinal: Boolean = effectivelyFinal
   }
-
-  final class TableMethodInfo(val methodName: MethodName, val tableIndex: Int)
 
   private[WasmContext] class Bucket(idx: Int) {
     def add(clazz: ClassInfo) = clazz.setItableIdx((idx))

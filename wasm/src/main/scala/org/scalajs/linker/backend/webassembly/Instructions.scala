@@ -2,7 +2,7 @@ package org.scalajs.linker.backend.webassembly
 
 import org.scalajs.ir.Position
 
-import Names._
+import Identitities._
 import Types._
 
 /** WebAssembly instructions.
@@ -25,7 +25,7 @@ object Instructions {
 
   /** An instruction that opens a structured control block. */
   sealed trait StructuredLabeledInstr extends Instr {
-    val label: Option[LabelName]
+    val label: Option[LabelID]
   }
 
   // Convenience subclasses of instructions for writing text/binary
@@ -45,36 +45,36 @@ object Instructions {
   sealed abstract class LabelInstr(
       mnemonic: String,
       opcode: Int,
-      val labelArgument: LabelName
+      val labelArgument: LabelID
   ) extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `FunctionName` argument. */
   sealed abstract class FuncInstr(
       mnemonic: String,
       opcode: Int,
-      val funcArgument: FunctionName
+      val funcArgument: FunctionID
   ) extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `TypeName` argument. */
-  sealed abstract class TypeInstr(mnemonic: String, opcode: Int, val typeArgument: TypeName)
+  sealed abstract class TypeInstr(mnemonic: String, opcode: Int, val typeArgument: TypeID)
       extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `TagName` argument. */
-  sealed abstract class TagInstr(mnemonic: String, opcode: Int, val tagArgument: TagName)
+  sealed abstract class TagInstr(mnemonic: String, opcode: Int, val tagArgument: TagID)
       extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `LocalName` argument. */
   sealed abstract class LocalInstr(
       mnemonic: String,
       opcode: Int,
-      val localArgument: LocalName
+      val localArgument: LocalID
   ) extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `GlobalName` argument. */
   sealed abstract class GlobalInstr(
       mnemonic: String,
       opcode: Int,
-      val globalArgument: GlobalName
+      val globalArgument: GlobalID
   ) extends Instr(mnemonic, opcode)
 
   /** An instruction with a single `HeapType` argument. */
@@ -99,8 +99,8 @@ object Instructions {
   sealed abstract class StructFieldInstr(
       mnemonic: String,
       opcode: Int,
-      val structTypeName: TypeName,
-      val fieldIdx: FieldIdx
+      val structTypeName: TypeID,
+      val fieldIdx: FieldID
   ) extends Instr(mnemonic, opcode)
 
   // The actual instruction list
@@ -250,35 +250,35 @@ object Instructions {
   // https://webassembly.github.io/spec/core/syntax/instructions.html#control-instructions
   case object Unreachable extends SimpleInstr("unreachable", 0x00) with StackPolymorphicInstr
   case object Nop extends SimpleInstr("nop", 0x01)
-  case class Block(i: BlockType, label: Option[LabelName])
+  case class Block(i: BlockType, label: Option[LabelID])
       extends BlockTypeLabeledInstr("block", 0x02, i)
-  case class Loop(i: BlockType, label: Option[LabelName])
+  case class Loop(i: BlockType, label: Option[LabelID])
       extends BlockTypeLabeledInstr("loop", 0x03, i)
-  case class If(i: BlockType, label: Option[LabelName] = None)
+  case class If(i: BlockType, label: Option[LabelID] = None)
       extends BlockTypeLabeledInstr("if", 0x04, i)
   case object Else extends SimpleInstr("else", 0x05)
   case object End extends SimpleInstr("end", 0x0B)
-  case class Br(i: LabelName) extends LabelInstr("br", 0x0C, i) with StackPolymorphicInstr
-  case class BrIf(i: LabelName) extends LabelInstr("br_if", 0x0D, i)
-  case class BrTable(table: List[LabelName], default: LabelName)
+  case class Br(i: LabelID) extends LabelInstr("br", 0x0C, i) with StackPolymorphicInstr
+  case class BrIf(i: LabelID) extends LabelInstr("br_if", 0x0D, i)
+  case class BrTable(table: List[LabelID], default: LabelID)
       extends Instr("br_table", 0x0E)
       with StackPolymorphicInstr
   case object Return extends SimpleInstr("return", 0x0F) with StackPolymorphicInstr
-  case class Call(i: FunctionName) extends FuncInstr("call", 0x10, i)
-  case class ReturnCall(i: FunctionName) extends FuncInstr("return_call", 0x12, i)
-  case class Throw(i: TagName) extends TagInstr("throw", 0x08, i) with StackPolymorphicInstr
+  case class Call(i: FunctionID) extends FuncInstr("call", 0x10, i)
+  case class ReturnCall(i: FunctionID) extends FuncInstr("return_call", 0x12, i)
+  case class Throw(i: TagID) extends TagInstr("throw", 0x08, i) with StackPolymorphicInstr
   case object ThrowRef extends SimpleInstr("throw_ref", 0x0A) with StackPolymorphicInstr
-  case class TryTable(i: BlockType, cs: List[CatchClause], label: Option[LabelName] = None)
+  case class TryTable(i: BlockType, cs: List[CatchClause], label: Option[LabelID] = None)
       extends Instr("try_table", 0x1F)
       with StructuredLabeledInstr
 
   // Legacy exception system
-  case class Try(i: BlockType, label: Option[LabelName] = None)
+  case class Try(i: BlockType, label: Option[LabelID] = None)
       extends BlockTypeLabeledInstr("try", 0x06, i)
-  case class Catch(i: TagName) extends TagInstr("catch", 0x07, i)
+  case class Catch(i: TagID) extends TagInstr("catch", 0x07, i)
   case object CatchAll extends SimpleInstr("catch_all", 0x19)
   // case class Delegate(i: LabelName) extends LabelInstr("delegate", 0x18, i)
-  case class Rethrow(i: LabelName) extends LabelInstr("rethrow", 0x09, i) with StackPolymorphicInstr
+  case class Rethrow(i: LabelID) extends LabelInstr("rethrow", 0x09, i) with StackPolymorphicInstr
 
   // Parametric instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#parametric-instructions
@@ -287,11 +287,11 @@ object Instructions {
 
   // Variable instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#variable-instructions
-  case class LocalGet(i: LocalName) extends LocalInstr("local.get", 0x20, i)
-  case class LocalSet(i: LocalName) extends LocalInstr("local.set", 0x21, i)
-  case class LocalTee(i: LocalName) extends LocalInstr("local.tee", 0x22, i)
-  case class GlobalGet(i: GlobalName) extends GlobalInstr("global.get", 0x23, i)
-  case class GlobalSet(i: GlobalName) extends GlobalInstr("global.set", 0x24, i)
+  case class LocalGet(i: LocalID) extends LocalInstr("local.get", 0x20, i)
+  case class LocalSet(i: LocalID) extends LocalInstr("local.set", 0x21, i)
+  case class LocalTee(i: LocalID) extends LocalInstr("local.tee", 0x22, i)
+  case class GlobalGet(i: GlobalID) extends GlobalInstr("global.get", 0x23, i)
+  case class GlobalSet(i: GlobalID) extends GlobalInstr("global.set", 0x24, i)
 
   // Table instructions
   // https://webassembly.github.io/spec/core/syntax/instructions.html#table-instructions
@@ -316,7 +316,7 @@ object Instructions {
     *
     * `ref.func $$x : [] -> [funcref]` (iff $$x : func $$t)
     */
-  case class RefFunc(i: FunctionName) extends FuncInstr("ref.func", 0xD2, i)
+  case class RefFunc(i: FunctionID) extends FuncInstr("ref.func", 0xD2, i)
 
   case object AnyConvertExtern extends SimpleInstr("any.convert_extern", 0xFB1A)
   case object ExternConvertAny extends SimpleInstr("extern.convert_any", 0xFB1B)
@@ -328,34 +328,34 @@ object Instructions {
   // ============================================================
   // Typed Function References
   // https://github.com/WebAssembly/function-references
-  case class CallRef(i: TypeName) extends TypeInstr("call_ref", 0x14, i)
-  case class ReturnCallRef(i: TypeName) extends TypeInstr("return_call_ref", 0x15, i)
+  case class CallRef(i: TypeID) extends TypeInstr("call_ref", 0x14, i)
+  case class ReturnCallRef(i: TypeID) extends TypeInstr("return_call_ref", 0x15, i)
   case object RefAsNotNull extends SimpleInstr("ref.as_non_null", 0xD4)
-  case class BrOnNull(i: LabelName) extends LabelInstr("br_on_null", 0xD5, i)
-  case class BrOnNonNull(i: LabelName) extends LabelInstr("br_on_non_null", 0xD6, i)
+  case class BrOnNull(i: LabelID) extends LabelInstr("br_on_null", 0xD5, i)
+  case class BrOnNonNull(i: LabelID) extends LabelInstr("br_on_non_null", 0xD6, i)
 
   // ============================================================
   // gc
-  case class StructNew(i: TypeName) extends TypeInstr("struct.new", 0xFB00, i)
-  case class StructNewDefault(i: TypeName) extends TypeInstr("struct.new_default", 0xFB01, i)
-  case class StructGet(tyidx: TypeName, fidx: FieldIdx)
+  case class StructNew(i: TypeID) extends TypeInstr("struct.new", 0xFB00, i)
+  case class StructNewDefault(i: TypeID) extends TypeInstr("struct.new_default", 0xFB01, i)
+  case class StructGet(tyidx: TypeID, fidx: FieldID)
       extends StructFieldInstr("struct.get", 0xFB02, tyidx, fidx)
   // StructGetS
   // StructGetU
-  case class StructSet(tyidx: TypeName, fidx: FieldIdx)
+  case class StructSet(tyidx: TypeID, fidx: FieldID)
       extends StructFieldInstr("struct.set", 0xFB05, tyidx, fidx)
 
-  case class ArrayNew(i: TypeName) extends TypeInstr("array.new", 0xFB06, i)
-  case class ArrayNewDefault(i: TypeName) extends TypeInstr("array.new_default", 0xFB07, i)
-  case class ArrayNewFixed(i: TypeName, size: Int) extends Instr("array.new_fixed", 0xFB08)
-  case class ArrayNewData(i: TypeName, d: DataName) extends Instr("array.new_data", 0xFB09)
-  case class ArrayGet(i: TypeName) extends TypeInstr("array.get", 0xFB0B, i)
-  case class ArrayGetS(i: TypeName) extends TypeInstr("array.get_s", 0xFB0C, i)
-  case class ArrayGetU(i: TypeName) extends TypeInstr("array.get_u", 0xFB0D, i)
-  case class ArraySet(i: TypeName) extends TypeInstr("array.set", 0xFB0E, i)
+  case class ArrayNew(i: TypeID) extends TypeInstr("array.new", 0xFB06, i)
+  case class ArrayNewDefault(i: TypeID) extends TypeInstr("array.new_default", 0xFB07, i)
+  case class ArrayNewFixed(i: TypeID, size: Int) extends Instr("array.new_fixed", 0xFB08)
+  case class ArrayNewData(i: TypeID, d: DataID) extends Instr("array.new_data", 0xFB09)
+  case class ArrayGet(i: TypeID) extends TypeInstr("array.get", 0xFB0B, i)
+  case class ArrayGetS(i: TypeID) extends TypeInstr("array.get_s", 0xFB0C, i)
+  case class ArrayGetU(i: TypeID) extends TypeInstr("array.get_u", 0xFB0D, i)
+  case class ArraySet(i: TypeID) extends TypeInstr("array.set", 0xFB0E, i)
   case object ArrayLen extends SimpleInstr("array.len", 0xFB0F)
   // ArrayFill
-  case class ArrayCopy(destType: TypeName, srcType: TypeName) extends Instr("array.copy", 0xFB11)
+  case class ArrayCopy(destType: TypeID, srcType: TypeID) extends Instr("array.copy", 0xFB11)
   // ArrayInitData
   // ArrayInitElem
 
@@ -363,9 +363,9 @@ object Instructions {
   case class RefTest(i: RefType) extends RefTypeInstr("ref.test", 0xFB14, 0xFB15, i)
   case class RefCast(i: RefType) extends RefTypeInstr("ref.cast", 0xFB16, 0xFB17, i)
 
-  case class BrOnCast(label: LabelName, from: RefType, to: RefType)
+  case class BrOnCast(label: LabelID, from: RefType, to: RefType)
       extends Instr("br_on_cast", 0xFB18)
-  case class BrOnCastFail(label: LabelName, from: RefType, to: RefType)
+  case class BrOnCastFail(label: LabelID, from: RefType, to: RefType)
       extends Instr("br_on_cast_fail", 0xFB19)
 
   // Catch clauses for TRY_TABLE
@@ -373,15 +373,15 @@ object Instructions {
   sealed abstract class CatchClause(
       val mnemonic: String,
       val opcode: Int,
-      val tag: Option[TagName],
-      val label: LabelName
+      val tag: Option[TagID],
+      val label: LabelID
   )
 
   object CatchClause {
-    case class Catch(x: TagName, l: LabelName) extends CatchClause("catch", 0x00, Some(x), l)
-    case class CatchRef(x: TagName, l: LabelName) extends CatchClause("catch_ref", 0x01, Some(x), l)
-    case class CatchAll(l: LabelName) extends CatchClause("catch_all", 0x02, None, l)
-    case class CatchAllRef(l: LabelName) extends CatchClause("catch_all_ref", 0x03, None, l)
+    case class Catch(x: TagID, l: LabelID) extends CatchClause("catch", 0x00, Some(x), l)
+    case class CatchRef(x: TagID, l: LabelID) extends CatchClause("catch_ref", 0x01, Some(x), l)
+    case class CatchAll(l: LabelID) extends CatchClause("catch_all", 0x02, None, l)
+    case class CatchAllRef(l: LabelID) extends CatchClause("catch_all_ref", 0x03, None, l)
   }
 
   // Block types
@@ -395,7 +395,7 @@ object Instructions {
     */
   sealed abstract class BlockType
   object BlockType {
-    case class FunctionType(ty: TypeName) extends BlockType
+    case class FunctionType(ty: TypeID) extends BlockType
     case class ValueType(ty: Option[Type]) extends BlockType
     object ValueType {
       def apply(ty: Type): ValueType = ValueType(Some(ty))

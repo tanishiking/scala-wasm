@@ -14,6 +14,8 @@ import org.scalajs.ir.{EntryPointsInfo, Version}
 import org.scalajs.linker.interface.IRFile
 import org.scalajs.linker.interface.unstable.IRFileImpl
 
+import SpecialNames._
+
 /** Patches that we apply to the standard library classes to make them wasm-friendly. */
 object LibraryPatches {
   def patchIRFiles(irFiles: Seq[IRFile])(implicit ec: ExecutionContext): Future[Seq[IRFile]] = {
@@ -173,7 +175,7 @@ object LibraryPatches {
     val primType = BoxedClassToPrimType(className).asInstanceOf[PrimTypeWithRef]
     val derivedClassType = ClassType(derivedClassName)
 
-    val fieldName = FieldName(derivedClassName, SimpleFieldName("value"))
+    val fieldName = FieldName(derivedClassName, valueFieldSimpleName)
     val fieldIdent = FieldIdent(fieldName)
 
     val derivedFields: List[FieldDef] = List(

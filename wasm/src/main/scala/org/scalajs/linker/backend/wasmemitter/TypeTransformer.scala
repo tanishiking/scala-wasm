@@ -37,7 +37,7 @@ object TypeTransformer {
       case AnyType => watpe.RefType.anyref
 
       case tpe: ArrayType =>
-        watpe.RefType.nullable(genTypeName.forArrayClass(tpe.arrayTypeRef))
+        watpe.RefType.nullable(genTypeID.forArrayClass(tpe.arrayTypeRef))
 
       case ClassType(className)   => transformClassType(className)
       case RecordType(fields)     => ???
@@ -51,9 +51,9 @@ object TypeTransformer {
     if (info.isAncestorOfHijackedClass)
       watpe.RefType.anyref
     else if (info.isInterface)
-      watpe.RefType.nullable(genTypeName.ObjectStruct)
+      watpe.RefType.nullable(genTypeID.ObjectStruct)
     else
-      watpe.RefType.nullable(genTypeName.forClass(className))
+      watpe.RefType.nullable(genTypeID.forClass(className))
   }
 
   private def transformPrimType(t: PrimTypeWithRef): watpe.Type = {
