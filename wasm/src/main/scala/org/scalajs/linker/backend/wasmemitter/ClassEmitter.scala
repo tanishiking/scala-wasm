@@ -184,7 +184,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     val strictAncestorsValue: List[wa.Instr] = {
-      val ancestors = ctx.getClassInfo(className).ancestors
+      val ancestors = clazz.ancestors
 
       // By spec, the first element of `ancestors` is always the class itself
       assert(
@@ -205,7 +205,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val cloneFunction = {
       // If the class is concrete and implements the `java.lang.Cloneable`,
       // `genCloneFunction` should've generated the clone function
-      if (!classInfo.isAbstract && classInfo.ancestors.contains(CloneableClass))
+      if (!classInfo.isAbstract && clazz.ancestors.contains(CloneableClass))
         wa.RefFunc(genFunctionID.clone(className))
       else
         wa.RefNull(watpe.HeapType.NoFunc)
@@ -283,7 +283,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val classInfo = ctx.getClassInfo(className)
 
     // generate vtable type, this should be done for both abstract and concrete classes
-    val vtableTypeName = genVTableType(classInfo)
+    val vtableTypeName = genVTableType(clazz, classInfo)
 
     val isAbstractClass = !clazz.hasDirectInstances
 
@@ -367,6 +367,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
   }
 
   private def genVTableType(
+      clazz: LinkedClass,
       classInfo: ClassInfo
   )(implicit ctx: WasmContext): wanme.TypeID = {
     val className = classInfo.name
@@ -380,9 +381,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
           isMutable = false
         )
       }
-    val superType = classInfo.superClass match {
+    val superType = clazz.superClass match {
       case None    => genTypeID.typeData
-      case Some(s) => genTypeID.forVTable(s)
+      case Some(s) => genTypeID.forVTable(s.name)
     }
     val structType = watpe.StructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
     val subType = watpe.SubType(
@@ -510,8 +511,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     instrs += wa.GlobalGet(genGlobalID.forVTable(className))
 
-    val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
-    if (!interfaces.isEmpty)
+    if (classInfo.classImplementsAnyInterface)
       instrs += wa.GlobalGet(genGlobalID.forITable(className))
     else
       instrs += wa.RefNull(watpe.HeapType(genTypeID.itables))
@@ -618,9 +618,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
     */
   private def genGlobalClassItable(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val className = clazz.className
-    val info = ctx.getClassInfo(className)
-    val implementsAnyInterface = info.ancestors.exists(a => ctx.getClassInfo(a).isInterface)
-    if (implementsAnyInterface) {
+
+    if (ctx.getClassInfo(className).classImplementsAnyInterface) {
       val globalName = genGlobalID.forITable(className)
       val itablesInit = List(
         wa.I32Const(ctx.itablesLength),
@@ -633,7 +632,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         wa.Expr(itablesInit),
         isMutable = false
       )
-      ctx.addGlobalITable(className, global)
+      ctx.addGlobal(global)
     }
   }
 
@@ -679,7 +678,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
               isMutable = true
             )
           )
-          ctx.addJSPrivateFieldName(name.name)
         case _ =>
           ()
       }

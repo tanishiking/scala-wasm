@@ -32,8 +32,6 @@ final class Emitter(config: Emitter.Config) {
   def injectedIRFiles: Seq[IRFile] = Nil
 
   def emit(module: ModuleSet.Module, logger: Logger): Result = {
-    implicit val ctx: WasmContext = new WasmContext()
-
     /* Sort by ancestor count so that superclasses always appear before
      * subclasses, then tie-break by name for stability.
      */
@@ -43,7 +41,24 @@ final class Emitter(config: Emitter.Config) {
       else a.className.compareTo(b.className) < 0
     }
 
-    Preprocessor.preprocess(sortedClasses, module.topLevelExports)
+    implicit val ctx: WasmContext =
+      Preprocessor.preprocess(sortedClasses, module.topLevelExports)
+
+    // Sort for stability
+    val allImportedModules: List[String] = module.externalDependencies.toList.sorted
+
+    // Gen imports of external modules on the Wasm side
+    for (moduleName <- allImportedModules) {
+      val id = genGlobalID.forImportedModule(moduleName)
+      val origName = OriginalName("import." + moduleName)
+      ctx.moduleBuilder.addImport(
+        wamod.Import(
+          "__scalaJSImports",
+          moduleName,
+          wamod.ImportDesc.Global(id, origName, watpe.RefType.anyref, isMutable = false)
+        )
+      )
+    }
 
     CoreWasmLib.genPreClasses()
     sortedClasses.foreach { clazz =>
@@ -54,12 +69,9 @@ final class Emitter(config: Emitter.Config) {
     }
     CoreWasmLib.genPostClasses()
 
-    val classesWithStaticInit =
-      sortedClasses.filter(_.hasStaticInitializer).map(_.className)
-
     complete(
+      sortedClasses,
       module.initializers.toList,
-      classesWithStaticInit,
       module.topLevelExports
     )
 
@@ -67,14 +79,14 @@ final class Emitter(config: Emitter.Config) {
 
     val loaderContent = LoaderContent.bytesContent
     val jsFileContent =
-      buildJSFileContent(module, module.id.id + ".wasm", ctx.allImportedModules)
+      buildJSFileContent(module, module.id.id + ".wasm", allImportedModules)
 
     new Result(wasmModule, loaderContent, jsFileContent)
   }
 
   private def complete(
+      sortedClasses: List[LinkedClass],
       moduleInitializers: List[ModuleInitializer.Initializer],
-      classesWithStaticInit: List[ClassName],
       topLevelExportDefs: List[LinkedTopLevelExport]
   )(implicit ctx: WasmContext): Unit = {
     /* Before generating the string globals in `genStartFunction()`, make sure
@@ -114,13 +126,13 @@ final class Emitter(config: Emitter.Config) {
       )
     )
 
-    genStartFunction(moduleInitializers, classesWithStaticInit, topLevelExportDefs)
+    genStartFunction(sortedClasses, moduleInitializers, topLevelExportDefs)
     genDeclarativeElements()
   }
 
   private def genStartFunction(
+      sortedClasses: List[LinkedClass],
       moduleInitializers: List[ModuleInitializer.Initializer],
-      classesWithStaticInit: List[ClassName],
       topLevelExportDefs: List[LinkedTopLevelExport]
   )(implicit ctx: WasmContext): Unit = {
     import org.scalajs.ir.Trees._
@@ -132,20 +144,24 @@ final class Emitter(config: Emitter.Config) {
     val instrs: fb.type = fb
 
     // Initialize itables
-    for (className <- ctx.getAllClassesWithITableGlobal()) {
+    for (clazz <- sortedClasses if clazz.kind.isClass && clazz.hasDirectInstances) {
+      val className = clazz.className
       val classInfo = ctx.getClassInfo(className)
-      val interfaces = classInfo.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
-      val resolvedMethodInfos = classInfo.resolvedMethodInfos
 
-      interfaces.foreach { iface =>
-        val idx = ctx.getItableIdx(iface)
-        instrs += wa.GlobalGet(genGlobalID.forITable(className))
-        instrs += wa.I32Const(idx)
+      if (classInfo.classImplementsAnyInterface) {
+        val interfaces = clazz.ancestors.map(ctx.getClassInfo(_)).filter(_.isInterface)
+        val resolvedMethodInfos = classInfo.resolvedMethodInfos
 
-        for (method <- iface.tableEntries)
-          instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
-        instrs += wa.StructNew(genTypeID.forITable(iface.name))
-        instrs += wa.ArraySet(genTypeID.itables)
+        interfaces.foreach { iface =>
+          val idx = ctx.getItableIdx(iface)
+          instrs += wa.GlobalGet(genGlobalID.forITable(className))
+          instrs += wa.I32Const(idx)
+
+          for (method <- iface.tableEntries)
+            instrs += ctx.refFuncWithDeclaration(resolvedMethodInfos(method).tableEntryName)
+          instrs += wa.StructNew(genTypeID.forITable(iface.name))
+          instrs += wa.ArraySet(genTypeID.itables)
+        }
       }
     }
 
@@ -171,17 +187,24 @@ final class Emitter(config: Emitter.Config) {
 
     // Initialize the JS private field symbols
 
-    for (fieldName <- ctx.getAllJSPrivateFieldNames()) {
-      instrs += wa.Call(genFunctionID.newSymbol)
-      instrs += wa.GlobalSet(genGlobalID.forJSPrivateField(fieldName))
+    for (clazz <- sortedClasses if clazz.kind.isJSClass) {
+      for (fieldDef <- clazz.fields) {
+        fieldDef match {
+          case FieldDef(flags, name, _, _) if !flags.namespace.isStatic =>
+            instrs += wa.Call(genFunctionID.newSymbol)
+            instrs += wa.GlobalSet(genGlobalID.forJSPrivateField(name.name))
+          case _ =>
+            ()
+        }
+      }
     }
 
     // Emit the static initializers
 
-    for (className <- classesWithStaticInit) {
+    for (clazz <- sortedClasses if clazz.hasStaticInitializer) {
       val funcName = genFunctionID.forMethod(
         MemberNamespace.StaticConstructor,
-        className,
+        clazz.className,
         StaticInitializerName
       )
       instrs += wa.Call(funcName)

@@ -25,20 +25,17 @@ import org.scalajs.linker.backend.webassembly.{Types => watpe}
 import VarGen._
 import org.scalajs.ir.OriginalName
 
-final class WasmContext {
+final class WasmContext(
+    classInfo: Map[ClassName, WasmContext.ClassInfo],
+    reflectiveProxies: Map[MethodName, Int],
+    val itablesLength: Int
+) {
   import WasmContext._
-
-  private val classInfo = mutable.Map[ClassName, ClassInfo]()
-
-  private var _itablesLength: Int = 0
-  def itablesLength = _itablesLength
 
   private val functionTypes = LinkedHashMap.empty[watpe.FunctionType, wanme.TypeID]
   private val tableFunctionTypes = mutable.HashMap.empty[MethodName, wanme.TypeID]
   private val constantStringGlobals = LinkedHashMap.empty[String, StringData]
-  private val classItableGlobals = mutable.ListBuffer.empty[ClassName]
   private val closureDataTypes = LinkedHashMap.empty[List[Type], wanme.TypeID]
-  private val reflectiveProxies = LinkedHashMap.empty[MethodName, Int]
 
   val moduleBuilder: ModuleBuilder = {
     new ModuleBuilder(new ModuleBuilder.FunctionTypeProvider {
@@ -56,16 +53,8 @@ final class WasmContext {
 
   private var stringPool = new mutable.ArrayBuffer[Byte]()
   private var nextConstantStringIndex: Int = 0
-  private var nextConstatnStringOffset: Int = 0
-  private var nextArrayTypeIndex: Int = 1
   private var nextClosureDataTypeIndex: Int = 1
-  private var nextReflectiveProxyIdx: Int = 0
 
-  private val _importedModules: mutable.LinkedHashSet[String] =
-    new mutable.LinkedHashSet()
-
-  private val _jsPrivateFieldNames: mutable.ListBuffer[FieldName] =
-    new mutable.ListBuffer()
   private val _funcDeclarations: mutable.LinkedHashSet[wanme.FunctionID] =
     new mutable.LinkedHashSet()
 
@@ -99,15 +88,12 @@ final class WasmContext {
       ArrayType(typeRef)
   }
 
-  /** Retrieves a unique identifier for a reflective proxy with the given name */
+  /** Retrieves a unique identifier for a reflective proxy with the given name.
+    *
+    * If no class defines a reflective proxy with the given name, returns `-1`.
+    */
   def getReflectiveProxyId(name: MethodName): Int =
-    reflectiveProxies.getOrElseUpdate(
-      name, {
-        val idx = nextReflectiveProxyIdx
-        nextReflectiveProxyIdx += 1
-        idx
-      }
-    )
+    reflectiveProxies.getOrElse(name, -1)
 
   /** Adds or reuses a function type for a table function.
     *
@@ -152,13 +138,12 @@ final class WasmContext {
         val bytes = str.toCharArray.flatMap { char =>
           Array((char & 0xFF).toByte, (char >> 8).toByte)
         }
-        val offset = nextConstatnStringOffset
+        val offset = stringPool.size
         val data = StringData(nextConstantStringIndex, offset)
         constantStringGlobals(str) = data
 
         stringPool ++= bytes
         nextConstantStringIndex += 1
-        nextConstatnStringOffset += bytes.length
         data
     }
   }
@@ -199,215 +184,31 @@ final class WasmContext {
   }
 
   def refFuncWithDeclaration(name: wanme.FunctionID): wa.RefFunc = {
-    addFuncDeclaration(name)
+    _funcDeclarations += name
     wa.RefFunc(name)
   }
-
-  def assignBuckets(classes: List[LinkedClass]): Unit =
-    _itablesLength = assignBuckets0(classes.filterNot(_.kind.isJSType))
-
-  def addExport(exprt: wamod.Export): Unit =
-    moduleBuilder.addExport(exprt)
-
-  def addFunction(fun: wamod.Function): Unit =
-    moduleBuilder.addFunction(fun)
 
   def addGlobal(g: wamod.Global): Unit =
     moduleBuilder.addGlobal(g)
 
-  def addGlobalITable(name: ClassName, g: wamod.Global): Unit = {
-    classItableGlobals += name
-    addGlobal(g)
-  }
-
-  def getAllClassesWithITableGlobal(): List[ClassName] =
-    classItableGlobals.toList
-
-  def getImportedModuleGlobal(moduleName: String): wanme.GlobalID = {
-    val name = genGlobalID.forImportedModule(moduleName)
-    if (_importedModules.add(moduleName)) {
-      val origName = OriginalName("import." + moduleName)
-      moduleBuilder.addImport(
-        wamod.Import(
-          "__scalaJSImports",
-          moduleName,
-          wamod.ImportDesc.Global(name, origName, watpe.RefType.anyref, isMutable = false)
-        )
-      )
-    }
-    name
-  }
-
-  def allImportedModules: List[String] = _importedModules.toList
-
-  def addFuncDeclaration(name: wanme.FunctionID): Unit =
-    _funcDeclarations += name
-
-  def putClassInfo(name: ClassName, info: ClassInfo): Unit =
-    classInfo.put(name, info)
-
-  def addJSPrivateFieldName(fieldName: FieldName): Unit =
-    _jsPrivateFieldNames += fieldName
-
   def getFinalStringPool(): (Array[Byte], Int) =
     (stringPool.toArray, nextConstantStringIndex)
 
-  def getAllJSPrivateFieldNames(): List[FieldName] =
-    _jsPrivateFieldNames.toList
-
   def getAllFuncDeclarations(): List[wanme.FunctionID] =
     _funcDeclarations.toList
-
-  /** Group interface types + types that implements any interfaces into buckets, where no two types
-    * in the same bucket can have common subtypes.
-    *
-    * It allows compressing the itable by reusing itable's index (buckets) for unrelated types,
-    * instead of having a 1-1 mapping from type to index. As a result, the itables' length will be
-    * the same as the number of buckets).
-    *
-    * The algorithm separates the type hierarchy into three disjoint subsets,
-    *
-    *   - join types: types with multiple parents (direct supertypes) that have only single
-    *     subtyping descendants: `join(T) = {x ∈ multis(T) | ∄ y ∈ multis(T) : y <: x}` where
-    *     multis(T) means types with multiple direct supertypes.
-    *   - spine types: all ancestors of join types: `spine(T) = {x ∈ T | ∃ y ∈ join(T) : x ∈
-    *     ancestors(y)}`
-    *   - plain types: types that are neither join nor spine types
-    *
-    * The bucket assignment process consists of two parts:
-    *
-    * **1. Assign buckets to spine types**
-    *
-    * Two spine types can share the same bucket only if they do not have any common join type
-    * descendants.
-    *
-    * Visit spine types in reverse topological order because (from leaves to root) when assigning a
-    * a spine type to bucket, the algorithm already has the complete information about the
-    * join/spine type descendants of that spine type.
-    *
-    * Assign a bucket to a spine type if adding it doesn't violate the bucket assignment rule: two
-    * spine types can share a bucket only if they don't have any common join type descendants. If no
-    * existing bucket satisfies the rule, create a new bucket.
-    *
-    * **2. Assign buckets to non-spine types (plain and join types)**
-    *
-    * Visit these types in level order (from root to leaves) For each type, compute the set of
-    * buckets already used by its ancestors. Assign the type to any available bucket not in this
-    * set. If no available bucket exists, create a new one.
-    *
-    * To test if type A is a subtype of type B: load the bucket index of type B (we do this by
-    * `getItableIdx`), load the itable at that index from A, and check if the itable is an itable
-    * for B.
-    *
-    * @see
-    *   This algorithm is based on the "packed encoding" presented in the paper "Efficient Type
-    *   Inclusion Tests"
-    *   [[https://www.researchgate.net/publication/2438441_Efficient_Type_Inclusion_Tests]]
-    */
-  private def assignBuckets0(classes: List[LinkedClass]): Int = {
-    var nextIdx = 0
-    def newBucket(): Bucket = {
-      val idx = nextIdx
-      nextIdx += 1
-      new Bucket(idx)
-    }
-    def getAllInterfaces(info: ClassInfo): List[ClassName] =
-      info.ancestors.filter(getClassInfo(_).isInterface)
-
-    val buckets = new mutable.ListBuffer[Bucket]()
-
-    /** All join type descendants of the class */
-    val joinsOf =
-      new mutable.HashMap[ClassName, mutable.HashSet[ClassName]]()
-
-    /** the buckets that have been assigned to any of the ancestors of the class */
-    val usedOf = new mutable.HashMap[ClassName, mutable.HashSet[Bucket]]()
-    val spines = new mutable.HashSet[ClassName]()
-
-    for (clazz <- classes.reverseIterator) {
-      val info = getClassInfo(clazz.name.name)
-      val ifaces = getAllInterfaces(info)
-      if (ifaces.nonEmpty) {
-        val joins = joinsOf.getOrElse(clazz.name.name, new mutable.HashSet())
-
-        if (joins.nonEmpty) { // spine type
-          var found = false
-          val bs = buckets.iterator
-          // look for an existing bucket to add the spine type to
-          while (!found && bs.hasNext) {
-            val b = bs.next()
-            // two spine types can share a bucket only if they don't have any common join type descendants
-            if (!b.joins.exists(joins)) {
-              found = true
-              b.add(info)
-              b.joins ++= joins
-            }
-          }
-          if (!found) { // there's no bucket to add, create new bucket
-            val b = newBucket()
-            b.add(info)
-            buckets.append(b)
-            b.joins ++= joins
-          }
-          for (iface <- ifaces) {
-            joinsOf.getOrElseUpdate(iface, new mutable.HashSet()) ++= joins
-          }
-          spines.add(clazz.name.name)
-        } else if (ifaces.length > 1) { // join type, add to joins map, bucket assignment is done later
-          ifaces.foreach { iface =>
-            joinsOf.getOrElseUpdate(iface, new mutable.HashSet()) += clazz.name.name
-          }
-        }
-        // else: plain, do nothing
-      }
-
-    }
-
-    for (clazz <- classes) {
-      val info = getClassInfo(clazz.name.name)
-      val ifaces = getAllInterfaces(info)
-      if (ifaces.nonEmpty && !spines.contains(clazz.name.name)) {
-        val used = usedOf.getOrElse(clazz.name.name, new mutable.HashSet())
-        for {
-          iface <- ifaces
-          parentUsed <- usedOf.get(iface)
-        } { used ++= parentUsed }
-
-        var found = false
-        val bs = buckets.iterator
-        while (!found && bs.hasNext) {
-          val b = bs.next()
-          if (!used.contains(b)) {
-            found = true
-            b.add(info)
-            used.add(b)
-          }
-        }
-        if (!found) {
-          val b = newBucket()
-          buckets.append(b)
-          b.add(info)
-          used.add(b)
-        }
-      }
-    }
-    buckets.length
-  }
 }
 
 object WasmContext {
   final case class StringData(constantStringIndex: Int, offset: Int)
 
   final class ClassInfo(
-      ctx: WasmContext,
       val name: ClassName,
       val kind: ClassKind,
       val jsClassCaptures: Option[List[ParamDef]],
       classConcretePublicMethodNames: List[MethodName],
       val allFieldDefs: List[FieldDef],
-      val superClass: Option[ClassName],
-      val interfaces: List[ClassName],
-      val ancestors: List[ClassName],
+      superClass: Option[ClassInfo],
+      val classImplementsAnyInterface: Boolean,
       private var _hasInstances: Boolean,
       val isAbstract: Boolean,
       val hasRuntimeTypeInfo: Boolean,
@@ -419,7 +220,7 @@ object WasmContext {
     val resolvedMethodInfos: Map[MethodName, ConcreteMethodInfo] = {
       if (kind.isClass || kind == ClassKind.HijackedClass) {
         val inherited: Map[MethodName, ConcreteMethodInfo] = superClass match {
-          case Some(superClass) => ctx.getClassInfo(superClass).resolvedMethodInfos
+          case Some(superClass) => superClass.resolvedMethodInfos
           case None             => Map.empty
         }
 
@@ -504,8 +305,7 @@ object WasmContext {
 
       kind match {
         case ClassKind.Class | ClassKind.ModuleClass | ClassKind.HijackedClass =>
-          val superTableEntries =
-            superClass.fold[List[MethodName]](Nil)(sup => ctx.getClassInfo(sup).tableEntries)
+          val superTableEntries = superClass.fold[List[MethodName]](Nil)(_.tableEntries)
           val superTableEntrySet = superTableEntries.toSet
 
           /* When computing the table entries to add for this class, exclude:
@@ -549,12 +349,5 @@ object WasmContext {
       effectivelyFinal = false
 
     def isEffectivelyFinal: Boolean = effectivelyFinal
-  }
-
-  private[WasmContext] class Bucket(idx: Int) {
-    def add(clazz: ClassInfo) = clazz.setItableIdx((idx))
-
-    /** A set of join types that are descendants of the types assigned to that bucket */
-    val joins = new mutable.HashSet[ClassName]()
   }
 }
