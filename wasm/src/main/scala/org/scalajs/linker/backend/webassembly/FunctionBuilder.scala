@@ -28,23 +28,23 @@ final class FunctionBuilder(
   /** The instructions buffer. */
   private val instrs: mutable.ListBuffer[Instr] = mutable.ListBuffer.empty
 
-  def setFunctionType(typ: TypeID): Unit =
-    specialFunctionType = Some(typ)
+  def setFunctionType(typeID: TypeID): Unit =
+    specialFunctionType = Some(typeID)
 
-  def setResultTypes(typs: List[Type]): Unit =
-    resultTypes = typs
+  def setResultTypes(tpes: List[Type]): Unit =
+    resultTypes = tpes
 
-  def setResultType(typ: Type): Unit =
-    setResultTypes(typ :: Nil)
+  def setResultType(tpe: Type): Unit =
+    setResultTypes(tpe :: Nil)
 
-  def addParam(originalName: OriginalName, typ: Type): LocalID = {
+  def addParam(originalName: OriginalName, tpe: Type): LocalID = {
     val id = new ParamIDImpl(params.size, originalName)
-    params += Local(id, originalName, typ)
+    params += Local(id, originalName, tpe)
     id
   }
 
-  def addParam(name: String, typ: Type): LocalID =
-    addParam(OriginalName(name), typ)
+  def addParam(name: String, tpe: Type): LocalID =
+    addParam(OriginalName(name), tpe)
 
   def genLabel(): LabelID = {
     val label = new LabelIDImpl(labelIdx)
@@ -52,14 +52,14 @@ final class FunctionBuilder(
     label
   }
 
-  def addLocal(originalName: OriginalName, typ: Type): LocalID = {
+  def addLocal(originalName: OriginalName, tpe: Type): LocalID = {
     val id = new LocalIDImpl(locals.size, originalName)
-    locals += Local(id, originalName, typ)
+    locals += Local(id, originalName, tpe)
     id
   }
 
-  def addLocal(name: String, typ: Type): LocalID =
-    addLocal(OriginalName(name), typ)
+  def addLocal(name: String, tpe: Type): LocalID =
+    addLocal(OriginalName(name), tpe)
 
   // Instructions
 
@@ -83,7 +83,7 @@ final class FunctionBuilder(
     case FunctionType(Nil, resultType :: Nil) =>
       BlockType.ValueType(resultType)
     case _ =>
-      BlockType.FunctionType(moduleBuilder.functionTypeToTypeName(sig))
+      BlockType.FunctionType(moduleBuilder.functionTypeToTypeID(sig))
   }
 
   def ifThenElse(blockType: BlockType)(thenp: => Unit)(elsep: => Unit): Unit = {
@@ -300,9 +300,9 @@ final class FunctionBuilder(
   // Final result
 
   def buildAndAddToModule(): Function = {
-    val functionTypeName = specialFunctionType.getOrElse {
-      val sig = FunctionType(params.toList.map(_.typ), resultTypes)
-      moduleBuilder.functionTypeToTypeName(sig)
+    val functionTypeID = specialFunctionType.getOrElse {
+      val sig = FunctionType(params.toList.map(_.tpe), resultTypes)
+      moduleBuilder.functionTypeToTypeID(sig)
     }
 
     val dcedInstrs = localDeadCodeEliminationOfInstrs()
@@ -310,7 +310,7 @@ final class FunctionBuilder(
     val func = Function(
       functionID,
       functionOriginalName,
-      functionTypeName,
+      functionTypeID,
       params.toList,
       resultTypes,
       locals.toList,

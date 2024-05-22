@@ -126,18 +126,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
       fb.setResultType(watpe.Int32)
       fb.setFunctionType(genTypeID.isJSClassInstanceFuncType)
 
-      val instrs = fb
-
       if (clazz.kind == ClassKind.JSClass && !clazz.hasInstances) {
         /* We need to constant-fold the instance test, to avoid trying to
          * call $loadJSClass.className, since it will not exist at all.
          */
-        instrs += wa.I32Const(0) // false
+        fb += wa.I32Const(0) // false
       } else {
-        instrs += wa.LocalGet(xParam)
-        genLoadJSConstructor(instrs, className)
-        instrs += wa.Call(genFunctionID.jsBinaryOps(JSBinaryOp.instanceof))
-        instrs += wa.Call(genFunctionID.unbox(BooleanRef))
+        fb += wa.LocalGet(xParam)
+        genLoadJSConstructor(fb, className)
+        fb += wa.Call(genFunctionID.jsBinaryOps(JSBinaryOp.instanceof))
+        fb += wa.Call(genFunctionID.unbox(BooleanRef))
       }
 
       val func = fb.buildAndAddToModule()
@@ -212,8 +210,8 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
 
     val isJSClassInstance = genIsJSClassInstanceFunction(clazz) match {
-      case None           => wa.RefNull(watpe.HeapType.NoFunc)
-      case Some(funcName) => wa.RefFunc(funcName)
+      case None         => wa.RefNull(watpe.HeapType.NoFunc)
+      case Some(funcID) => wa.RefFunc(funcID)
     }
 
     val reflectiveProxiesInstrs: List[wa.Instr] = {
@@ -221,7 +219,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
         val proxyId = ctx.getReflectiveProxyId(proxyInfo.methodName)
         List(
           wa.I32Const(proxyId),
-          wa.RefFunc(proxyInfo.tableEntryName),
+          wa.RefFunc(proxyInfo.tableEntryID),
           wa.StructNew(genTypeID.reflectiveProxy)
         )
       } :+ wa.ArrayNewFixed(genTypeID.reflectiveProxies, reflectiveProxies.size)
@@ -259,17 +257,17 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
   private def genTypeDataGlobal(
       className: ClassName,
-      typeDataTypeName: wanme.TypeID,
+      typeDataTypeID: wanme.TypeID,
       typeDataFieldValues: List[wa.Instr],
       vtableElems: List[wa.RefFunc]
   )(implicit ctx: WasmContext): Unit = {
     val instrs: List[wa.Instr] =
-      typeDataFieldValues ::: vtableElems ::: wa.StructNew(typeDataTypeName) :: Nil
+      typeDataFieldValues ::: vtableElems ::: wa.StructNew(typeDataTypeID) :: Nil
     ctx.addGlobal(
       wamod.Global(
         genGlobalID.forVTable(className),
         makeOriginalName(ns.TypeData, className),
-        watpe.RefType(typeDataTypeName),
+        watpe.RefType(typeDataTypeID),
         wa.Expr(instrs),
         isMutable = false
       )
@@ -283,7 +281,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val classInfo = ctx.getClassInfo(className)
 
     // generate vtable type, this should be done for both abstract and concrete classes
-    val vtableTypeName = genVTableType(clazz, classInfo)
+    val vtableTypeID = genVTableType(clazz, classInfo)
 
     val isAbstractClass = !clazz.hasDirectInstances
 
@@ -299,9 +297,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
         classInfo.resolvedMethodInfos.valuesIterator.filter(_.methodName.isReflectiveProxy).toList
       val typeDataFieldValues = genTypeDataFieldValues(clazz, reflectiveProxies)
       val vtableElems = classInfo.tableEntries.map { methodName =>
-        wa.RefFunc(classInfo.resolvedMethodInfos(methodName).tableEntryName)
+        wa.RefFunc(classInfo.resolvedMethodInfos(methodName).tableEntryID)
       }
-      genTypeDataGlobal(className, vtableTypeName, typeDataFieldValues, vtableElems)
+      genTypeDataGlobal(className, vtableTypeID, typeDataFieldValues, vtableElems)
 
       // Generate the itable
       genGlobalClassItable(clazz)
@@ -311,7 +309,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val vtableField = watpe.StructField(
       genFieldID.objStruct.vtable,
       vtableOriginalName,
-      watpe.RefType(vtableTypeName),
+      watpe.RefType(vtableTypeID),
       isMutable = false
     )
     val itablesField = watpe.StructField(
@@ -328,11 +326,11 @@ class ClassEmitter(coreSpec: CoreSpec) {
         isMutable = true // initialized by the constructors, so always mutable at the Wasm level
       )
     }
-    val structTypeName = genTypeID.forClass(className)
+    val structTypeID = genTypeID.forClass(className)
     val superType = clazz.superClass.map(s => genTypeID.forClass(s.name))
     val structType = watpe.StructType(vtableField :: itablesField :: fields)
     val subType = watpe.SubType(
-      structTypeName,
+      structTypeID,
       makeOriginalName(ns.ClassInstance, className),
       isFinal = false,
       superType,
@@ -352,7 +350,6 @@ class ClassEmitter(coreSpec: CoreSpec) {
       val heapType = watpe.HeapType(genTypeID.forClass(clazz.className))
 
       // global instance
-      // (global name (ref null type))
       val global = wamod.Global(
         genGlobalID.forModuleInstance(className),
         makeOriginalName(ns.ModuleInstance, className),
@@ -371,7 +368,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       classInfo: ClassInfo
   )(implicit ctx: WasmContext): wanme.TypeID = {
     val className = classInfo.name
-    val typeName = genTypeID.forVTable(className)
+    val typeID = genTypeID.forVTable(className)
     val vtableFields =
       classInfo.tableEntries.map { methodName =>
         watpe.StructField(
@@ -387,14 +384,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
     }
     val structType = watpe.StructType(CoreWasmLib.typeDataStructFields ::: vtableFields)
     val subType = watpe.SubType(
-      typeName,
+      typeID,
       makeOriginalName(ns.VTable, className),
       isFinal = false,
       Some(superType),
       structType
     )
     ctx.mainRecType.addSubType(subType)
-    typeName
+    typeID
   }
 
   /** Generate type inclusion test for interfaces.
@@ -417,37 +414,35 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val exprParam = fb.addParam("expr", watpe.RefType.anyref)
     fb.setResultType(watpe.Int32)
 
-    val instrs = fb
-
     val itables = fb.addLocal("itables", watpe.RefType.nullable(genTypeID.itables))
     val exprNonNullLocal = fb.addLocal("exprNonNull", watpe.RefType.any)
 
     val itableIdx = ctx.getItableIdx(classInfo)
-    instrs.block(watpe.RefType.anyref) { testFail =>
+    fb.block(watpe.RefType.anyref) { testFail =>
       // if expr is not an instance of Object, return false
-      instrs += wa.LocalGet(exprParam)
-      instrs += wa.BrOnCastFail(
+      fb += wa.LocalGet(exprParam)
+      fb += wa.BrOnCastFail(
         testFail,
         watpe.RefType.anyref,
         watpe.RefType(genTypeID.ObjectStruct)
       )
 
       // get itables and store
-      instrs += wa.StructGet(genTypeID.ObjectStruct, genFieldID.objStruct.itables)
-      instrs += wa.LocalSet(itables)
+      fb += wa.StructGet(genTypeID.ObjectStruct, genFieldID.objStruct.itables)
+      fb += wa.LocalSet(itables)
 
       // Dummy return value from the block
-      instrs += wa.RefNull(watpe.HeapType.Any)
+      fb += wa.RefNull(watpe.HeapType.Any)
 
       // if the itables is null (no interfaces are implemented)
-      instrs += wa.LocalGet(itables)
-      instrs += wa.BrOnNull(testFail)
+      fb += wa.LocalGet(itables)
+      fb += wa.BrOnNull(testFail)
 
-      instrs += wa.LocalGet(itables)
-      instrs += wa.I32Const(itableIdx)
-      instrs += wa.ArrayGet(genTypeID.itables)
-      instrs += wa.RefTest(watpe.RefType(genTypeID.forITable(className)))
-      instrs += wa.Return
+      fb += wa.LocalGet(itables)
+      fb += wa.I32Const(itableIdx)
+      fb += wa.ArrayGet(genTypeID.itables)
+      fb += wa.RefTest(watpe.RefType(genTypeID.forITable(className)))
+      fb += wa.Return
     } // test fail
 
     if (classInfo.isAncestorOfHijackedClass) {
@@ -465,29 +460,29 @@ class ClassEmitter(coreSpec: CoreSpec) {
        */
       val anyRefToVoidSig = watpe.FunctionType(List(watpe.RefType.anyref), Nil)
 
-      instrs.block(anyRefToVoidSig) { isNullLabel =>
+      fb.block(anyRefToVoidSig) { isNullLabel =>
         // exprNonNull := expr; branch to isNullLabel if it is null
-        instrs += wa.BrOnNull(isNullLabel)
-        instrs += wa.LocalSet(exprNonNullLocal)
+        fb += wa.BrOnNull(isNullLabel)
+        fb += wa.LocalSet(exprNonNullLocal)
 
         // Load 1 << jsValueType(expr)
-        instrs += wa.I32Const(1)
-        instrs += wa.LocalGet(exprNonNullLocal)
-        instrs += wa.Call(genFunctionID.jsValueType)
-        instrs += wa.I32Shl
+        fb += wa.I32Const(1)
+        fb += wa.LocalGet(exprNonNullLocal)
+        fb += wa.Call(genFunctionID.jsValueType)
+        fb += wa.I32Shl
 
         // return (... & specialInstanceTypes) != 0
-        instrs += wa.I32Const(classInfo.specialInstanceTypes)
-        instrs += wa.I32And
-        instrs += wa.I32Const(0)
-        instrs += wa.I32Ne
-        instrs += wa.Return
+        fb += wa.I32Const(classInfo.specialInstanceTypes)
+        fb += wa.I32And
+        fb += wa.I32Const(0)
+        fb += wa.I32Ne
+        fb += wa.Return
       }
 
-      instrs += wa.I32Const(0) // false
+      fb += wa.I32Const(0) // false
     } else {
-      instrs += wa.Drop
-      instrs += wa.I32Const(0) // false
+      fb += wa.Drop
+      fb += wa.I32Const(0) // false
     }
 
     fb.buildAndAddToModule()
@@ -498,28 +493,26 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val classInfo = ctx.getClassInfo(className)
     assert(clazz.hasDirectInstances)
 
-    val structName = genTypeID.forClass(className)
+    val structTypeID = genTypeID.forClass(className)
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
       genFunctionID.newDefault(className),
       makeOriginalName(ns.NewDefault, className),
       clazz.pos
     )
-    fb.setResultType(watpe.RefType(structName))
+    fb.setResultType(watpe.RefType(structTypeID))
 
-    val instrs = fb
-
-    instrs += wa.GlobalGet(genGlobalID.forVTable(className))
+    fb += wa.GlobalGet(genGlobalID.forVTable(className))
 
     if (classInfo.classImplementsAnyInterface)
-      instrs += wa.GlobalGet(genGlobalID.forITable(className))
+      fb += wa.GlobalGet(genGlobalID.forITable(className))
     else
-      instrs += wa.RefNull(watpe.HeapType(genTypeID.itables))
+      fb += wa.RefNull(watpe.HeapType(genTypeID.itables))
 
     classInfo.allFieldDefs.foreach { f =>
-      instrs += genZeroOf(f.ftpe)
+      fb += genZeroOf(f.ftpe)
     }
-    instrs += wa.StructNew(structName)
+    fb += wa.StructNew(structTypeID)
 
     fb.buildAndAddToModule()
   }
@@ -543,30 +536,28 @@ class ClassEmitter(coreSpec: CoreSpec) {
     fb.setResultType(watpe.RefType(genTypeID.ObjectStruct))
     fb.setFunctionType(genTypeID.cloneFunctionType)
 
-    val instrs = fb
-
     val structTypeID = genTypeID.forClass(className)
     val structRefType = watpe.RefType(structTypeID)
 
     val fromTypedLocal = fb.addLocal("fromTyped", structRefType)
 
     // Downcast fromParam to fromTyped
-    instrs += wa.LocalGet(fromParam)
-    instrs += wa.RefCast(structRefType)
-    instrs += wa.LocalSet(fromTypedLocal)
+    fb += wa.LocalGet(fromParam)
+    fb += wa.RefCast(structRefType)
+    fb += wa.LocalSet(fromTypedLocal)
 
     // Push vtable and itables on the stack (there is at least Cloneable in the itables)
-    instrs += wa.GlobalGet(genGlobalID.forVTable(className))
-    instrs += wa.GlobalGet(genGlobalID.forITable(className))
+    fb += wa.GlobalGet(genGlobalID.forVTable(className))
+    fb += wa.GlobalGet(genGlobalID.forITable(className))
 
     // Push every field of `fromTyped` on the stack
     info.allFieldDefs.foreach { field =>
-      instrs += wa.LocalGet(fromTypedLocal)
-      instrs += wa.StructGet(structTypeID, genFieldID.forClassInstanceField(field.name.name))
+      fb += wa.LocalGet(fromTypedLocal)
+      fb += wa.StructGet(structTypeID, genFieldID.forClassInstanceField(field.name.name))
     }
 
     // Create the result
-    instrs += wa.StructNew(structTypeID)
+    fb += wa.StructNew(structTypeID)
 
     fb.buildAndAddToModule()
   }
@@ -575,10 +566,10 @@ class ClassEmitter(coreSpec: CoreSpec) {
     assert(clazz.kind == ClassKind.ModuleClass)
 
     val className = clazz.className
-    val globalInstanceName = genGlobalID.forModuleInstance(className)
-    val ctorName =
+    val globalInstanceID = genGlobalID.forModuleInstance(className)
+    val ctorID =
       genFunctionID.forMethod(MemberNamespace.Constructor, className, NoArgConstructorName)
-    val resultTyp = watpe.RefType(genTypeID.forClass(className))
+    val resultType = watpe.RefType(genTypeID.forClass(className))
 
     val fb = new FunctionBuilder(
       ctx.moduleBuilder,
@@ -586,28 +577,26 @@ class ClassEmitter(coreSpec: CoreSpec) {
       makeOriginalName(ns.ModuleAccessor, className),
       clazz.pos
     )
-    fb.setResultType(resultTyp)
+    fb.setResultType(resultType)
 
-    val instanceLocal = fb.addLocal("instance", resultTyp)
+    val instanceLocal = fb.addLocal("instance", resultType)
 
-    val instrs = fb
-
-    instrs.block(resultTyp) { nonNullLabel =>
+    fb.block(resultType) { nonNullLabel =>
       // load global, return if not null
-      instrs += wa.GlobalGet(globalInstanceName)
-      instrs += wa.BrOnNonNull(nonNullLabel)
+      fb += wa.GlobalGet(globalInstanceID)
+      fb += wa.BrOnNonNull(nonNullLabel)
 
       // create an instance and call its constructor
-      instrs += wa.Call(genFunctionID.newDefault(className))
-      instrs += wa.LocalTee(instanceLocal)
-      instrs += wa.Call(ctorName)
+      fb += wa.Call(genFunctionID.newDefault(className))
+      fb += wa.LocalTee(instanceLocal)
+      fb += wa.Call(ctorID)
 
       // store it in the global
-      instrs += wa.LocalGet(instanceLocal)
-      instrs += wa.GlobalSet(globalInstanceName)
+      fb += wa.LocalGet(instanceLocal)
+      fb += wa.GlobalSet(globalInstanceID)
 
       // return it
-      instrs += wa.LocalGet(instanceLocal)
+      fb += wa.LocalGet(instanceLocal)
     }
 
     fb.buildAndAddToModule()
@@ -620,13 +609,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val className = clazz.className
 
     if (ctx.getClassInfo(className).classImplementsAnyInterface) {
-      val globalName = genGlobalID.forITable(className)
+      val globalID = genGlobalID.forITable(className)
       val itablesInit = List(
         wa.I32Const(ctx.itablesLength),
         wa.ArrayNewDefault(genTypeID.itables)
       )
       val global = wamod.Global(
-        globalName,
+        globalID,
         makeOriginalName(ns.ITable, className),
         watpe.RefType(genTypeID.itables),
         wa.Expr(itablesInit),
@@ -641,7 +630,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     // gen itable type
     val className = clazz.name.name
     val classInfo = ctx.getClassInfo(clazz.className)
-    val itableTypeName = genTypeID.forITable(className)
+    val itableTypeID = genTypeID.forITable(className)
     val itableType = watpe.StructType(
       classInfo.tableEntries.map { methodName =>
         watpe.StructField(
@@ -653,7 +642,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
     )
     ctx.mainRecType.addSubType(
-      itableTypeName,
+      itableTypeID,
       makeOriginalName(ns.ITable, className),
       itableType
     )
@@ -719,15 +708,15 @@ class ClassEmitter(coreSpec: CoreSpec) {
      * are still used by `superArgs` and/or `postSuperArgs`.
      */
 
-    val preSuperStatsFunctionName = genFunctionID.preSuperStats(className)
-    val superArgsFunctionName = genFunctionID.superArgs(className)
-    val postSuperStatsFunctionName = genFunctionID.postSuperStats(className)
+    val preSuperStatsFunctionID = genFunctionID.preSuperStats(className)
+    val superArgsFunctionID = genFunctionID.superArgs(className)
+    val postSuperStatsFunctionID = genFunctionID.postSuperStats(className)
     val ctor = clazz.jsConstructorDef.get
 
     FunctionEmitter.emitJSConstructorFunctions(
-      preSuperStatsFunctionName,
-      superArgsFunctionName,
-      postSuperStatsFunctionName,
+      preSuperStatsFunctionID,
+      superArgsFunctionID,
+      postSuperStatsFunctionID,
       className,
       jsClassCaptures,
       ctor
@@ -746,22 +735,18 @@ class ClassEmitter(coreSpec: CoreSpec) {
       }
       fb.setResultType(watpe.RefType.any)
 
-      val instrs = fb
+      val dataStructTypeID = ctx.getClosureDataStructType(jsClassCaptures.map(_.ptpe))
 
-      val dataStructTypeName = ctx.getClosureDataStructType(jsClassCaptures.map(_.ptpe))
-
-      // --- Internal name management of `createJSClass`
-
-      val dataStructLocal = fb.addLocal("classCaptures", watpe.RefType(dataStructTypeName))
+      val dataStructLocal = fb.addLocal("classCaptures", watpe.RefType(dataStructTypeID))
       val jsClassLocal = fb.addLocal("jsClass", watpe.RefType.any)
 
       // --- Actual start of instructions of `createJSClass`
 
       // Bundle class captures in a capture data struct -- leave it on the stack for createJSClass
       for (classCaptureParam <- classCaptureParams)
-        instrs += wa.LocalGet(classCaptureParam)
-      instrs += wa.StructNew(dataStructTypeName)
-      instrs += wa.LocalTee(dataStructLocal)
+        fb += wa.LocalGet(classCaptureParam)
+      fb += wa.StructNew(dataStructTypeID)
+      fb += wa.LocalTee(dataStructLocal)
 
       val classCaptureParamsOfTypeAny: Map[LocalName, wanme.LocalID] = {
         jsClassCaptures
@@ -776,14 +761,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
         tree match {
           case StringLiteral(value) =>
             // Common shape for all the `nameTree` expressions
-            instrs ++= ctx.getConstantStringInstr(value)
+            fb ++= ctx.getConstantStringInstr(value)
 
           case VarRef(LocalIdent(localName)) if classCaptureParamsOfTypeAny.contains(localName) =>
             /* Common shape for the `jsSuperClass` value
              * We can only deal with class captures of type `AnyType` in this way,
              * since otherwise we might need `adapt` to box the values.
              */
-            instrs += wa.LocalGet(classCaptureParamsOfTypeAny(localName))
+            fb += wa.LocalGet(classCaptureParamsOfTypeAny(localName))
 
           case _ =>
             // For everything else, put the tree in its own function and call it
@@ -793,14 +778,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
               NoOriginalName,
               enclosingClassName = None,
               Some(jsClassCaptures),
-              receiverTyp = None,
+              receiverType = None,
               paramDefs = Nil,
               restParam = None,
               tree,
               AnyType
             )
-            instrs += wa.LocalGet(dataStructLocal)
-            instrs += wa.Call(closureFuncID)
+            fb += wa.LocalGet(dataStructLocal)
+            fb += wa.Call(closureFuncID)
         }
       }
 
@@ -812,58 +797,58 @@ class ClassEmitter(coreSpec: CoreSpec) {
        */
       clazz.jsSuperClass match {
         case None =>
-          genLoadJSConstructor(instrs, clazz.superClass.get.name)
+          genLoadJSConstructor(fb, clazz.superClass.get.name)
         case Some(jsSuperClassTree) =>
           genLoadIsolatedTree(jsSuperClassTree)
       }
 
       // Load the references to the 3 functions that make up the constructor
-      instrs += ctx.refFuncWithDeclaration(preSuperStatsFunctionName)
-      instrs += ctx.refFuncWithDeclaration(superArgsFunctionName)
-      instrs += ctx.refFuncWithDeclaration(postSuperStatsFunctionName)
+      fb += ctx.refFuncWithDeclaration(preSuperStatsFunctionID)
+      fb += ctx.refFuncWithDeclaration(superArgsFunctionID)
+      fb += ctx.refFuncWithDeclaration(postSuperStatsFunctionID)
 
       // Load the array of field names and initial values
-      instrs += wa.Call(genFunctionID.jsNewArray)
+      fb += wa.Call(genFunctionID.jsNewArray)
       for (fieldDef <- clazz.fields if !fieldDef.flags.namespace.isStatic) {
         // Append the name
         fieldDef match {
           case FieldDef(_, name, _, _) =>
-            instrs += wa.GlobalGet(genGlobalID.forJSPrivateField(name.name))
+            fb += wa.GlobalGet(genGlobalID.forJSPrivateField(name.name))
           case JSFieldDef(_, nameTree, _) =>
             genLoadIsolatedTree(nameTree)
         }
-        instrs += wa.Call(genFunctionID.jsArrayPush)
+        fb += wa.Call(genFunctionID.jsArrayPush)
 
         // Append the boxed representation of the zero of the field
-        instrs += genBoxedZeroOf(fieldDef.ftpe)
-        instrs += wa.Call(genFunctionID.jsArrayPush)
+        fb += genBoxedZeroOf(fieldDef.ftpe)
+        fb += wa.Call(genFunctionID.jsArrayPush)
       }
 
       // Call the createJSClass helper to bundle everything
       if (ctor.restParam.isDefined) {
-        instrs += wa.I32Const(ctor.args.size) // number of fixed params
-        instrs += wa.Call(genFunctionID.createJSClassRest)
+        fb += wa.I32Const(ctor.args.size) // number of fixed params
+        fb += wa.Call(genFunctionID.createJSClassRest)
       } else {
-        instrs += wa.Call(genFunctionID.createJSClass)
+        fb += wa.Call(genFunctionID.createJSClass)
       }
 
       // Store the result, locally in `jsClass` and possibly in the global cache
       if (clazz.jsClassCaptures.isEmpty) {
         // Static JS class with a global cache
-        instrs += wa.LocalTee(jsClassLocal)
-        instrs += wa.GlobalSet(genGlobalID.forJSClassValue(className))
+        fb += wa.LocalTee(jsClassLocal)
+        fb += wa.GlobalSet(genGlobalID.forJSClassValue(className))
       } else {
         // Local or inner JS class, which is new every time
-        instrs += wa.LocalSet(jsClassLocal)
+        fb += wa.LocalSet(jsClassLocal)
       }
 
       // Install methods and properties
       for (methodOrProp <- clazz.exportedMembers) {
         val isStatic = methodOrProp.flags.namespace.isStatic
-        instrs += wa.LocalGet(dataStructLocal)
-        instrs += wa.LocalGet(jsClassLocal)
+        fb += wa.LocalGet(dataStructLocal)
+        fb += wa.LocalGet(jsClassLocal)
 
-        val receiverTyp = if (isStatic) None else Some(watpe.RefType.anyref)
+        val receiverType = if (isStatic) None else Some(watpe.RefType.anyref)
 
         methodOrProp match {
           case JSMethodDef(flags, nameTree, params, restParam, body) =>
@@ -875,26 +860,26 @@ class ClassEmitter(coreSpec: CoreSpec) {
               NoOriginalName, // TODO Come up with something here?
               Some(className),
               Some(jsClassCaptures),
-              receiverTyp,
+              receiverType,
               params,
               restParam,
               body,
               AnyType
             )
-            instrs += ctx.refFuncWithDeclaration(closureFuncID)
+            fb += ctx.refFuncWithDeclaration(closureFuncID)
 
-            instrs += wa.I32Const(if (restParam.isDefined) params.size else -1)
+            fb += wa.I32Const(if (restParam.isDefined) params.size else -1)
             if (isStatic)
-              instrs += wa.Call(genFunctionID.installJSStaticMethod)
+              fb += wa.Call(genFunctionID.installJSStaticMethod)
             else
-              instrs += wa.Call(genFunctionID.installJSMethod)
+              fb += wa.Call(genFunctionID.installJSMethod)
 
           case JSPropertyDef(flags, nameTree, optGetter, optSetter) =>
             genLoadIsolatedTree(nameTree)
 
             optGetter match {
               case None =>
-                instrs += wa.RefNull(watpe.HeapType.Func)
+                fb += wa.RefNull(watpe.HeapType.Func)
 
               case Some(getterBody) =>
                 val closureFuncID = new JSClassClosureFunctionID(className)
@@ -903,18 +888,18 @@ class ClassEmitter(coreSpec: CoreSpec) {
                   NoOriginalName, // TODO Come up with something here?
                   Some(className),
                   Some(jsClassCaptures),
-                  receiverTyp,
+                  receiverType,
                   paramDefs = Nil,
                   restParam = None,
                   getterBody,
                   resultType = AnyType
                 )
-                instrs += ctx.refFuncWithDeclaration(closureFuncID)
+                fb += ctx.refFuncWithDeclaration(closureFuncID)
             }
 
             optSetter match {
               case None =>
-                instrs += wa.RefNull(watpe.HeapType.Func)
+                fb += wa.RefNull(watpe.HeapType.Func)
 
               case Some((setterParamDef, setterBody)) =>
                 val closureFuncID = new JSClassClosureFunctionID(className)
@@ -923,26 +908,26 @@ class ClassEmitter(coreSpec: CoreSpec) {
                   NoOriginalName, // TODO Come up with something here?
                   Some(className),
                   Some(jsClassCaptures),
-                  receiverTyp,
+                  receiverType,
                   setterParamDef :: Nil,
                   restParam = None,
                   setterBody,
                   resultType = NoType
                 )
-                instrs += ctx.refFuncWithDeclaration(closureFuncID)
+                fb += ctx.refFuncWithDeclaration(closureFuncID)
             }
 
             if (isStatic)
-              instrs += wa.Call(genFunctionID.installJSStaticProperty)
+              fb += wa.Call(genFunctionID.installJSStaticProperty)
             else
-              instrs += wa.Call(genFunctionID.installJSProperty)
+              fb += wa.Call(genFunctionID.installJSProperty)
         }
       }
 
       // Static fields
       for (fieldDef <- clazz.fields if fieldDef.flags.namespace.isStatic) {
         // Load class value
-        instrs += wa.LocalGet(jsClassLocal)
+        fb += wa.LocalGet(jsClassLocal)
 
         // Load name
         fieldDef match {
@@ -956,9 +941,9 @@ class ClassEmitter(coreSpec: CoreSpec) {
         }
 
         // Generate boxed representation of the zero of the field
-        instrs += genBoxedZeroOf(fieldDef.ftpe)
+        fb += genBoxedZeroOf(fieldDef.ftpe)
 
-        instrs += wa.Call(genFunctionID.installJSField)
+        fb += wa.Call(genFunctionID.installJSField)
       }
 
       // Class initializer
@@ -968,13 +953,13 @@ class ClassEmitter(coreSpec: CoreSpec) {
           s"Illegal class initializer in non-static class ${className.nameString}"
         )
         val namespace = MemberNamespace.StaticConstructor
-        instrs += wa.Call(
+        fb += wa.Call(
           genFunctionID.forMethod(namespace, className, ClassInitializerName)
         )
       }
 
       // Final result
-      instrs += wa.LocalGet(jsClassLocal)
+      fb += wa.LocalGet(jsClassLocal)
 
       fb.buildAndAddToModule()
     }
@@ -1000,14 +985,12 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
     fb.setResultType(watpe.RefType.any)
 
-    val instrs = fb
-
-    instrs.block(watpe.RefType.any) { doneLabel =>
+    fb.block(watpe.RefType.any) { doneLabel =>
       // Load cached JS class, return if non-null
-      instrs += wa.GlobalGet(cachedJSClassGlobal.id)
-      instrs += wa.BrOnNonNull(doneLabel)
+      fb += wa.GlobalGet(cachedJSClassGlobal.id)
+      fb += wa.BrOnNonNull(doneLabel)
       // Otherwise, call createJSClass -- it will also store the class in the cache
-      instrs += wa.Call(genFunctionID.createJSClassOf(className))
+      fb += wa.Call(genFunctionID.createJSClassOf(className))
     }
 
     fb.buildAndAddToModule()
@@ -1015,11 +998,11 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
   private def genLoadJSModuleFunction(clazz: LinkedClass)(implicit ctx: WasmContext): Unit = {
     val className = clazz.className
-    val cacheGlobalName = genGlobalID.forModuleInstance(className)
+    val cacheGlobalID = genGlobalID.forModuleInstance(className)
 
     ctx.addGlobal(
       wamod.Global(
-        cacheGlobalName,
+        cacheGlobalID,
         makeOriginalName(ns.ModuleInstance, className),
         watpe.RefType.anyref,
         wa.Expr(List(wa.RefNull(watpe.HeapType.Any))),
@@ -1035,21 +1018,19 @@ class ClassEmitter(coreSpec: CoreSpec) {
     )
     fb.setResultType(watpe.RefType.anyref)
 
-    val instrs = fb
-
-    instrs.block(watpe.RefType.anyref) { doneLabel =>
+    fb.block(watpe.RefType.anyref) { doneLabel =>
       // Load cached instance; return if non-null
-      instrs += wa.GlobalGet(cacheGlobalName)
-      instrs += wa.BrOnNonNull(doneLabel)
+      fb += wa.GlobalGet(cacheGlobalID)
+      fb += wa.BrOnNonNull(doneLabel)
 
       // Get the JS class and instantiate it
-      instrs += wa.Call(genFunctionID.loadJSClass(className))
-      instrs += wa.Call(genFunctionID.jsNewArray)
-      instrs += wa.Call(genFunctionID.jsNew)
+      fb += wa.Call(genFunctionID.loadJSClass(className))
+      fb += wa.Call(genFunctionID.jsNewArray)
+      fb += wa.Call(genFunctionID.jsNew)
 
       // Store and return the result
-      instrs += wa.GlobalSet(cacheGlobalName)
-      instrs += wa.GlobalGet(cacheGlobalName)
+      fb += wa.GlobalSet(cacheGlobalID)
+      fb += wa.GlobalGet(cacheGlobalID)
     }
 
     fb.buildAndAddToModule()
@@ -1057,16 +1038,16 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
   /** Generates the function import for a top-level export setter. */
   private def genTopLevelExportSetter(exportedName: String)(implicit ctx: WasmContext): Unit = {
-    val functionName = genFunctionID.forTopLevelExportSetter(exportedName)
+    val functionID = genFunctionID.forTopLevelExportSetter(exportedName)
     val functionSig = watpe.FunctionType(List(watpe.RefType.anyref), Nil)
-    val functionType = ctx.moduleBuilder.functionTypeToTypeName(functionSig)
+    val functionType = ctx.moduleBuilder.functionTypeToTypeID(functionSig)
 
     ctx.moduleBuilder.addImport(
       wamod.Import(
         "__scalaJSExportSetters",
         exportedName,
         wamod.ImportDesc.Func(
-          functionName,
+          functionID,
           makeOriginalName(ns.TopLevelExportSetter, exportedName),
           functionType
         )
@@ -1081,14 +1062,14 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val method = exportDef.methodDef
     val exportedName = exportDef.topLevelExportName
-    val functionName = genFunctionID.forExport(exportedName)
+    val functionID = genFunctionID.forExport(exportedName)
 
     FunctionEmitter.emitFunction(
-      functionName,
+      functionID,
       makeOriginalName(ns.TopLevelExport, exportedName),
       enclosingClassName = None,
       captureParamDefs = None,
-      receiverTyp = None,
+      receiverType = None,
       method.args,
       method.restParam,
       method.body,
@@ -1106,7 +1087,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
     val className = clazz.className
     val methodName = method.methodName
 
-    val functionName = genFunctionID.forMethod(namespace, className, methodName)
+    val functionID = genFunctionID.forMethod(namespace, className, methodName)
 
     val namespaceUTF8String = namespace match {
       case MemberNamespace.Public            => ns.Public
@@ -1120,7 +1101,7 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     val isHijackedClass = clazz.kind == ClassKind.HijackedClass
 
-    val receiverTyp =
+    val receiverType =
       if (namespace.isStatic)
         None
       else if (isHijackedClass)
@@ -1132,11 +1113,11 @@ class ClassEmitter(coreSpec: CoreSpec) {
 
     // Emit the function
     FunctionEmitter.emitFunction(
-      functionName,
+      functionID,
       originalName,
       Some(className),
       captureParamDefs = None,
-      receiverTyp,
+      receiverType,
       method.args,
       restParam = None,
       body,
@@ -1165,25 +1146,23 @@ class ClassEmitter(coreSpec: CoreSpec) {
       fb.setResultTypes(TypeTransformer.transformResultType(method.resultType))
       fb.setFunctionType(ctx.tableFunctionType(methodName))
 
-      val instrs = fb
-
       // Load and cast down the receiver
-      instrs += wa.LocalGet(receiverParam)
-      receiverTyp match {
+      fb += wa.LocalGet(receiverParam)
+      receiverType match {
         case Some(watpe.RefType(_, watpe.HeapType.Any)) =>
           () // no cast necessary
-        case Some(receiverTyp: watpe.RefType) =>
-          instrs += wa.RefCast(receiverTyp)
+        case Some(receiverType: watpe.RefType) =>
+          fb += wa.RefCast(receiverType)
         case _ =>
-          throw new AssertionError(s"Unexpected receiver type $receiverTyp")
+          throw new AssertionError(s"Unexpected receiver type $receiverType")
       }
 
       // Load the other parameters
       for (argParam <- argParams)
-        instrs += wa.LocalGet(argParam)
+        fb += wa.LocalGet(argParam)
 
       // Call the statically resolved method
-      instrs += wa.ReturnCall(functionName)
+      fb += wa.ReturnCall(functionID)
 
       fb.buildAndAddToModule()
     }

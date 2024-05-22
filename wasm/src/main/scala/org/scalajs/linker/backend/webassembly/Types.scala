@@ -39,17 +39,17 @@ object Types {
 
   object RefType {
 
-    /** Builds a non-nullable `(ref ht)` for the given `ht`. */
-    def apply(ht: HeapType): RefType = RefType(false, ht)
+    /** Builds a non-nullable `(ref heapType)` for the given `heapType`. */
+    def apply(heapType: HeapType): RefType = RefType(false, heapType)
 
-    /** Builds a non-nullable `(ref typ)` for the given `typ`. */
-    def apply(typ: TypeID): RefType = apply(HeapType(typ))
+    /** Builds a non-nullable `(ref typeID)` for the given `typeID`. */
+    def apply(typeID: TypeID): RefType = apply(HeapType(typeID))
 
-    /** Builds a nullable `(ref null ht)` for the given `ht`. */
-    def nullable(ht: HeapType): RefType = RefType(true, ht)
+    /** Builds a nullable `(ref null heapType)` for the given `heapType`. */
+    def nullable(heapType: HeapType): RefType = RefType(true, heapType)
 
-    /** Builds a nullable `(ref null typ)` for the given `typ`. */
-    def nullable(typ: TypeID): RefType = nullable(HeapType(typ))
+    /** Builds a nullable `(ref null typeID)` for the given `typeID`. */
+    def nullable(typeID: TypeID): RefType = nullable(HeapType(typeID))
 
     /** `(ref any)`. */
     val any: RefType = apply(HeapType.Any)
@@ -82,7 +82,7 @@ object Types {
   object HeapType {
 
     /** Reference to a named composite type. */
-    final case class Type(val typ: TypeID) extends HeapType
+    final case class Type(typeID: TypeID) extends HeapType
 
     /** A WebAssembly `absheaptype`. */
     sealed abstract class AbsHeapType(
@@ -103,8 +103,8 @@ object Types {
     case object NoFunc extends AbsHeapType("nofunc", "nullfuncref", 0x73)
     case object NoExn extends AbsHeapType("noexn", "nullexnref", 0x74)
 
-    def apply(typ: TypeID): HeapType.Type =
-      HeapType.Type(typ)
+    def apply(typeID: TypeID): HeapType.Type =
+      HeapType.Type(typeID)
   }
 
   /** A WebAssembly `rectype`. */
@@ -153,16 +153,16 @@ object Types {
   final case class ArrayType(fieldType: FieldType) extends CompositeType
 
   /** A WebAssembly `fieldtype`. */
-  final case class FieldType(typ: StorageType, isMutable: Boolean)
+  final case class FieldType(tpe: StorageType, isMutable: Boolean)
 
   object StructField {
     def apply(
         id: FieldID,
         originalName: OriginalName,
-        typ: StorageType,
+        tpe: StorageType,
         isMutable: Boolean
     ): StructField = {
-      StructField(id, originalName, FieldType(typ, isMutable))
+      StructField(id, originalName, FieldType(tpe, isMutable))
     }
   }
 }

@@ -31,20 +31,20 @@ object Modules {
   sealed abstract class ImportDesc
 
   object ImportDesc {
-    final case class Func(id: FunctionID, originalName: OriginalName, typeName: TypeID)
+    final case class Func(id: FunctionID, originalName: OriginalName, typeID: TypeID)
         extends ImportDesc
 
-    final case class Global(id: GlobalID, originalName: OriginalName, typ: Type, isMutable: Boolean)
+    final case class Global(id: GlobalID, originalName: OriginalName, tpe: Type, isMutable: Boolean)
         extends ImportDesc
 
-    final case class Tag(id: TagID, originalName: OriginalName, typeName: TypeID) extends ImportDesc
+    final case class Tag(id: TagID, originalName: OriginalName, typeID: TypeID) extends ImportDesc
   }
 
   /** A WebAssembly `func`, including names for parameters and locals. */
   final case class Function(
       id: FunctionID,
       originalName: OriginalName,
-      typeName: TypeID,
+      typeID: TypeID,
       params: List[Local],
       results: List[Type],
       locals: List[Local],
@@ -55,9 +55,9 @@ object Modules {
   /** The index space for locals is only accessible inside a function and includes the parameters of
     * that function, which precede the local variables.
     */
-  final case class Local(id: LocalID, originalName: OriginalName, typ: Type)
+  final case class Local(id: LocalID, originalName: OriginalName, tpe: Type)
 
-  final case class Tag(id: TagID, originalName: OriginalName, typ: TypeID)
+  final case class Tag(id: TagID, originalName: OriginalName, typeID: TypeID)
 
   final case class Data(id: DataID, originalName: OriginalName, bytes: Array[Byte], mode: Data.Mode)
 
@@ -72,12 +72,12 @@ object Modules {
   final case class Global(
       id: GlobalID,
       originalName: OriginalName,
-      typ: Type,
+      tpe: Type,
       init: Expr,
       isMutable: Boolean
   )
 
-  final case class Element(typ: Type, init: List[Expr], mode: Element.Mode)
+  final case class Element(tpe: Type, init: List[Expr], mode: Element.Mode)
 
   object Element {
     sealed abstract class Mode

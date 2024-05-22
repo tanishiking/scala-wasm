@@ -143,7 +143,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeCompositeType(buf: Buffer, compositeType: CompositeType): Unit = {
     def writeFieldType(fieldType: FieldType): Unit = {
-      writeType(buf, fieldType.typ)
+      writeType(buf, fieldType.tpe)
       buf.boolean(fieldType.isMutable)
     }
 
@@ -167,37 +167,37 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
       buf.name(imprt.name)
 
       imprt.desc match {
-        case ImportDesc.Func(_, _, typeName) =>
+        case ImportDesc.Func(_, _, typeID) =>
           buf.byte(0x00) // func
-          writeTypeIdx(buf, typeName)
-        case ImportDesc.Global(_, _, typ, isMutable) =>
+          writeTypeIdx(buf, typeID)
+        case ImportDesc.Global(_, _, tpe, isMutable) =>
           buf.byte(0x03) // global
-          writeType(buf, typ)
+          writeType(buf, tpe)
           buf.boolean(isMutable)
-        case ImportDesc.Tag(_, _, typeName) =>
+        case ImportDesc.Tag(_, _, typeID) =>
           buf.byte(0x04) // tag
           buf.byte(0x00) // exception kind (that is the only valid kind for now)
-          writeTypeIdx(buf, typeName)
+          writeTypeIdx(buf, typeID)
       }
     }
   }
 
   private def writeFunctionSection(buf: Buffer): Unit = {
     buf.vec(module.funcs) { fun =>
-      writeTypeIdx(buf, fun.typeName)
+      writeTypeIdx(buf, fun.typeID)
     }
   }
 
   private def writeTagSection(buf: Buffer): Unit = {
     buf.vec(module.tags) { tag =>
       buf.byte(0x00) // exception kind (that is the only valid kind for now)
-      writeTypeIdx(buf, tag.typ)
+      writeTypeIdx(buf, tag.typeID)
     }
   }
 
   private def writeGlobalSection(buf: Buffer): Unit = {
     buf.vec(module.globals) { global =>
-      writeType(buf, global.typ)
+      writeType(buf, global.tpe)
       buf.boolean(global.isMutable)
       writeExpr(buf, global.init)
     }
@@ -227,7 +227,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
         case Element.Mode.Passive     => buf.byte(5)
         case Element.Mode.Declarative => buf.byte(7)
       }
-      writeType(buf, element.typ)
+      writeType(buf, element.tpe)
       buf.vec(element.init) { expr =>
         writeExpr(buf, expr)
       }
@@ -279,7 +279,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
     buf.vec(func.locals) { local =>
       buf.u32(1)
-      writeType(buf, local.typ)
+      writeType(buf, local.tpe)
     }
 
     withLocalIdxValues((func.params ::: func.locals).map(_.id).zipWithIndex.toMap) {
@@ -289,10 +289,10 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
     emitEndFuncPosition(buf)
   }
 
-  private def writeType(buf: Buffer, typ: StorageType): Unit = {
-    typ match {
-      case typ: SimpleType => buf.byte(typ.binaryCode)
-      case typ: PackedType => buf.byte(typ.binaryCode)
+  private def writeType(buf: Buffer, tpe: StorageType): Unit = {
+    tpe match {
+      case tpe: SimpleType => buf.byte(tpe.binaryCode)
+      case tpe: PackedType => buf.byte(tpe.binaryCode)
 
       case RefType(true, heapType: HeapType.AbsHeapType) =>
         buf.byte(heapType.binaryCode)
@@ -305,7 +305,7 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeHeapType(buf: Buffer, heapType: HeapType): Unit = {
     heapType match {
-      case HeapType.Type(typeName)        => writeTypeIdxs33(buf, typeName)
+      case HeapType.Type(typeID)          => writeTypeIdxs33(buf, typeID)
       case heapType: HeapType.AbsHeapType => buf.byte(heapType.binaryCode)
     }
   }
@@ -313,38 +313,38 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
   private def writeResultType(buf: Buffer, resultType: List[Type]): Unit =
     buf.vec(resultType)(writeType(buf, _))
 
-  private def writeTypeIdx(buf: Buffer, typeName: TypeID): Unit =
-    buf.u32(typeIdxValues(typeName))
+  private def writeTypeIdx(buf: Buffer, typeID: TypeID): Unit =
+    buf.u32(typeIdxValues(typeID))
 
   private def writeFieldIdx(buf: Buffer, typeID: TypeID, fieldID: FieldID): Unit =
     buf.u32(fieldIdxValues(typeID)(fieldID))
 
-  private def writeDataIdx(buf: Buffer, dataName: DataID): Unit =
-    buf.u32(dataIdxValues(dataName))
+  private def writeDataIdx(buf: Buffer, dataID: DataID): Unit =
+    buf.u32(dataIdxValues(dataID))
 
-  private def writeTypeIdxs33(buf: Buffer, typeName: TypeID): Unit =
-    buf.s33OfUInt(typeIdxValues(typeName))
+  private def writeTypeIdxs33(buf: Buffer, typeID: TypeID): Unit =
+    buf.s33OfUInt(typeIdxValues(typeID))
 
-  private def writeFuncIdx(buf: Buffer, funcName: FunctionID): Unit =
-    buf.u32(funcIdxValues(funcName))
+  private def writeFuncIdx(buf: Buffer, funcID: FunctionID): Unit =
+    buf.u32(funcIdxValues(funcID))
 
-  private def writeTagIdx(buf: Buffer, tagName: TagID): Unit =
-    buf.u32(tagIdxValues(tagName))
+  private def writeTagIdx(buf: Buffer, tagID: TagID): Unit =
+    buf.u32(tagIdxValues(tagID))
 
-  private def writeGlobalIdx(buf: Buffer, globalName: GlobalID): Unit =
-    buf.u32(globalIdxValues(globalName))
+  private def writeGlobalIdx(buf: Buffer, globalID: GlobalID): Unit =
+    buf.u32(globalIdxValues(globalID))
 
-  private def writeLocalIdx(buf: Buffer, localName: LocalID): Unit = {
+  private def writeLocalIdx(buf: Buffer, localID: LocalID): Unit = {
     localIdxValues match {
-      case Some(values) => buf.u32(values(localName))
+      case Some(values) => buf.u32(values(localID))
       case None         => throw new IllegalStateException(s"Local name table is not available")
     }
   }
 
-  private def writeLabelIdx(buf: Buffer, labelIdx: LabelID): Unit = {
-    val relativeNumber = labelsInScope.indexOf(Some(labelIdx))
+  private def writeLabelIdx(buf: Buffer, labelID: LabelID): Unit = {
+    val relativeNumber = labelsInScope.indexOf(Some(labelID))
     if (relativeNumber < 0)
-      throw new IllegalStateException(s"Cannot find $labelIdx in scope")
+      throw new IllegalStateException(s"Cannot find $labelID in scope")
     buf.u32(relativeNumber)
   }
 
@@ -423,8 +423,8 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
       case instr: RefTypeInstr =>
         writeHeapType(buf, instr.refTypeArgument.heapType)
       case instr: StructFieldInstr =>
-        writeTypeIdx(buf, instr.structTypeName)
-        writeFieldIdx(buf, instr.structTypeName, instr.fieldIdx)
+        writeTypeIdx(buf, instr.structTypeID)
+        writeFieldIdx(buf, instr.structTypeID, instr.fieldID)
 
       // Specific instructions with unique-ish shapes
 
@@ -469,9 +469,9 @@ class BinaryWriter(module: Module, emitDebugInfo: Boolean) {
 
   private def writeBlockType(buf: Buffer, blockType: BlockType): Unit = {
     blockType match {
-      case BlockType.ValueType(None)        => buf.byte(0x40)
-      case BlockType.ValueType(Some(typ))   => writeType(buf, typ)
-      case BlockType.FunctionType(typeName) => writeTypeIdxs33(buf, typeName)
+      case BlockType.ValueType(None)      => buf.byte(0x40)
+      case BlockType.ValueType(Some(tpe)) => writeType(buf, tpe)
+      case BlockType.FunctionType(typeID) => writeTypeIdxs33(buf, typeID)
     }
   }
 }

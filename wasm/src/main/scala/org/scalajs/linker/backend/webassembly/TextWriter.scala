@@ -151,10 +151,10 @@ class TextWriter(module: Module) {
       if (fieldType.isMutable)
         b.sameLineList(
           "mut", {
-            writeType(fieldType.typ)
+            writeType(fieldType.tpe)
           }
         )
-      else writeType(fieldType.typ)
+      else writeType(fieldType.tpe)
     }
 
     def writeField(field: StructField): Unit = {
@@ -202,28 +202,28 @@ class TextWriter(module: Module) {
         b.appendElement("\"" + i.name + "\"")
 
         i.desc match {
-          case ImportDesc.Func(id, _, typeName) =>
+          case ImportDesc.Func(id, _, typeID) =>
             b.sameLineList(
               "func", {
                 appendName(id)
-                writeTypeUse(typeName)
+                writeTypeUse(typeID)
               }
             )
-          case ImportDesc.Global(id, _, typ, isMutable) =>
+          case ImportDesc.Global(id, _, tpe, isMutable) =>
             b.sameLineList(
               "global", {
                 appendName(id)
                 if (isMutable)
-                  b.sameLineList("mut", writeType(typ))
+                  b.sameLineList("mut", writeType(tpe))
                 else
-                  writeType(typ)
+                  writeType(tpe)
               }
             )
-          case ImportDesc.Tag(id, _, typeName) =>
+          case ImportDesc.Tag(id, _, typeID) =>
             b.sameLineList(
               "tag", {
                 appendName(id)
-                writeTypeUse(typeName)
+                writeTypeUse(typeID)
               }
             )
         }
@@ -234,8 +234,8 @@ class TextWriter(module: Module) {
   private def writeSig(params: List[Type], results: List[Type])(implicit
       b: WatBuilder
   ): Unit = {
-    params.foreach(typ => b.sameLineList("param", writeType(typ)))
-    results.foreach(typ => b.sameLineList("result", writeType(typ)))
+    params.foreach(tpe => b.sameLineList("param", writeType(tpe)))
+    results.foreach(tpe => b.sameLineList("result", writeType(tpe)))
   }
 
   private def writeFunction(f: Function)(implicit b: WatBuilder): Unit = {
@@ -243,7 +243,7 @@ class TextWriter(module: Module) {
       b.sameLineList(
         "param", {
           appendName(l.id)
-          writeType(l.typ)
+          writeType(l.tpe)
         }
       )
     }
@@ -252,7 +252,7 @@ class TextWriter(module: Module) {
       b.sameLineList(
         "local", {
           appendName(l.id)
-          writeType(l.typ)
+          writeType(l.tpe)
         }
       )
     }
@@ -267,7 +267,7 @@ class TextWriter(module: Module) {
     b.newLineList(
       "func", {
         appendName(f.id)
-        writeTypeUse(f.typeName)
+        writeTypeUse(f.typeID)
 
         b.newLine()
         f.params.foreach(writeParam)
@@ -288,7 +288,7 @@ class TextWriter(module: Module) {
     b.newLineList(
       "tag", {
         appendName(tag.id)
-        writeTypeUse(tag.typ)
+        writeTypeUse(tag.typeID)
       }
     )
   }
@@ -298,8 +298,8 @@ class TextWriter(module: Module) {
       "global", {
         appendName(g.id)
         if (g.isMutable)
-          b.sameLineList("mut", writeType(g.typ))
-        else writeType(g.typ)
+          b.sameLineList("mut", writeType(g.tpe))
+        else writeType(g.tpe)
         g.init.instr.foreach(writeInstr)
       }
     )
@@ -310,15 +310,15 @@ class TextWriter(module: Module) {
     "export", {
       b.appendElement("\"" + e.name + "\"")
       e.desc match {
-        case ExportDesc.Func(funcName, _) =>
+        case ExportDesc.Func(id, _) =>
           b.sameLineList(
             "func",
-            { appendName(funcName) }
+            { appendName(id) }
           )
-        case ExportDesc.Global(globalName, _) =>
+        case ExportDesc.Global(id, _) =>
           b.sameLineList(
             "global",
-            { appendName(globalName) }
+            { appendName(id) }
           )
       }
     }
@@ -339,7 +339,7 @@ class TextWriter(module: Module) {
           case Element.Mode.Passive     => ()
           case Element.Mode.Declarative => b.appendElement("declare")
         }
-        writeType(element.typ)
+        writeType(element.tpe)
         element.init.foreach { item =>
           b.newLineList(
             "item",
@@ -362,14 +362,14 @@ class TextWriter(module: Module) {
     )
   }
 
-  private def writeTypeUse(typeName: TypeID)(implicit b: WatBuilder): Unit = {
-    b.sameLineList("type", appendName(typeName))
+  private def writeTypeUse(typeID: TypeID)(implicit b: WatBuilder): Unit = {
+    b.sameLineList("type", appendName(typeID))
   }
 
-  private def writeType(typ: StorageType)(implicit b: WatBuilder): Unit = {
-    typ match {
-      case typ: SimpleType => b.appendElement(typ.textName)
-      case typ: PackedType => b.appendElement(typ.textName)
+  private def writeType(tpe: StorageType)(implicit b: WatBuilder): Unit = {
+    tpe match {
+      case tpe: SimpleType => b.appendElement(tpe.textName)
+      case tpe: PackedType => b.appendElement(tpe.textName)
 
       case RefType(true, heapType: HeapType.AbsHeapType) =>
         b.appendElement(heapType.nullableRefTextName)
@@ -387,7 +387,7 @@ class TextWriter(module: Module) {
 
   private def writeHeapType(heapType: HeapType)(implicit b: WatBuilder): Unit = {
     heapType match {
-      case HeapType.Type(typeName)        => appendName(typeName)
+      case HeapType.Type(typeID)          => appendName(typeID)
       case heapType: HeapType.AbsHeapType => b.appendElement(heapType.textName)
     }
   }
@@ -402,11 +402,11 @@ class TextWriter(module: Module) {
 
   private def writeBlockType(blockType: BlockType)(implicit b: WatBuilder): Unit = {
     blockType match {
-      case BlockType.FunctionType(name) =>
-        writeTypeUse(name)
-      case BlockType.ValueType(optTy) =>
-        for (ty <- optTy)
-          b.sameLineList("result", writeType(ty))
+      case BlockType.FunctionType(typeID) =>
+        writeTypeUse(typeID)
+      case BlockType.ValueType(optType) =>
+        for (tpe <- optType)
+          b.sameLineList("result", writeType(tpe))
     }
   }
 
@@ -470,8 +470,8 @@ class TextWriter(module: Module) {
       case instr: RefTypeInstr =>
         writeType(instr.refTypeArgument)
       case instr: StructFieldInstr =>
-        appendName(instr.structTypeName)
-        appendName(instr.structTypeName, instr.fieldIdx)
+        appendName(instr.structTypeID)
+        appendName(instr.structTypeID, instr.fieldID)
 
       // Specific instructions with unique-ish shapes
 

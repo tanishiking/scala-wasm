@@ -26,14 +26,14 @@ object CoreWasmLib {
     * definition.
     *
     * @see
-    *   [[VarGen.genFieldName.typeData]], which contains documentation of what is in each field.
+    *   [[VarGen.genFieldID.typeData]], which contains documentation of what is in each field.
     */
   val typeDataStructFields: List[StructField] = {
     import genFieldID.typeData._
     import RefType.nullable
 
-    def make(id: FieldID, typ: Type, isMutable: Boolean): StructField =
-      StructField(id, OriginalName(id.toString()), typ, isMutable)
+    def make(id: FieldID, tpe: Type, isMutable: Boolean): StructField =
+      StructField(id, OriginalName(id.toString()), tpe, isMutable)
 
     List(
       make(nameOffset, Int32, isMutable = false),
@@ -169,11 +169,11 @@ object CoreWasmLib {
 
   private def genArrayClassTypes()(implicit ctx: WasmContext): Unit = {
     // The vtable type is always the same as j.l.Object
-    val vtableTypeName = genTypeID.ObjectVTable
+    val vtableTypeID = genTypeID.ObjectVTable
     val vtableField = StructField(
       genFieldID.objStruct.vtable,
       OriginalName(genFieldID.objStruct.vtable.toString()),
-      RefType(vtableTypeName),
+      RefType(vtableTypeID),
       isMutable = false
     )
     val itablesField = StructField(
@@ -196,13 +196,13 @@ object CoreWasmLib {
         (genTypeID.ObjectArray, genTypeID.anyArray)
       )
 
-    for ((structTypeName, underlyingArrayTypeName) <- typeRefsWithArrays) {
-      val origName = OriginalName(structTypeName.toString())
+    for ((structTypeID, underlyingArrayTypeID) <- typeRefsWithArrays) {
+      val origName = OriginalName(structTypeID.toString())
 
       val underlyingArrayField = StructField(
         genFieldID.objStruct.arrayUnderlying,
         OriginalName(genFieldID.objStruct.arrayUnderlying.toString()),
-        RefType(underlyingArrayTypeName),
+        RefType(underlyingArrayTypeID),
         isMutable = false
       )
 
@@ -210,14 +210,14 @@ object CoreWasmLib {
       val structType = StructType(
         List(vtableField, itablesField, underlyingArrayField)
       )
-      val subType = SubType(structTypeName, origName, isFinal = true, Some(superType), structType)
+      val subType = SubType(structTypeID, origName, isFinal = true, Some(superType), structType)
       ctx.mainRecType.addSubType(subType)
     }
   }
 
   private def genTags()(implicit ctx: WasmContext): Unit = {
     val exceptionSig = FunctionType(List(RefType.externref), Nil)
-    val typeName = ctx.moduleBuilder.functionTypeToTypeName(exceptionSig)
+    val typeID = ctx.moduleBuilder.functionTypeToTypeID(exceptionSig)
     ctx.moduleBuilder.addImport(
       Import(
         "__scalaJSHelpers",
@@ -225,7 +225,7 @@ object CoreWasmLib {
         ImportDesc.Tag(
           genTagID.exception,
           OriginalName(genTagID.exception.toString()),
-          typeName
+          typeID
         )
       )
     )
@@ -234,14 +234,14 @@ object CoreWasmLib {
   private def genGlobalImports()(implicit ctx: WasmContext): Unit = {
     def addGlobalHelperImport(
         id: genGlobalID.JSHelperGlobalID,
-        typ: Type,
+        tpe: Type,
         isMutable: Boolean
     ): Unit = {
       ctx.moduleBuilder.addImport(
         Import(
           "__scalaJSHelpers",
           id.toString(), // import name, guaranteed by JSHelperGlobalID
-          ImportDesc.Global(id, OriginalName(id.toString()), typ, isMutable)
+          ImportDesc.Global(id, OriginalName(id.toString()), tpe, isMutable)
         )
       )
     }
@@ -268,7 +268,7 @@ object CoreWasmLib {
       DoubleRef -> KindDouble
     )
 
-    val typeDataTypeName = genTypeID.typeData
+    val typeDataTypeID = genTypeID.typeData
 
     // Other than `name` and `kind`, all the fields have the same value for all primitives
     val commonFieldValues = List(
@@ -319,7 +319,7 @@ object CoreWasmLib {
       (genGlobalID.bZeroLong, SpecialNames.LongBoxClass, I64Const(0))
     )
 
-    for ((globalName, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
+    for ((globalID, boxClassName, zeroValueInstr) <- primTypesWithBoxClasses) {
       val boxStruct = genTypeID.forClass(boxClassName)
       val instrs: List[Instr] = List(
         GlobalGet(genGlobalID.forVTable(boxClassName)),
@@ -330,8 +330,8 @@ object CoreWasmLib {
 
       ctx.addGlobal(
         Global(
-          globalName,
-          OriginalName(globalName.toString()),
+          globalID,
+          OriginalName(globalID.toString()),
           RefType(boxStruct),
           Expr(instrs),
           isMutable = false
@@ -366,12 +366,12 @@ object CoreWasmLib {
         results: List[Type]
     ): Unit = {
       val sig = FunctionType(params, results)
-      val typeName = ctx.moduleBuilder.functionTypeToTypeName(sig)
+      val typeID = ctx.moduleBuilder.functionTypeToTypeID(sig)
       ctx.moduleBuilder.addImport(
         Import(
           "__scalaJSHelpers",
           id.toString(), // import name, guaranteed by JSHelperFunctionID
-          ImportDesc.Func(id, OriginalName(id.toString()), typeName)
+          ImportDesc.Func(id, OriginalName(id.toString()), typeID)
         )
       )
     }
@@ -487,14 +487,14 @@ object CoreWasmLib {
     addHelperImport(genFunctionID.jsIsTruthy, List(anyref), List(Int32))
     addHelperImport(genFunctionID.jsLinkingInfo, Nil, List(anyref))
 
-    for ((op, name) <- genFunctionID.jsUnaryOps)
-      addHelperImport(name, List(anyref), List(anyref))
+    for ((op, funcID) <- genFunctionID.jsUnaryOps)
+      addHelperImport(funcID, List(anyref), List(anyref))
 
-    for ((op, name) <- genFunctionID.jsBinaryOps) {
+    for ((op, funcID) <- genFunctionID.jsBinaryOps) {
       val resultType =
         if (op == JSBinaryOp.=== || op == JSBinaryOp.!==) Int32
         else anyref
-      addHelperImport(name, List(anyref, anyref), List(resultType))
+      addHelperImport(funcID, List(anyref, anyref), List(resultType))
     }
 
     addHelperImport(genFunctionID.newSymbol, Nil, List(anyref))
@@ -592,27 +592,25 @@ object CoreWasmLib {
 
     val str = fb.addLocal("str", RefType.any)
 
-    val instrs = fb
+    fb.block(RefType.any) { cacheHit =>
+      fb += GlobalGet(genGlobalID.stringLiteralCache)
+      fb += LocalGet(stringIndexParam)
+      fb += ArrayGet(genTypeID.anyArray)
 
-    instrs.block(RefType.any) { cacheHit =>
-      instrs += GlobalGet(genGlobalID.stringLiteralCache)
-      instrs += LocalGet(stringIndexParam)
-      instrs += ArrayGet(genTypeID.anyArray)
-
-      instrs += BrOnNonNull(cacheHit)
+      fb += BrOnNonNull(cacheHit)
 
       // cache miss, create a new string and cache it
-      instrs += GlobalGet(genGlobalID.stringLiteralCache)
-      instrs += LocalGet(stringIndexParam)
+      fb += GlobalGet(genGlobalID.stringLiteralCache)
+      fb += LocalGet(stringIndexParam)
 
-      instrs += LocalGet(offsetParam)
-      instrs += LocalGet(sizeParam)
-      instrs += ArrayNewData(genTypeID.i16Array, genDataID.string)
-      instrs += Call(genFunctionID.createStringFromData)
-      instrs += LocalTee(str)
-      instrs += ArraySet(genTypeID.anyArray)
+      fb += LocalGet(offsetParam)
+      fb += LocalGet(sizeParam)
+      fb += ArrayNewData(genTypeID.i16Array, genDataID.string)
+      fb += Call(genFunctionID.createStringFromData)
+      fb += LocalTee(str)
+      fb += ArraySet(genTypeID.anyArray)
 
-      instrs += LocalGet(str)
+      fb += LocalGet(str)
     }
 
     fb.buildAndAddToModule()
@@ -626,55 +624,53 @@ object CoreWasmLib {
     val dataParam = fb.addParam("data", dataType)
     fb.setResultType(RefType.any)
 
-    val instrs = fb
-
     val lenLocal = fb.addLocal("len", Int32)
     val iLocal = fb.addLocal("i", Int32)
     val resultLocal = fb.addLocal("result", RefType.any)
 
     // len := data.length
-    instrs += LocalGet(dataParam)
-    instrs += ArrayLen
-    instrs += LocalSet(lenLocal)
+    fb += LocalGet(dataParam)
+    fb += ArrayLen
+    fb += LocalSet(lenLocal)
 
     // i := 0
-    instrs += I32Const(0)
-    instrs += LocalSet(iLocal)
+    fb += I32Const(0)
+    fb += LocalSet(iLocal)
 
     // result := ""
-    instrs += GlobalGet(genGlobalID.emptyString)
-    instrs += LocalSet(resultLocal)
+    fb += GlobalGet(genGlobalID.emptyString)
+    fb += LocalSet(resultLocal)
 
-    instrs.loop() { labelLoop =>
+    fb.loop() { labelLoop =>
       // if i == len
-      instrs += LocalGet(iLocal)
-      instrs += LocalGet(lenLocal)
-      instrs += I32Eq
-      instrs.ifThen() {
+      fb += LocalGet(iLocal)
+      fb += LocalGet(lenLocal)
+      fb += I32Eq
+      fb.ifThen() {
         // then return result
-        instrs += LocalGet(resultLocal)
-        instrs += Return
+        fb += LocalGet(resultLocal)
+        fb += Return
       }
 
       // result := concat(result, charToString(data(i)))
-      instrs += LocalGet(resultLocal)
-      instrs += LocalGet(dataParam)
-      instrs += LocalGet(iLocal)
-      instrs += ArrayGetU(genTypeID.i16Array)
-      instrs += Call(genFunctionID.charToString)
-      instrs += Call(genFunctionID.stringConcat)
-      instrs += LocalSet(resultLocal)
+      fb += LocalGet(resultLocal)
+      fb += LocalGet(dataParam)
+      fb += LocalGet(iLocal)
+      fb += ArrayGetU(genTypeID.i16Array)
+      fb += Call(genFunctionID.charToString)
+      fb += Call(genFunctionID.stringConcat)
+      fb += LocalSet(resultLocal)
 
       // i := i - 1
-      instrs += LocalGet(iLocal)
-      instrs += I32Const(1)
-      instrs += I32Add
-      instrs += LocalSet(iLocal)
+      fb += LocalGet(iLocal)
+      fb += I32Const(1)
+      fb += I32Add
+      fb += LocalSet(iLocal)
 
       // loop back to the beginning
-      instrs += Br(labelLoop)
+      fb += Br(labelLoop)
     } // end loop $loop
-    instrs += Unreachable
+    fb += Unreachable
 
     fb.buildAndAddToModule()
   }
@@ -698,102 +694,100 @@ object CoreWasmLib {
     val typeDataParam = fb.addParam("typeData", typeDataType)
     fb.setResultType(RefType.any)
 
-    val instrs = fb
-
     val componentTypeDataLocal = fb.addLocal("componentTypeData", typeDataType)
     val componentNameDataLocal = fb.addLocal("componentNameData", nameDataType)
     val firstCharLocal = fb.addLocal("firstChar", Int32)
     val nameLocal = fb.addLocal("name", RefType.any)
 
-    instrs.block(RefType.any) { alreadyInitializedLabel =>
+    fb.block(RefType.any) { alreadyInitializedLabel =>
       // br_on_non_null $alreadyInitialized typeData.name
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.name)
-      instrs += BrOnNonNull(alreadyInitializedLabel)
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.name)
+      fb += BrOnNonNull(alreadyInitializedLabel)
 
       // for the STRUCT_SET typeData.name near the end
-      instrs += LocalGet(typeDataParam)
+      fb += LocalGet(typeDataParam)
 
       // if typeData.kind == KindArray
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
-      instrs += I32Const(KindArray)
-      instrs += I32Eq
-      instrs.ifThenElse(RefType.any) {
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+      fb += I32Const(KindArray)
+      fb += I32Eq
+      fb.ifThenElse(RefType.any) {
         // it is an array; compute its name from the component type name
 
         // <top of stack> := "[", for the CALL to stringConcat near the end
-        instrs += I32Const('['.toInt)
-        instrs += Call(genFunctionID.charToString)
+        fb += I32Const('['.toInt)
+        fb += Call(genFunctionID.charToString)
 
         // componentTypeData := ref_as_non_null(typeData.componentType)
-        instrs += LocalGet(typeDataParam)
-        instrs += StructGet(
+        fb += LocalGet(typeDataParam)
+        fb += StructGet(
           genTypeID.typeData,
           genFieldID.typeData.componentType
         )
-        instrs += RefAsNotNull
-        instrs += LocalSet(componentTypeDataLocal)
+        fb += RefAsNotNull
+        fb += LocalSet(componentTypeDataLocal)
 
         // switch (componentTypeData.kind)
         // the result of this switch is the string that must come after "["
-        instrs.switch(RefType.any) { () =>
+        fb.switch(RefType.any) { () =>
           // scrutinee
-          instrs += LocalGet(componentTypeDataLocal)
-          instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+          fb += LocalGet(componentTypeDataLocal)
+          fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
         }(
           List(KindBoolean) -> { () =>
-            instrs += I32Const('Z'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('Z'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindChar) -> { () =>
-            instrs += I32Const('C'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('C'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindByte) -> { () =>
-            instrs += I32Const('B'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('B'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindShort) -> { () =>
-            instrs += I32Const('S'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('S'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindInt) -> { () =>
-            instrs += I32Const('I'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('I'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindLong) -> { () =>
-            instrs += I32Const('J'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('J'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindFloat) -> { () =>
-            instrs += I32Const('F'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('F'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindDouble) -> { () =>
-            instrs += I32Const('D'.toInt)
-            instrs += Call(genFunctionID.charToString)
+            fb += I32Const('D'.toInt)
+            fb += Call(genFunctionID.charToString)
           },
           List(KindArray) -> { () =>
             // the component type is an array; get its own name
-            instrs += LocalGet(componentTypeDataLocal)
-            instrs += Call(genFunctionID.typeDataName)
+            fb += LocalGet(componentTypeDataLocal)
+            fb += Call(genFunctionID.typeDataName)
           }
         ) { () =>
           // default: the component type is neither a primitive nor an array;
           // concatenate "L" + <its own name> + ";"
-          instrs += I32Const('L'.toInt)
-          instrs += Call(genFunctionID.charToString)
-          instrs += LocalGet(componentTypeDataLocal)
-          instrs += Call(genFunctionID.typeDataName)
-          instrs += Call(genFunctionID.stringConcat)
-          instrs += I32Const(';'.toInt)
-          instrs += Call(genFunctionID.charToString)
-          instrs += Call(genFunctionID.stringConcat)
+          fb += I32Const('L'.toInt)
+          fb += Call(genFunctionID.charToString)
+          fb += LocalGet(componentTypeDataLocal)
+          fb += Call(genFunctionID.typeDataName)
+          fb += Call(genFunctionID.stringConcat)
+          fb += I32Const(';'.toInt)
+          fb += Call(genFunctionID.charToString)
+          fb += Call(genFunctionID.stringConcat)
         }
 
         // At this point, the stack contains "[" and the string that must be concatenated with it
-        instrs += Call(genFunctionID.stringConcat)
+        fb += Call(genFunctionID.stringConcat)
       } {
         // it is not an array; its name is stored in nameData
         for (
@@ -803,16 +797,16 @@ object CoreWasmLib {
             genFieldID.typeData.nameStringIndex
           )
         ) {
-          instrs += LocalGet(typeDataParam)
-          instrs += StructGet(genTypeID.typeData, idx)
+          fb += LocalGet(typeDataParam)
+          fb += StructGet(genTypeID.typeData, idx)
         }
-        instrs += Call(genFunctionID.stringLiteral)
+        fb += Call(genFunctionID.stringLiteral)
       }
 
       // typeData.name := <top of stack> ; leave it on the stack
-      instrs += LocalTee(nameLocal)
-      instrs += StructSet(genTypeID.typeData, genFieldID.typeData.name)
-      instrs += LocalGet(nameLocal)
+      fb += LocalTee(nameLocal)
+      fb += StructSet(genTypeID.typeData, genFieldID.typeData.name)
+      fb += LocalGet(nameLocal)
     }
 
     fb.buildAndAddToModule()
@@ -833,87 +827,85 @@ object CoreWasmLib {
     val typeDataParam = fb.addParam("typeData", typeDataType)
     fb.setResultType(RefType(genTypeID.ClassStruct))
 
-    val instrs = fb
-
     val classInstanceLocal = fb.addLocal("classInstance", RefType(genTypeID.ClassStruct))
 
     // classInstance := newDefault$java.lang.Class()
     // leave it on the stack for the constructor call
-    instrs += Call(genFunctionID.newDefault(ClassClass))
-    instrs += LocalTee(classInstanceLocal)
+    fb += Call(genFunctionID.newDefault(ClassClass))
+    fb += LocalTee(classInstanceLocal)
 
     /* The JS object containing metadata to pass as argument to the `jl.Class` constructor.
      * Specified by https://lampwww.epfl.ch/~doeraene/sjsir-semantics/#sec-sjsir-createclassdataof
      * Leave it on the stack.
      */
-    instrs += Call(genFunctionID.jsNewObject)
+    fb += Call(genFunctionID.jsNewObject)
     // "__typeData": typeData (TODO hide this better? although nobody will notice anyway)
-    instrs ++= ctx.getConstantStringInstr("__typeData")
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("__typeData")
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.jsObjectPush)
     // "name": typeDataName(typeData)
-    instrs ++= ctx.getConstantStringInstr("name")
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.typeDataName)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("name")
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.typeDataName)
+    fb += Call(genFunctionID.jsObjectPush)
     // "isPrimitive": (typeData.kind <= KindLastPrimitive)
-    instrs ++= ctx.getConstantStringInstr("isPrimitive")
-    instrs += LocalGet(typeDataParam)
-    instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
-    instrs += I32Const(KindLastPrimitive)
-    instrs += I32LeU
-    instrs += Call(genFunctionID.box(BooleanRef))
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("isPrimitive")
+    fb += LocalGet(typeDataParam)
+    fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+    fb += I32Const(KindLastPrimitive)
+    fb += I32LeU
+    fb += Call(genFunctionID.box(BooleanRef))
+    fb += Call(genFunctionID.jsObjectPush)
     // "isArrayClass": (typeData.kind == KindArray)
-    instrs ++= ctx.getConstantStringInstr("isArrayClass")
-    instrs += LocalGet(typeDataParam)
-    instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
-    instrs += I32Const(KindArray)
-    instrs += I32Eq
-    instrs += Call(genFunctionID.box(BooleanRef))
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("isArrayClass")
+    fb += LocalGet(typeDataParam)
+    fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+    fb += I32Const(KindArray)
+    fb += I32Eq
+    fb += Call(genFunctionID.box(BooleanRef))
+    fb += Call(genFunctionID.jsObjectPush)
     // "isInterface": (typeData.kind == KindInterface)
-    instrs ++= ctx.getConstantStringInstr("isInterface")
-    instrs += LocalGet(typeDataParam)
-    instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
-    instrs += I32Const(KindInterface)
-    instrs += I32Eq
-    instrs += Call(genFunctionID.box(BooleanRef))
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("isInterface")
+    fb += LocalGet(typeDataParam)
+    fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+    fb += I32Const(KindInterface)
+    fb += I32Eq
+    fb += Call(genFunctionID.box(BooleanRef))
+    fb += Call(genFunctionID.jsObjectPush)
     // "isInstance": closure(isInstance, typeData)
-    instrs ++= ctx.getConstantStringInstr("isInstance")
-    instrs += ctx.refFuncWithDeclaration(genFunctionID.isInstance)
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.closure)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("isInstance")
+    fb += ctx.refFuncWithDeclaration(genFunctionID.isInstance)
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.closure)
+    fb += Call(genFunctionID.jsObjectPush)
     // "isAssignableFrom": closure(isAssignableFrom, typeData)
-    instrs ++= ctx.getConstantStringInstr("isAssignableFrom")
-    instrs += ctx.refFuncWithDeclaration(genFunctionID.isAssignableFromExternal)
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.closure)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("isAssignableFrom")
+    fb += ctx.refFuncWithDeclaration(genFunctionID.isAssignableFromExternal)
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.closure)
+    fb += Call(genFunctionID.jsObjectPush)
     // "checkCast": closure(checkCast, typeData)
-    instrs ++= ctx.getConstantStringInstr("checkCast")
-    instrs += ctx.refFuncWithDeclaration(genFunctionID.checkCast)
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.closure)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("checkCast")
+    fb += ctx.refFuncWithDeclaration(genFunctionID.checkCast)
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.closure)
+    fb += Call(genFunctionID.jsObjectPush)
     // "isAssignableFrom": closure(isAssignableFrom, typeData)
     // "getComponentType": closure(getComponentType, typeData)
-    instrs ++= ctx.getConstantStringInstr("getComponentType")
-    instrs += ctx.refFuncWithDeclaration(genFunctionID.getComponentType)
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.closure)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("getComponentType")
+    fb += ctx.refFuncWithDeclaration(genFunctionID.getComponentType)
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.closure)
+    fb += Call(genFunctionID.jsObjectPush)
     // "newArrayOfThisClass": closure(newArrayOfThisClass, typeData)
-    instrs ++= ctx.getConstantStringInstr("newArrayOfThisClass")
-    instrs += ctx.refFuncWithDeclaration(genFunctionID.newArrayOfThisClass)
-    instrs += LocalGet(typeDataParam)
-    instrs += Call(genFunctionID.closure)
-    instrs += Call(genFunctionID.jsObjectPush)
+    fb ++= ctx.getConstantStringInstr("newArrayOfThisClass")
+    fb += ctx.refFuncWithDeclaration(genFunctionID.newArrayOfThisClass)
+    fb += LocalGet(typeDataParam)
+    fb += Call(genFunctionID.closure)
+    fb += Call(genFunctionID.jsObjectPush)
 
     // Call java.lang.Class::<init>(dataObject)
-    instrs += Call(
+    fb += Call(
       genFunctionID.forMethod(
         MemberNamespace.Constructor,
         ClassClass,
@@ -922,12 +914,12 @@ object CoreWasmLib {
     )
 
     // typeData.classOfValue := classInstance
-    instrs += LocalGet(typeDataParam)
-    instrs += LocalGet(classInstanceLocal)
-    instrs += StructSet(genTypeID.typeData, genFieldID.typeData.classOfValue)
+    fb += LocalGet(typeDataParam)
+    fb += LocalGet(classInstanceLocal)
+    fb += StructSet(genTypeID.typeData, genFieldID.typeData.classOfValue)
 
     // <top-of-stack> := classInstance for the implicit return
-    instrs += LocalGet(classInstanceLocal)
+    fb += LocalGet(classInstanceLocal)
 
     fb.buildAndAddToModule()
   }
@@ -947,16 +939,14 @@ object CoreWasmLib {
     val typeDataParam = fb.addParam("typeData", typeDataType)
     fb.setResultType(RefType(genTypeID.ClassStruct))
 
-    val instrs = fb
-
-    instrs.block(RefType(genTypeID.ClassStruct)) { alreadyInitializedLabel =>
+    fb.block(RefType(genTypeID.ClassStruct)) { alreadyInitializedLabel =>
       // fast path
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.classOfValue)
-      instrs += BrOnNonNull(alreadyInitializedLabel)
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.classOfValue)
+      fb += BrOnNonNull(alreadyInitializedLabel)
       // slow path
-      instrs += LocalGet(typeDataParam)
-      instrs += Call(genFunctionID.createClassOf)
+      fb += LocalGet(typeDataParam)
+      fb += Call(genFunctionID.createClassOf)
     } // end bock alreadyInitializedLabel
 
     fb.buildAndAddToModule()
@@ -984,116 +974,114 @@ object CoreWasmLib {
     val dimsParam = fb.addParam("dims", Int32)
     fb.setResultType(objectVTableType)
 
-    val instrs = fb
-
     val arrayTypeDataLocal = fb.addLocal("arrayTypeData", objectVTableType)
 
-    instrs.loop() { loopLabel =>
-      instrs.block(objectVTableType) { arrayOfIsNonNullLabel =>
+    fb.loop() { loopLabel =>
+      fb.block(objectVTableType) { arrayOfIsNonNullLabel =>
         // br_on_non_null $arrayOfIsNonNull typeData.arrayOf
-        instrs += LocalGet(typeDataParam)
-        instrs += StructGet(
+        fb += LocalGet(typeDataParam)
+        fb += StructGet(
           genTypeID.typeData,
           genFieldID.typeData.arrayOf
         )
-        instrs += BrOnNonNull(arrayOfIsNonNullLabel)
+        fb += BrOnNonNull(arrayOfIsNonNullLabel)
 
         // <top-of-stack> := typeData ; for the <old typeData>.arrayOf := ... later on
-        instrs += LocalGet(typeDataParam)
+        fb += LocalGet(typeDataParam)
 
         // typeData := new typeData(...)
-        instrs += I32Const(0) // nameOffset
-        instrs += I32Const(0) // nameSize
-        instrs += I32Const(0) // nameStringIndex
-        instrs += I32Const(KindArray) // kind = KindArray
-        instrs += I32Const(0) // specialInstanceTypes = 0
+        fb += I32Const(0) // nameOffset
+        fb += I32Const(0) // nameSize
+        fb += I32Const(0) // nameStringIndex
+        fb += I32Const(KindArray) // kind = KindArray
+        fb += I32Const(0) // specialInstanceTypes = 0
 
         // strictAncestors
         for (strictAncestor <- strictAncestors)
-          instrs += GlobalGet(genGlobalID.forVTable(strictAncestor))
-        instrs += ArrayNewFixed(
+          fb += GlobalGet(genGlobalID.forVTable(strictAncestor))
+        fb += ArrayNewFixed(
           genTypeID.typeDataArray,
           strictAncestors.size
         )
 
-        instrs += LocalGet(typeDataParam) // componentType
-        instrs += RefNull(HeapType.None) // name
-        instrs += RefNull(HeapType.None) // classOf
-        instrs += RefNull(HeapType.None) // arrayOf
+        fb += LocalGet(typeDataParam) // componentType
+        fb += RefNull(HeapType.None) // name
+        fb += RefNull(HeapType.None) // classOf
+        fb += RefNull(HeapType.None) // arrayOf
 
         // clone
-        instrs.switch(RefType(genTypeID.cloneFunctionType)) { () =>
-          instrs += LocalGet(typeDataParam)
-          instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+        fb.switch(RefType(genTypeID.cloneFunctionType)) { () =>
+          fb += LocalGet(typeDataParam)
+          fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
         }(
           List(KindBoolean) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(BooleanRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(BooleanRef))
           },
           List(KindChar) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(CharRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(CharRef))
           },
           List(KindByte) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(ByteRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(ByteRef))
           },
           List(KindShort) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(ShortRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(ShortRef))
           },
           List(KindInt) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(IntRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(IntRef))
           },
           List(KindLong) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(LongRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(LongRef))
           },
           List(KindFloat) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(FloatRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(FloatRef))
           },
           List(KindDouble) -> { () =>
-            instrs += ctx.refFuncWithDeclaration(genFunctionID.clone(DoubleRef))
+            fb += ctx.refFuncWithDeclaration(genFunctionID.clone(DoubleRef))
           }
         ) { () =>
-          instrs += ctx.refFuncWithDeclaration(
+          fb += ctx.refFuncWithDeclaration(
             genFunctionID.clone(ClassRef(ObjectClass))
           )
         }
 
         // isJSClassInstance
-        instrs += RefNull(HeapType.NoFunc)
+        fb += RefNull(HeapType.NoFunc)
 
         // reflectiveProxies
-        instrs += ArrayNewFixed(genTypeID.reflectiveProxies, 0) // TODO
+        fb += ArrayNewFixed(genTypeID.reflectiveProxies, 0) // TODO
 
         val objectClassInfo = ctx.getClassInfo(ObjectClass)
-        instrs ++= objectClassInfo.tableEntries.map { methodName =>
-          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryName)
+        fb ++= objectClassInfo.tableEntries.map { methodName =>
+          ctx.refFuncWithDeclaration(objectClassInfo.resolvedMethodInfos(methodName).tableEntryID)
         }
-        instrs += StructNew(genTypeID.ObjectVTable)
-        instrs += LocalTee(arrayTypeDataLocal)
+        fb += StructNew(genTypeID.ObjectVTable)
+        fb += LocalTee(arrayTypeDataLocal)
 
         // <old typeData>.arrayOf := typeData
-        instrs += StructSet(genTypeID.typeData, genFieldID.typeData.arrayOf)
+        fb += StructSet(genTypeID.typeData, genFieldID.typeData.arrayOf)
 
         // put arrayTypeData back on the stack
-        instrs += LocalGet(arrayTypeDataLocal)
+        fb += LocalGet(arrayTypeDataLocal)
       } // end block $arrayOfIsNonNullLabel
 
       // dims := dims - 1 -- leave dims on the stack
-      instrs += LocalGet(dimsParam)
-      instrs += I32Const(1)
-      instrs += I32Sub
-      instrs += LocalTee(dimsParam)
+      fb += LocalGet(dimsParam)
+      fb += I32Const(1)
+      fb += I32Sub
+      fb += LocalTee(dimsParam)
 
       // if dims == 0 then
       //   return typeData.arrayOf (which is on the stack)
-      instrs += I32Eqz
-      instrs.ifThen(FunctionType(List(objectVTableType), List(objectVTableType))) {
-        instrs += Return
+      fb += I32Eqz
+      fb.ifThen(FunctionType(List(objectVTableType), List(objectVTableType))) {
+        fb += Return
       }
 
       // typeData := typeData.arrayOf (which is on the stack), then loop back to the beginning
-      instrs += LocalSet(typeDataParam)
-      instrs += Br(loopLabel)
+      fb += LocalSet(typeDataParam)
+      fb += Br(loopLabel)
     } // end loop $loop
-    instrs += Unreachable
+    fb += Unreachable
 
     fb.buildAndAddToModule()
   }
@@ -1116,109 +1104,107 @@ object CoreWasmLib {
     val valueParam = fb.addParam("value", RefType.anyref)
     fb.setResultType(Int32)
 
-    val instrs = fb
-
     val valueNonNullLocal = fb.addLocal("valueNonNull", RefType.any)
     val specialInstanceTypesLocal = fb.addLocal("specialInstanceTypes", Int32)
 
     // switch (typeData.kind)
-    instrs.switch(Int32) { () =>
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, kind)
+    fb.switch(Int32) { () =>
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, kind)
     }(
       // case anyPrimitiveKind => false
       (KindVoid to KindLastPrimitive).toList -> { () =>
-        instrs += I32Const(0)
+        fb += I32Const(0)
       },
       // case KindObject => value ne null
       List(KindObject) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += RefIsNull
-        instrs += I32Eqz
+        fb += LocalGet(valueParam)
+        fb += RefIsNull
+        fb += I32Eqz
       },
       // for each boxed class, the corresponding primitive type test
       List(KindBoxedUnit) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.isUndef)
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.isUndef)
       },
       List(KindBoxedBoolean) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(BooleanRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(BooleanRef))
       },
       List(KindBoxedCharacter) -> { () =>
-        instrs += LocalGet(valueParam)
-        val structTypeName = genTypeID.forClass(SpecialNames.CharBoxClass)
-        instrs += RefTest(RefType(structTypeName))
+        fb += LocalGet(valueParam)
+        val structTypeID = genTypeID.forClass(SpecialNames.CharBoxClass)
+        fb += RefTest(RefType(structTypeID))
       },
       List(KindBoxedByte) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(ByteRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(ByteRef))
       },
       List(KindBoxedShort) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(ShortRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(ShortRef))
       },
       List(KindBoxedInteger) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(IntRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(IntRef))
       },
       List(KindBoxedLong) -> { () =>
-        instrs += LocalGet(valueParam)
-        val structTypeName = genTypeID.forClass(SpecialNames.LongBoxClass)
-        instrs += RefTest(RefType(structTypeName))
+        fb += LocalGet(valueParam)
+        val structTypeID = genTypeID.forClass(SpecialNames.LongBoxClass)
+        fb += RefTest(RefType(structTypeID))
       },
       List(KindBoxedFloat) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(FloatRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(FloatRef))
       },
       List(KindBoxedDouble) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.typeTest(DoubleRef))
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.typeTest(DoubleRef))
       },
       List(KindBoxedString) -> { () =>
-        instrs += LocalGet(valueParam)
-        instrs += Call(genFunctionID.isString)
+        fb += LocalGet(valueParam)
+        fb += Call(genFunctionID.isString)
       },
       // case KindJSType => call typeData.isJSClassInstance(value) or throw if it is null
       List(KindJSType) -> { () =>
-        instrs.block(RefType.anyref) { isJSClassInstanceIsNull =>
+        fb.block(RefType.anyref) { isJSClassInstanceIsNull =>
           // Load value as the argument to the function
-          instrs += LocalGet(valueParam)
+          fb += LocalGet(valueParam)
 
           // Load the function reference; break if null
-          instrs += LocalGet(typeDataParam)
-          instrs += StructGet(genTypeID.typeData, isJSClassInstance)
-          instrs += BrOnNull(isJSClassInstanceIsNull)
+          fb += LocalGet(typeDataParam)
+          fb += StructGet(genTypeID.typeData, isJSClassInstance)
+          fb += BrOnNull(isJSClassInstanceIsNull)
 
           // Call the function
-          instrs += CallRef(genTypeID.isJSClassInstanceFuncType)
-          instrs += Return
+          fb += CallRef(genTypeID.isJSClassInstanceFuncType)
+          fb += Return
         }
-        instrs += Drop // drop `value` which was left on the stack
+        fb += Drop // drop `value` which was left on the stack
 
         // throw new TypeError("...")
-        instrs ++= ctx.getConstantStringInstr("TypeError")
-        instrs += Call(genFunctionID.jsGlobalRefGet)
-        instrs += Call(genFunctionID.jsNewArray)
-        instrs ++= ctx.getConstantStringInstr(
+        fb ++= ctx.getConstantStringInstr("TypeError")
+        fb += Call(genFunctionID.jsGlobalRefGet)
+        fb += Call(genFunctionID.jsNewArray)
+        fb ++= ctx.getConstantStringInstr(
           "Cannot call isInstance() on a Class representing a JS trait/object"
         )
-        instrs += Call(genFunctionID.jsArrayPush)
-        instrs += Call(genFunctionID.jsNew)
-        instrs += ExternConvertAny
-        instrs += Throw(genTagID.exception)
+        fb += Call(genFunctionID.jsArrayPush)
+        fb += Call(genFunctionID.jsNew)
+        fb += ExternConvertAny
+        fb += Throw(genTagID.exception)
       }
     ) { () =>
       // case _ =>
 
       // valueNonNull := as_non_null value; return false if null
-      instrs.block(RefType.any) { nonNullLabel =>
-        instrs += LocalGet(valueParam)
-        instrs += BrOnNonNull(nonNullLabel)
-        instrs += I32Const(0)
-        instrs += Return
+      fb.block(RefType.any) { nonNullLabel =>
+        fb += LocalGet(valueParam)
+        fb += BrOnNonNull(nonNullLabel)
+        fb += I32Const(0)
+        fb += Return
       }
-      instrs += LocalSet(valueNonNullLocal)
+      fb += LocalSet(valueNonNullLocal)
 
       /* If `typeData` represents an ancestor of a hijacked classes, we have to
        * answer `true` if `valueNonNull` is a primitive instance of any of the
@@ -1241,56 +1227,56 @@ object CoreWasmLib {
        * There is a more elaborated concrete example of this algorithm in
        * `genInstanceTest`.
        */
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, specialInstanceTypes)
-      instrs += LocalTee(specialInstanceTypesLocal)
-      instrs += I32Const(0)
-      instrs += I32Ne
-      instrs.ifThen() {
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, specialInstanceTypes)
+      fb += LocalTee(specialInstanceTypesLocal)
+      fb += I32Const(0)
+      fb += I32Ne
+      fb.ifThen() {
         // Load (1 << jsValueType(valueNonNull))
-        instrs += I32Const(1)
-        instrs += LocalGet(valueNonNullLocal)
-        instrs += Call(genFunctionID.jsValueType)
-        instrs += I32Shl
+        fb += I32Const(1)
+        fb += LocalGet(valueNonNullLocal)
+        fb += Call(genFunctionID.jsValueType)
+        fb += I32Shl
 
         // if ((... & specialInstanceTypes) != 0)
-        instrs += LocalGet(specialInstanceTypesLocal)
-        instrs += I32And
-        instrs += I32Const(0)
-        instrs += I32Ne
-        instrs.ifThen() {
+        fb += LocalGet(specialInstanceTypesLocal)
+        fb += I32And
+        fb += I32Const(0)
+        fb += I32Ne
+        fb.ifThen() {
           // then return true
-          instrs += I32Const(1)
-          instrs += Return
+          fb += I32Const(1)
+          fb += Return
         }
       }
 
       // Get the vtable and delegate to isAssignableFrom
 
       // Load typeData
-      instrs += LocalGet(typeDataParam)
+      fb += LocalGet(typeDataParam)
 
       // Load the vtable; return false if it is not one of our object
-      instrs.block(objectRefType) { ourObjectLabel =>
+      fb.block(objectRefType) { ourObjectLabel =>
         // Try cast to jl.Object
-        instrs += LocalGet(valueNonNullLocal)
-        instrs += BrOnCast(
+        fb += LocalGet(valueNonNullLocal)
+        fb += BrOnCast(
           ourObjectLabel,
           RefType.any,
           RefType(objectRefType.heapType)
         )
 
         // on cast fail, return false
-        instrs += I32Const(0)
-        instrs += Return
+        fb += I32Const(0)
+        fb += Return
       }
-      instrs += StructGet(
+      fb += StructGet(
         genTypeID.forClass(ObjectClass),
         genFieldID.objStruct.vtable
       )
 
       // Call isAssignableFrom
-      instrs += Call(genFunctionID.isAssignableFrom)
+      fb += Call(genFunctionID.isAssignableFrom)
     }
 
     fb.buildAndAddToModule()
@@ -1308,19 +1294,17 @@ object CoreWasmLib {
     val fromParam = fb.addParam("from", RefType.anyref)
     fb.setResultType(Int32)
 
-    val instrs = fb
-
     // load typeData
-    instrs += LocalGet(typeDataParam)
+    fb += LocalGet(typeDataParam)
 
     // load ref.cast<typeData> from["__typeData"] (as a JS selection)
-    instrs += LocalGet(fromParam)
-    instrs ++= ctx.getConstantStringInstr("__typeData")
-    instrs += Call(genFunctionID.jsSelect)
-    instrs += RefCast(RefType(typeDataType.heapType))
+    fb += LocalGet(fromParam)
+    fb ++= ctx.getConstantStringInstr("__typeData")
+    fb += Call(genFunctionID.jsSelect)
+    fb += RefCast(RefType(typeDataType.heapType))
 
     // delegate to isAssignableFrom
-    instrs += Call(genFunctionID.isAssignableFrom)
+    fb += Call(genFunctionID.isAssignableFrom)
 
     fb.buildAndAddToModule()
   }
@@ -1339,112 +1323,110 @@ object CoreWasmLib {
     val fromTypeDataParam = fb.addParam("fromTypeData", typeDataType)
     fb.setResultType(Int32)
 
-    val instrs = fb
-
     val fromAncestorsLocal = fb.addLocal("fromAncestors", RefType(genTypeID.typeDataArray))
     val lenLocal = fb.addLocal("len", Int32)
     val iLocal = fb.addLocal("i", Int32)
 
     // if (fromTypeData eq typeData)
-    instrs += LocalGet(fromTypeDataParam)
-    instrs += LocalGet(typeDataParam)
-    instrs += RefEq
-    instrs.ifThen() {
+    fb += LocalGet(fromTypeDataParam)
+    fb += LocalGet(typeDataParam)
+    fb += RefEq
+    fb.ifThen() {
       // then return true
-      instrs += I32Const(1)
-      instrs += Return
+      fb += I32Const(1)
+      fb += Return
     }
 
     // "Tail call" loop for diving into array component types
-    instrs.loop(Int32) { loopForArrayLabel =>
+    fb.loop(Int32) { loopForArrayLabel =>
       // switch (typeData.kind)
-      instrs.switch(Int32) { () =>
+      fb.switch(Int32) { () =>
         // typeData.kind
-        instrs += LocalGet(typeDataParam)
-        instrs += StructGet(genTypeID.typeData, kind)
+        fb += LocalGet(typeDataParam)
+        fb += StructGet(genTypeID.typeData, kind)
       }(
         // case anyPrimitiveKind => return false
         (KindVoid to KindLastPrimitive).toList -> { () =>
-          instrs += I32Const(0)
+          fb += I32Const(0)
         },
         // case KindArray => check that from is an array, recurse into component types
         List(KindArray) -> { () =>
-          instrs.block() { fromComponentTypeIsNullLabel =>
+          fb.block() { fromComponentTypeIsNullLabel =>
             // fromTypeData := fromTypeData.componentType; jump out if null
-            instrs += LocalGet(fromTypeDataParam)
-            instrs += StructGet(genTypeID.typeData, componentType)
-            instrs += BrOnNull(fromComponentTypeIsNullLabel)
-            instrs += LocalSet(fromTypeDataParam)
+            fb += LocalGet(fromTypeDataParam)
+            fb += StructGet(genTypeID.typeData, componentType)
+            fb += BrOnNull(fromComponentTypeIsNullLabel)
+            fb += LocalSet(fromTypeDataParam)
 
             // typeData := ref.as_non_null typeData.componentType (OK because KindArray)
-            instrs += LocalGet(typeDataParam)
-            instrs += StructGet(genTypeID.typeData, componentType)
-            instrs += RefAsNotNull
-            instrs += LocalSet(typeDataParam)
+            fb += LocalGet(typeDataParam)
+            fb += StructGet(genTypeID.typeData, componentType)
+            fb += RefAsNotNull
+            fb += LocalSet(typeDataParam)
 
             // loop back ("tail call")
-            instrs += Br(loopForArrayLabel)
+            fb += Br(loopForArrayLabel)
           }
 
           // return false
-          instrs += I32Const(0)
+          fb += I32Const(0)
         },
         // case KindObject => return (fromTypeData.kind > KindLastPrimitive)
         List(KindObject) -> { () =>
-          instrs += LocalGet(fromTypeDataParam)
-          instrs += StructGet(genTypeID.typeData, kind)
-          instrs += I32Const(KindLastPrimitive)
-          instrs += I32GtU
+          fb += LocalGet(fromTypeDataParam)
+          fb += StructGet(genTypeID.typeData, kind)
+          fb += I32Const(KindLastPrimitive)
+          fb += I32GtU
         }
       ) { () =>
         // All other cases: test whether `fromTypeData.strictAncestors` contains `typeData`
 
-        instrs.block() { fromAncestorsIsNullLabel =>
+        fb.block() { fromAncestorsIsNullLabel =>
           // fromAncestors := fromTypeData.strictAncestors; go to fromAncestorsIsNull if null
-          instrs += LocalGet(fromTypeDataParam)
-          instrs += StructGet(genTypeID.typeData, strictAncestors)
-          instrs += BrOnNull(fromAncestorsIsNullLabel)
-          instrs += LocalTee(fromAncestorsLocal)
+          fb += LocalGet(fromTypeDataParam)
+          fb += StructGet(genTypeID.typeData, strictAncestors)
+          fb += BrOnNull(fromAncestorsIsNullLabel)
+          fb += LocalTee(fromAncestorsLocal)
 
           // if fromAncestors contains typeData, return true
 
           // len := fromAncestors.length
-          instrs += ArrayLen
-          instrs += LocalSet(lenLocal)
+          fb += ArrayLen
+          fb += LocalSet(lenLocal)
 
           // i := 0
-          instrs += I32Const(0)
-          instrs += LocalSet(iLocal)
+          fb += I32Const(0)
+          fb += LocalSet(iLocal)
 
           // while (i != len)
-          instrs.whileLoop() {
-            instrs += LocalGet(iLocal)
-            instrs += LocalGet(lenLocal)
-            instrs += I32Ne
+          fb.whileLoop() {
+            fb += LocalGet(iLocal)
+            fb += LocalGet(lenLocal)
+            fb += I32Ne
           } {
             // if (fromAncestors[i] eq typeData)
-            instrs += LocalGet(fromAncestorsLocal)
-            instrs += LocalGet(iLocal)
-            instrs += ArrayGet(genTypeID.typeDataArray)
-            instrs += LocalGet(typeDataParam)
-            instrs += RefEq
-            instrs.ifThen() {
+            fb += LocalGet(fromAncestorsLocal)
+            fb += LocalGet(iLocal)
+            fb += ArrayGet(genTypeID.typeDataArray)
+            fb += LocalGet(typeDataParam)
+            fb += RefEq
+            fb.ifThen() {
               // then return true
-              instrs += I32Const(1)
-              instrs += Return
+              fb += I32Const(1)
+              fb += Return
             }
 
             // i := i + 1
-            instrs += LocalGet(iLocal)
-            instrs += I32Const(1)
-            instrs += I32Add
-            instrs += LocalSet(iLocal)
+            fb += LocalGet(iLocal)
+            fb += I32Const(1)
+            fb += I32Add
+            fb += LocalSet(iLocal)
           }
         }
 
         // from.strictAncestors is null or does not contain typeData
         // return false
-        instrs += I32Const(0)
+        fb += I32Const(0)
       }
     }
 
@@ -1463,13 +1445,11 @@ object CoreWasmLib {
     val valueParam = fb.addParam("value", RefType.anyref)
     fb.setResultType(RefType.anyref)
 
-    val instrs = fb
-
     /* Given that we only implement `CheckedBehavior.Unchecked` semantics for
      * now, this is always the identity.
      */
 
-    instrs += LocalGet(valueParam)
+    fb += LocalGet(valueParam)
 
     fb.buildAndAddToModule()
   }
@@ -1485,20 +1465,18 @@ object CoreWasmLib {
     val typeDataParam = fb.addParam("typeData", typeDataType)
     fb.setResultType(RefType.nullable(genTypeID.ClassStruct))
 
-    val instrs = fb
-
     val componentTypeDataLocal = fb.addLocal("componentTypeData", typeDataType)
 
-    instrs.block() { nullResultLabel =>
+    fb.block() { nullResultLabel =>
       // Try and extract non-null component type data
-      instrs += LocalGet(typeDataParam)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
-      instrs += BrOnNull(nullResultLabel)
+      fb += LocalGet(typeDataParam)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
+      fb += BrOnNull(nullResultLabel)
       // Get the corresponding classOf
-      instrs += Call(genFunctionID.getClassOf)
-      instrs += Return
+      fb += Call(genFunctionID.getClassOf)
+      fb += Return
     } // end block nullResultLabel
-    instrs += RefNull(HeapType(genTypeID.ClassStruct))
+    fb += RefNull(HeapType(genTypeID.ClassStruct))
 
     fb.buildAndAddToModule()
   }
@@ -1516,60 +1494,58 @@ object CoreWasmLib {
     val lengthsParam = fb.addParam("lengths", RefType.anyref)
     fb.setResultType(RefType(genTypeID.ObjectStruct))
 
-    val instrs = fb
-
     val lengthsLenLocal = fb.addLocal("lengthsLenLocal", Int32)
     val lengthsValuesLocal = fb.addLocal("lengthsValues", i32ArrayType)
     val iLocal = fb.addLocal("i", Int32)
 
     // lengthsLen := lengths.length // as a JS field access
-    instrs += LocalGet(lengthsParam)
-    instrs ++= ctx.getConstantStringInstr("length")
-    instrs += Call(genFunctionID.jsSelect)
-    instrs += Call(genFunctionID.unbox(IntRef))
-    instrs += LocalTee(lengthsLenLocal)
+    fb += LocalGet(lengthsParam)
+    fb ++= ctx.getConstantStringInstr("length")
+    fb += Call(genFunctionID.jsSelect)
+    fb += Call(genFunctionID.unbox(IntRef))
+    fb += LocalTee(lengthsLenLocal)
 
     // lengthsValues := array.new<i32Array> lengthsLen
-    instrs += ArrayNewDefault(genTypeID.i32Array)
-    instrs += LocalSet(lengthsValuesLocal)
+    fb += ArrayNewDefault(genTypeID.i32Array)
+    fb += LocalSet(lengthsValuesLocal)
 
     // i := 0
-    instrs += I32Const(0)
-    instrs += LocalSet(iLocal)
+    fb += I32Const(0)
+    fb += LocalSet(iLocal)
 
     // while (i != lengthsLen)
-    instrs.whileLoop() {
-      instrs += LocalGet(iLocal)
-      instrs += LocalGet(lengthsLenLocal)
-      instrs += I32Ne
+    fb.whileLoop() {
+      fb += LocalGet(iLocal)
+      fb += LocalGet(lengthsLenLocal)
+      fb += I32Ne
     } {
       // lengthsValue[i] := lengths[i] (where the rhs is a JS field access)
 
-      instrs += LocalGet(lengthsValuesLocal)
-      instrs += LocalGet(iLocal)
+      fb += LocalGet(lengthsValuesLocal)
+      fb += LocalGet(iLocal)
 
-      instrs += LocalGet(lengthsParam)
-      instrs += LocalGet(iLocal)
-      instrs += RefI31
-      instrs += Call(genFunctionID.jsSelect)
-      instrs += Call(genFunctionID.unbox(IntRef))
+      fb += LocalGet(lengthsParam)
+      fb += LocalGet(iLocal)
+      fb += RefI31
+      fb += Call(genFunctionID.jsSelect)
+      fb += Call(genFunctionID.unbox(IntRef))
 
-      instrs += ArraySet(genTypeID.i32Array)
+      fb += ArraySet(genTypeID.i32Array)
 
       // i += 1
-      instrs += LocalGet(iLocal)
-      instrs += I32Const(1)
-      instrs += I32Add
-      instrs += LocalSet(iLocal)
+      fb += LocalGet(iLocal)
+      fb += I32Const(1)
+      fb += I32Add
+      fb += LocalSet(iLocal)
     }
 
     // return newArrayObject(arrayTypeData(typeData, lengthsLen), lengthsValues, 0)
-    instrs += LocalGet(typeDataParam)
-    instrs += LocalGet(lengthsLenLocal)
-    instrs += Call(genFunctionID.arrayTypeData)
-    instrs += LocalGet(lengthsValuesLocal)
-    instrs += I32Const(0)
-    instrs += Call(genFunctionID.newArrayObject)
+    fb += LocalGet(typeDataParam)
+    fb += LocalGet(lengthsLenLocal)
+    fb += Call(genFunctionID.arrayTypeData)
+    fb += LocalGet(lengthsValuesLocal)
+    fb += I32Const(0)
+    fb += Call(genFunctionID.newArrayObject)
 
     fb.buildAndAddToModule()
   }
@@ -1589,8 +1565,6 @@ object CoreWasmLib {
     val valueParam = fb.addParam("value", RefType.any)
     fb.setResultType(RefType.nullable(genTypeID.ClassStruct))
 
-    val instrs = fb
-
     val typeDataLocal = fb.addLocal("typeData", typeDataType)
     val doubleValueLocal = fb.addLocal("doubleValue", Float64)
     val intValueLocal = fb.addLocal("intValue", Int32)
@@ -1599,30 +1573,30 @@ object CoreWasmLib {
     def getHijackedClassTypeDataInstr(className: ClassName): Instr =
       GlobalGet(genGlobalID.forVTable(className))
 
-    instrs.block(RefType.nullable(genTypeID.ClassStruct)) { nonNullClassOfLabel =>
-      instrs.block(typeDataType) { gotTypeDataLabel =>
-        instrs.block(RefType(genTypeID.ObjectStruct)) { ourObjectLabel =>
+    fb.block(RefType.nullable(genTypeID.ClassStruct)) { nonNullClassOfLabel =>
+      fb.block(typeDataType) { gotTypeDataLabel =>
+        fb.block(RefType(genTypeID.ObjectStruct)) { ourObjectLabel =>
           // if value is our object, jump to $ourObject
-          instrs += LocalGet(valueParam)
-          instrs += BrOnCast(
+          fb += LocalGet(valueParam)
+          fb += BrOnCast(
             ourObjectLabel,
             RefType.any,
             RefType(genTypeID.ObjectStruct)
           )
 
           // switch(jsValueType(value)) { ... }
-          instrs.switch(typeDataType) { () =>
+          fb.switch(typeDataType) { () =>
             // scrutinee
-            instrs += LocalGet(valueParam)
-            instrs += Call(genFunctionID.jsValueType)
+            fb += LocalGet(valueParam)
+            fb += Call(genFunctionID.jsValueType)
           }(
             // case JSValueTypeFalse, JSValueTypeTrue => typeDataOf[jl.Boolean]
             List(JSValueTypeFalse, JSValueTypeTrue) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(BoxedBooleanClass)
+              fb += getHijackedClassTypeDataInstr(BoxedBooleanClass)
             },
             // case JSValueTypeString => typeDataOf[jl.String]
             List(JSValueTypeString) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(BoxedStringClass)
+              fb += getHijackedClassTypeDataInstr(BoxedStringClass)
             },
             // case JSValueTypeNumber => ...
             List(JSValueTypeNumber) -> { () =>
@@ -1631,83 +1605,83 @@ object CoreWasmLib {
                */
 
               // doubleValue := unboxDouble(value)
-              instrs += LocalGet(valueParam)
-              instrs += Call(genFunctionID.unbox(DoubleRef))
-              instrs += LocalTee(doubleValueLocal)
+              fb += LocalGet(valueParam)
+              fb += Call(genFunctionID.unbox(DoubleRef))
+              fb += LocalTee(doubleValueLocal)
 
               // intValue := doubleValue.toInt
-              instrs += I32TruncSatF64S
-              instrs += LocalTee(intValueLocal)
+              fb += I32TruncSatF64S
+              fb += LocalTee(intValueLocal)
 
               // if same(intValue.toDouble, doubleValue) -- same bit pattern to avoid +0.0 == -0.0
-              instrs += F64ConvertI32S
-              instrs += I64ReinterpretF64
-              instrs += LocalGet(doubleValueLocal)
-              instrs += I64ReinterpretF64
-              instrs += I64Eq
-              instrs.ifThenElse(typeDataType) {
+              fb += F64ConvertI32S
+              fb += I64ReinterpretF64
+              fb += LocalGet(doubleValueLocal)
+              fb += I64ReinterpretF64
+              fb += I64Eq
+              fb.ifThenElse(typeDataType) {
                 // then it is a Byte, a Short, or an Integer
 
                 // if intValue.toByte.toInt == intValue
-                instrs += LocalGet(intValueLocal)
-                instrs += I32Extend8S
-                instrs += LocalGet(intValueLocal)
-                instrs += I32Eq
-                instrs.ifThenElse(typeDataType) {
+                fb += LocalGet(intValueLocal)
+                fb += I32Extend8S
+                fb += LocalGet(intValueLocal)
+                fb += I32Eq
+                fb.ifThenElse(typeDataType) {
                   // then it is a Byte
-                  instrs += getHijackedClassTypeDataInstr(BoxedByteClass)
+                  fb += getHijackedClassTypeDataInstr(BoxedByteClass)
                 } {
                   // else, if intValue.toShort.toInt == intValue
-                  instrs += LocalGet(intValueLocal)
-                  instrs += I32Extend16S
-                  instrs += LocalGet(intValueLocal)
-                  instrs += I32Eq
-                  instrs.ifThenElse(typeDataType) {
+                  fb += LocalGet(intValueLocal)
+                  fb += I32Extend16S
+                  fb += LocalGet(intValueLocal)
+                  fb += I32Eq
+                  fb.ifThenElse(typeDataType) {
                     // then it is a Short
-                    instrs += getHijackedClassTypeDataInstr(BoxedShortClass)
+                    fb += getHijackedClassTypeDataInstr(BoxedShortClass)
                   } {
                     // else, it is an Integer
-                    instrs += getHijackedClassTypeDataInstr(BoxedIntegerClass)
+                    fb += getHijackedClassTypeDataInstr(BoxedIntegerClass)
                   }
                 }
               } {
                 // else, it is a Float or a Double
 
                 // if doubleValue.toFloat.toDouble == doubleValue
-                instrs += LocalGet(doubleValueLocal)
-                instrs += F32DemoteF64
-                instrs += F64PromoteF32
-                instrs += LocalGet(doubleValueLocal)
-                instrs += F64Eq
-                instrs.ifThenElse(typeDataType) {
+                fb += LocalGet(doubleValueLocal)
+                fb += F32DemoteF64
+                fb += F64PromoteF32
+                fb += LocalGet(doubleValueLocal)
+                fb += F64Eq
+                fb.ifThenElse(typeDataType) {
                   // then it is a Float
-                  instrs += getHijackedClassTypeDataInstr(BoxedFloatClass)
+                  fb += getHijackedClassTypeDataInstr(BoxedFloatClass)
                 } {
                   // else, if it is NaN
-                  instrs += LocalGet(doubleValueLocal)
-                  instrs += LocalGet(doubleValueLocal)
-                  instrs += F64Ne
-                  instrs.ifThenElse(typeDataType) {
+                  fb += LocalGet(doubleValueLocal)
+                  fb += LocalGet(doubleValueLocal)
+                  fb += F64Ne
+                  fb.ifThenElse(typeDataType) {
                     // then it is a Float
-                    instrs += getHijackedClassTypeDataInstr(BoxedFloatClass)
+                    fb += getHijackedClassTypeDataInstr(BoxedFloatClass)
                   } {
                     // else, it is a Double
-                    instrs += getHijackedClassTypeDataInstr(BoxedDoubleClass)
+                    fb += getHijackedClassTypeDataInstr(BoxedDoubleClass)
                   }
                 }
               }
             },
             // case JSValueTypeUndefined => typeDataOf[jl.Void]
             List(JSValueTypeUndefined) -> { () =>
-              instrs += getHijackedClassTypeDataInstr(BoxedUnitClass)
+              fb += getHijackedClassTypeDataInstr(BoxedUnitClass)
             }
           ) { () =>
             // case _ (JSValueTypeOther) => return null
-            instrs += RefNull(HeapType(genTypeID.ClassStruct))
-            instrs += Return
+            fb += RefNull(HeapType(genTypeID.ClassStruct))
+            fb += Return
           }
 
-          instrs += Br(gotTypeDataLabel)
+          fb += Br(gotTypeDataLabel)
         }
 
         /* Now we have one of our objects. Normally we only have to get the
@@ -1715,18 +1689,18 @@ object CoreWasmLib {
          * `jl.CharacterBox` or `jl.LongBox`, we must use the typeData of
          * `jl.Character` or `jl.Long`, respectively.
          */
-        instrs += LocalTee(ourObjectLocal)
-        instrs += RefTest(RefType(genTypeID.forClass(SpecialNames.CharBoxClass)))
-        instrs.ifThenElse(typeDataType) {
-          instrs += getHijackedClassTypeDataInstr(BoxedCharacterClass)
+        fb += LocalTee(ourObjectLocal)
+        fb += RefTest(RefType(genTypeID.forClass(SpecialNames.CharBoxClass)))
+        fb.ifThenElse(typeDataType) {
+          fb += getHijackedClassTypeDataInstr(BoxedCharacterClass)
         } {
-          instrs += LocalGet(ourObjectLocal)
-          instrs += RefTest(RefType(genTypeID.forClass(SpecialNames.LongBoxClass)))
-          instrs.ifThenElse(typeDataType) {
-            instrs += getHijackedClassTypeDataInstr(BoxedLongClass)
+          fb += LocalGet(ourObjectLocal)
+          fb += RefTest(RefType(genTypeID.forClass(SpecialNames.LongBoxClass)))
+          fb.ifThenElse(typeDataType) {
+            fb += getHijackedClassTypeDataInstr(BoxedLongClass)
           } {
-            instrs += LocalGet(ourObjectLocal)
-            instrs += StructGet(
+            fb += LocalGet(ourObjectLocal)
+            fb += StructGet(
               genTypeID.forClass(ObjectClass),
               genFieldID.objStruct.vtable
             )
@@ -1734,7 +1708,7 @@ object CoreWasmLib {
         }
       }
 
-      instrs += Call(genFunctionID.getClassOf)
+      fb += Call(genFunctionID.getClassOf)
     }
 
     fb.buildAndAddToModule()
@@ -1765,8 +1739,6 @@ object CoreWasmLib {
     val lengthsParam = fb.addParam("lengths", i32ArrayType)
     val lengthIndexParam = fb.addParam("lengthIndex", Int32)
     fb.setResultType(nonNullObjectType)
-
-    val instrs = fb
 
     val lenLocal = fb.addLocal("len", Int32)
     val underlyingLocal = fb.addLocal("underlying", anyArrayType)
@@ -1811,13 +1783,13 @@ object CoreWasmLib {
     )
 
     // Load the vtable and itable or the resulting array on the stack
-    instrs += LocalGet(arrayTypeDataParam) // vtable
-    instrs += GlobalGet(genGlobalID.arrayClassITable) // itable
+    fb += LocalGet(arrayTypeDataParam) // vtable
+    fb += GlobalGet(genGlobalID.arrayClassITable) // itable
 
     // Load the first length
-    instrs += LocalGet(lengthsParam)
-    instrs += LocalGet(lengthIndexParam)
-    instrs += ArrayGet(genTypeID.i32Array)
+    fb += LocalGet(lengthsParam)
+    fb += LocalGet(lengthIndexParam)
+    fb += ArrayGet(genTypeID.i32Array)
 
     // componentTypeData := ref_as_non_null(arrayTypeData.componentType)
     // switch (componentTypeData.kind)
@@ -1825,19 +1797,19 @@ object CoreWasmLib {
       List(arrayTypeDataType, itablesType, Int32),
       List(nonNullObjectType)
     )
-    instrs.switch(switchClauseSig) { () =>
+    fb.switch(switchClauseSig) { () =>
       // scrutinee
-      instrs += LocalGet(arrayTypeDataParam)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
-      instrs += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
+      fb += LocalGet(arrayTypeDataParam)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
+      fb += StructGet(genTypeID.typeData, genFieldID.typeData.kind)
     }(
       // For all the primitive types, by construction, this is the bottom dimension
       // case KindPrim => array.new_default underlyingPrimArray; struct.new PrimArray
       primRefsWithArrayTypes.map { case (primRef, kind) =>
         List(kind) -> { () =>
           val arrayTypeRef = ArrayTypeRef(primRef, 1)
-          instrs += ArrayNewDefault(genTypeID.underlyingOf(arrayTypeRef))
-          instrs += StructNew(genTypeID.forArrayClass(arrayTypeRef))
+          fb += ArrayNewDefault(genTypeID.underlyingOf(arrayTypeRef))
+          fb += StructNew(genTypeID.forArrayClass(arrayTypeRef))
           () // required for correct type inference
         }
       }: _*
@@ -1845,65 +1817,65 @@ object CoreWasmLib {
       // default -- all non-primitive array types
 
       // len := <top-of-stack> (which is the first length)
-      instrs += LocalTee(lenLocal)
+      fb += LocalTee(lenLocal)
 
       // underlying := array.new_default anyArray
       val arrayTypeRef = ArrayTypeRef(ClassRef(ObjectClass), 1)
-      instrs += ArrayNewDefault(genTypeID.underlyingOf(arrayTypeRef))
-      instrs += LocalSet(underlyingLocal)
+      fb += ArrayNewDefault(genTypeID.underlyingOf(arrayTypeRef))
+      fb += LocalSet(underlyingLocal)
 
       // subLengthIndex := lengthIndex + 1
-      instrs += LocalGet(lengthIndexParam)
-      instrs += I32Const(1)
-      instrs += I32Add
-      instrs += LocalTee(subLengthIndexLocal)
+      fb += LocalGet(lengthIndexParam)
+      fb += I32Const(1)
+      fb += I32Add
+      fb += LocalTee(subLengthIndexLocal)
 
       // if subLengthIndex != lengths.length
-      instrs += LocalGet(lengthsParam)
-      instrs += ArrayLen
-      instrs += I32Ne
-      instrs.ifThen() {
+      fb += LocalGet(lengthsParam)
+      fb += ArrayLen
+      fb += I32Ne
+      fb.ifThen() {
         // then, recursively initialize all the elements
 
         // arrayComponentTypeData := ref_cast<arrayTypeDataType> arrayTypeData.componentTypeData
-        instrs += LocalGet(arrayTypeDataParam)
-        instrs += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
-        instrs += RefCast(RefType(arrayTypeDataType.heapType))
-        instrs += LocalSet(arrayComponentTypeDataLocal)
+        fb += LocalGet(arrayTypeDataParam)
+        fb += StructGet(genTypeID.typeData, genFieldID.typeData.componentType)
+        fb += RefCast(RefType(arrayTypeDataType.heapType))
+        fb += LocalSet(arrayComponentTypeDataLocal)
 
         // i := 0
-        instrs += I32Const(0)
-        instrs += LocalSet(iLocal)
+        fb += I32Const(0)
+        fb += LocalSet(iLocal)
 
         // while (i != len)
-        instrs.whileLoop() {
-          instrs += LocalGet(iLocal)
-          instrs += LocalGet(lenLocal)
-          instrs += I32Ne
+        fb.whileLoop() {
+          fb += LocalGet(iLocal)
+          fb += LocalGet(lenLocal)
+          fb += I32Ne
         } {
           // underlying[i] := newArrayObject(arrayComponentType, lengths, subLengthIndex)
 
-          instrs += LocalGet(underlyingLocal)
-          instrs += LocalGet(iLocal)
+          fb += LocalGet(underlyingLocal)
+          fb += LocalGet(iLocal)
 
-          instrs += LocalGet(arrayComponentTypeDataLocal)
-          instrs += LocalGet(lengthsParam)
-          instrs += LocalGet(subLengthIndexLocal)
-          instrs += Call(genFunctionID.newArrayObject)
+          fb += LocalGet(arrayComponentTypeDataLocal)
+          fb += LocalGet(lengthsParam)
+          fb += LocalGet(subLengthIndexLocal)
+          fb += Call(genFunctionID.newArrayObject)
 
-          instrs += ArraySet(genTypeID.anyArray)
+          fb += ArraySet(genTypeID.anyArray)
 
           // i += 1
-          instrs += LocalGet(iLocal)
-          instrs += I32Const(1)
-          instrs += I32Add
-          instrs += LocalSet(iLocal)
+          fb += LocalGet(iLocal)
+          fb += I32Const(1)
+          fb += I32Add
+          fb += LocalSet(iLocal)
         }
       }
 
       // load underlying; struct.new ObjectArray
-      instrs += LocalGet(underlyingLocal)
-      instrs += StructNew(genTypeID.forArrayClass(arrayTypeRef))
+      fb += LocalGet(underlyingLocal)
+      fb += StructNew(genTypeID.forArrayClass(arrayTypeRef))
     }
 
     fb.buildAndAddToModule()
@@ -1939,72 +1911,70 @@ object CoreWasmLib {
     val objParam = fb.addParam("obj", RefType.anyref)
     fb.setResultType(Int32)
 
-    val instrs = fb
-
     val objNonNullLocal = fb.addLocal("objNonNull", RefType.any)
     val resultLocal = fb.addLocal("result", Int32)
 
     // If `obj` is `null`, return 0 (by spec)
-    instrs.block(RefType.any) { nonNullLabel =>
-      instrs += LocalGet(objParam)
-      instrs += BrOnNonNull(nonNullLabel)
-      instrs += I32Const(0)
-      instrs += Return
+    fb.block(RefType.any) { nonNullLabel =>
+      fb += LocalGet(objParam)
+      fb += BrOnNonNull(nonNullLabel)
+      fb += I32Const(0)
+      fb += Return
     }
-    instrs += LocalTee(objNonNullLocal)
+    fb += LocalTee(objNonNullLocal)
 
     // If `obj` is one of our objects, skip all the jsValueType tests
-    instrs += RefTest(RefType(genTypeID.ObjectStruct))
-    instrs += I32Eqz
-    instrs.ifThen() {
-      instrs.switch() { () =>
-        instrs += LocalGet(objNonNullLocal)
-        instrs += Call(genFunctionID.jsValueType)
+    fb += RefTest(RefType(genTypeID.ObjectStruct))
+    fb += I32Eqz
+    fb.ifThen() {
+      fb.switch() { () =>
+        fb += LocalGet(objNonNullLocal)
+        fb += Call(genFunctionID.jsValueType)
       }(
         List(JSValueTypeFalse) -> { () =>
-          instrs += I32Const(1237) // specified by jl.Boolean.hashCode()
-          instrs += Return
+          fb += I32Const(1237) // specified by jl.Boolean.hashCode()
+          fb += Return
         },
         List(JSValueTypeTrue) -> { () =>
-          instrs += I32Const(1231) // specified by jl.Boolean.hashCode()
-          instrs += Return
+          fb += I32Const(1231) // specified by jl.Boolean.hashCode()
+          fb += Return
         },
         List(JSValueTypeString) -> { () =>
-          instrs += LocalGet(objNonNullLocal)
-          instrs += Call(
+          fb += LocalGet(objNonNullLocal)
+          fb += Call(
             genFunctionID.forMethod(Public, BoxedStringClass, hashCodeMethodName)
           )
-          instrs += Return
+          fb += Return
         },
         List(JSValueTypeNumber) -> { () =>
-          instrs += LocalGet(objNonNullLocal)
-          instrs += Call(genFunctionID.unbox(DoubleRef))
-          instrs += Call(
+          fb += LocalGet(objNonNullLocal)
+          fb += Call(genFunctionID.unbox(DoubleRef))
+          fb += Call(
             genFunctionID.forMethod(Public, BoxedDoubleClass, hashCodeMethodName)
           )
-          instrs += Return
+          fb += Return
         },
         List(JSValueTypeUndefined) -> { () =>
-          instrs += I32Const(0) // specified by jl.Void.hashCode(), Scala.js only
-          instrs += Return
+          fb += I32Const(0) // specified by jl.Void.hashCode(), Scala.js only
+          fb += Return
         },
         List(JSValueTypeBigInt) -> { () =>
-          instrs += LocalGet(objNonNullLocal)
-          instrs += Call(genFunctionID.bigintHashCode)
-          instrs += Return
+          fb += LocalGet(objNonNullLocal)
+          fb += Call(genFunctionID.bigintHashCode)
+          fb += Return
         },
         List(JSValueTypeSymbol) -> { () =>
-          instrs.block() { descriptionIsNullLabel =>
-            instrs += LocalGet(objNonNullLocal)
-            instrs += Call(genFunctionID.symbolDescription)
-            instrs += BrOnNull(descriptionIsNullLabel)
-            instrs += Call(
+          fb.block() { descriptionIsNullLabel =>
+            fb += LocalGet(objNonNullLocal)
+            fb += Call(genFunctionID.symbolDescription)
+            fb += BrOnNull(descriptionIsNullLabel)
+            fb += Call(
               genFunctionID.forMethod(Public, BoxedStringClass, hashCodeMethodName)
             )
-            instrs += Return
+            fb += Return
           }
-          instrs += I32Const(0)
-          instrs += Return
+          fb += I32Const(0)
+          fb += Return
         }
       ) { () =>
         // JSValueTypeOther -- fall through to using idHashCodeMap
@@ -2015,29 +1985,29 @@ object CoreWasmLib {
     // If we get here, use the idHashCodeMap
 
     // Read the existing idHashCode, if one exists
-    instrs += GlobalGet(genGlobalID.idHashCodeMap)
-    instrs += LocalGet(objNonNullLocal)
-    instrs += Call(genFunctionID.idHashCodeGet)
-    instrs += LocalTee(resultLocal)
+    fb += GlobalGet(genGlobalID.idHashCodeMap)
+    fb += LocalGet(objNonNullLocal)
+    fb += Call(genFunctionID.idHashCodeGet)
+    fb += LocalTee(resultLocal)
 
     // If it is 0, there was no recorded idHashCode yet; allocate a new one
-    instrs += I32Eqz
-    instrs.ifThen() {
+    fb += I32Eqz
+    fb.ifThen() {
       // Allocate a new idHashCode
-      instrs += GlobalGet(genGlobalID.lastIDHashCode)
-      instrs += I32Const(1)
-      instrs += I32Add
-      instrs += LocalTee(resultLocal)
-      instrs += GlobalSet(genGlobalID.lastIDHashCode)
+      fb += GlobalGet(genGlobalID.lastIDHashCode)
+      fb += I32Const(1)
+      fb += I32Add
+      fb += LocalTee(resultLocal)
+      fb += GlobalSet(genGlobalID.lastIDHashCode)
 
       // Store it for next time
-      instrs += GlobalGet(genGlobalID.idHashCodeMap)
-      instrs += LocalGet(objNonNullLocal)
-      instrs += LocalGet(resultLocal)
-      instrs += Call(genFunctionID.idHashCodeSet)
+      fb += GlobalGet(genGlobalID.idHashCodeMap)
+      fb += LocalGet(objNonNullLocal)
+      fb += LocalGet(resultLocal)
+      fb += Call(genFunctionID.idHashCodeSet)
     }
 
-    instrs += LocalGet(resultLocal)
+    fb += LocalGet(resultLocal)
 
     fb.buildAndAddToModule()
   }
@@ -2057,61 +2027,59 @@ object CoreWasmLib {
     val methodIdParam = fb.addParam("methodId", Int32)
     fb.setResultType(RefType(HeapType.Func))
 
-    val instrs = fb
-
     val reflectiveProxies =
       fb.addLocal("reflectiveProxies", Types.RefType(genTypeID.reflectiveProxies))
     val size = fb.addLocal("size", Types.Int32)
     val i = fb.addLocal("i", Types.Int32)
 
-    instrs += LocalGet(typeDataParam)
-    instrs += StructGet(genTypeID.typeData, genFieldID.typeData.reflectiveProxies)
-    instrs += LocalTee(reflectiveProxies)
-    instrs += ArrayLen
-    instrs += LocalSet(size)
+    fb += LocalGet(typeDataParam)
+    fb += StructGet(genTypeID.typeData, genFieldID.typeData.reflectiveProxies)
+    fb += LocalTee(reflectiveProxies)
+    fb += ArrayLen
+    fb += LocalSet(size)
 
-    instrs += I32Const(0)
-    instrs += LocalSet(i)
+    fb += I32Const(0)
+    fb += LocalSet(i)
 
-    instrs.whileLoop() {
-      instrs += LocalGet(i)
-      instrs += LocalGet(size)
-      instrs += I32Ne
+    fb.whileLoop() {
+      fb += LocalGet(i)
+      fb += LocalGet(size)
+      fb += I32Ne
     } {
-      instrs += LocalGet(reflectiveProxies)
-      instrs += LocalGet(i)
-      instrs += ArrayGet(genTypeID.reflectiveProxies)
+      fb += LocalGet(reflectiveProxies)
+      fb += LocalGet(i)
+      fb += ArrayGet(genTypeID.reflectiveProxies)
 
-      instrs += StructGet(genTypeID.reflectiveProxy, genFieldID.reflectiveProxy.func_name)
-      instrs += LocalGet(methodIdParam)
-      instrs += I32Eq
+      fb += StructGet(genTypeID.reflectiveProxy, genFieldID.reflectiveProxy.func_name)
+      fb += LocalGet(methodIdParam)
+      fb += I32Eq
 
-      instrs.ifThen() {
-        instrs += LocalGet(reflectiveProxies)
-        instrs += LocalGet(i)
-        instrs += ArrayGet(genTypeID.reflectiveProxies)
+      fb.ifThen() {
+        fb += LocalGet(reflectiveProxies)
+        fb += LocalGet(i)
+        fb += ArrayGet(genTypeID.reflectiveProxies)
 
         // get function reference
-        instrs += StructGet(genTypeID.reflectiveProxy, genFieldID.reflectiveProxy.func_ref)
-        instrs += Return
+        fb += StructGet(genTypeID.reflectiveProxy, genFieldID.reflectiveProxy.func_ref)
+        fb += Return
       }
 
       // i += 1
-      instrs += LocalGet(i)
-      instrs += I32Const(1)
-      instrs += I32Add
-      instrs += LocalSet(i)
+      fb += LocalGet(i)
+      fb += I32Const(1)
+      fb += I32Add
+      fb += LocalSet(i)
     }
     // throw new TypeError("...")
-    instrs ++= ctx.getConstantStringInstr("TypeError")
-    instrs += Call(genFunctionID.jsGlobalRefGet)
-    instrs += Call(genFunctionID.jsNewArray)
+    fb ++= ctx.getConstantStringInstr("TypeError")
+    fb += Call(genFunctionID.jsGlobalRefGet)
+    fb += Call(genFunctionID.jsNewArray)
     // Originally, exception is thrown from JS saying e.g. "obj2.z1__ is not a function"
-    instrs ++= ctx.getConstantStringInstr("Method not found")
-    instrs += Call(genFunctionID.jsArrayPush)
-    instrs += Call(genFunctionID.jsNew)
-    instrs += ExternConvertAny
-    instrs += Throw(genTagID.exception)
+    fb ++= ctx.getConstantStringInstr("Method not found")
+    fb += Call(genFunctionID.jsArrayPush)
+    fb += Call(genFunctionID.jsNew)
+    fb += ExternConvertAny
+    fb += Throw(genTagID.exception)
 
     fb.buildAndAddToModule()
   }
@@ -2146,15 +2114,13 @@ object CoreWasmLib {
     fb.setResultType(RefType(genTypeID.ObjectStruct))
     fb.setFunctionType(genTypeID.cloneFunctionType)
 
-    val instrs = fb
-
     val arrayTypeRef = ArrayTypeRef(baseRef, 1)
 
-    val arrayStructTypeName = genTypeID.forArrayClass(arrayTypeRef)
-    val arrayClassType = RefType(arrayStructTypeName)
+    val arrayStructTypeID = genTypeID.forArrayClass(arrayTypeRef)
+    val arrayClassType = RefType(arrayStructTypeID)
 
-    val underlyingArrayTypeName = genTypeID.underlyingOf(arrayTypeRef)
-    val underlyingArrayType = RefType(underlyingArrayTypeName)
+    val underlyingArrayTypeID = genTypeID.underlyingOf(arrayTypeRef)
+    val underlyingArrayType = RefType(underlyingArrayTypeID)
 
     val fromLocal = fb.addLocal("fromTyped", arrayClassType)
     val fromUnderlyingLocal = fb.addLocal("fromUnderlying", underlyingArrayType)
@@ -2162,31 +2128,31 @@ object CoreWasmLib {
     val resultUnderlyingLocal = fb.addLocal("resultUnderlying", underlyingArrayType)
 
     // Cast down the from argument
-    instrs += LocalGet(fromParam)
-    instrs += RefCast(arrayClassType)
-    instrs += LocalTee(fromLocal)
+    fb += LocalGet(fromParam)
+    fb += RefCast(arrayClassType)
+    fb += LocalTee(fromLocal)
 
     // Load the underlying array
-    instrs += StructGet(arrayStructTypeName, genFieldID.objStruct.arrayUnderlying)
-    instrs += LocalTee(fromUnderlyingLocal)
+    fb += StructGet(arrayStructTypeID, genFieldID.objStruct.arrayUnderlying)
+    fb += LocalTee(fromUnderlyingLocal)
 
     // Make a copy of the underlying array
-    instrs += ArrayLen
-    instrs += LocalTee(lengthLocal)
-    instrs += ArrayNewDefault(underlyingArrayTypeName)
-    instrs += LocalTee(resultUnderlyingLocal) // also dest for array.copy
-    instrs += I32Const(0) // destOffset
-    instrs += LocalGet(fromUnderlyingLocal) // src
-    instrs += I32Const(0) // srcOffset
-    instrs += LocalGet(lengthLocal) // length
-    instrs += ArrayCopy(underlyingArrayTypeName, underlyingArrayTypeName)
+    fb += ArrayLen
+    fb += LocalTee(lengthLocal)
+    fb += ArrayNewDefault(underlyingArrayTypeID)
+    fb += LocalTee(resultUnderlyingLocal) // also dest for array.copy
+    fb += I32Const(0) // destOffset
+    fb += LocalGet(fromUnderlyingLocal) // src
+    fb += I32Const(0) // srcOffset
+    fb += LocalGet(lengthLocal) // length
+    fb += ArrayCopy(underlyingArrayTypeID, underlyingArrayTypeID)
 
     // Build the result arrayStruct
-    instrs += LocalGet(fromLocal)
-    instrs += StructGet(arrayStructTypeName, genFieldID.objStruct.vtable) // vtable
-    instrs += GlobalGet(genGlobalID.arrayClassITable) // itable
-    instrs += LocalGet(resultUnderlyingLocal)
-    instrs += StructNew(arrayStructTypeName)
+    fb += LocalGet(fromLocal)
+    fb += StructGet(arrayStructTypeID, genFieldID.objStruct.vtable) // vtable
+    fb += GlobalGet(genGlobalID.arrayClassITable) // itable
+    fb += LocalGet(resultUnderlyingLocal)
+    fb += StructNew(arrayStructTypeID)
 
     fb.buildAndAddToModule()
   }

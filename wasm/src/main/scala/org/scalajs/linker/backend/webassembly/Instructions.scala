@@ -48,29 +48,29 @@ object Instructions {
       val labelArgument: LabelID
   ) extends Instr(mnemonic, opcode)
 
-  /** An instruction with a single `FunctionName` argument. */
+  /** An instruction with a single `FunctionID` argument. */
   sealed abstract class FuncInstr(
       mnemonic: String,
       opcode: Int,
       val funcArgument: FunctionID
   ) extends Instr(mnemonic, opcode)
 
-  /** An instruction with a single `TypeName` argument. */
+  /** An instruction with a single `TypeID` argument. */
   sealed abstract class TypeInstr(mnemonic: String, opcode: Int, val typeArgument: TypeID)
       extends Instr(mnemonic, opcode)
 
-  /** An instruction with a single `TagName` argument. */
+  /** An instruction with a single `TagID` argument. */
   sealed abstract class TagInstr(mnemonic: String, opcode: Int, val tagArgument: TagID)
       extends Instr(mnemonic, opcode)
 
-  /** An instruction with a single `LocalName` argument. */
+  /** An instruction with a single `LocalID` argument. */
   sealed abstract class LocalInstr(
       mnemonic: String,
       opcode: Int,
       val localArgument: LocalID
   ) extends Instr(mnemonic, opcode)
 
-  /** An instruction with a single `GlobalName` argument. */
+  /** An instruction with a single `GlobalID` argument. */
   sealed abstract class GlobalInstr(
       mnemonic: String,
       opcode: Int,
@@ -95,12 +95,12 @@ object Instructions {
       val refTypeArgument: RefType
   ) extends Instr(mnemonic, if (refTypeArgument.nullable) nullOpcode else nonNullOpcode)
 
-  /** An instruction with a pair of `TypeName`, `StructFieldIdx` arguments. */
+  /** An instruction with a pair of `TypeID`, `FieldID` arguments. */
   sealed abstract class StructFieldInstr(
       mnemonic: String,
       opcode: Int,
-      val structTypeName: TypeID,
-      val fieldIdx: FieldID
+      val structTypeID: TypeID,
+      val fieldID: FieldID
   ) extends Instr(mnemonic, opcode)
 
   // The actual instruction list
@@ -277,7 +277,6 @@ object Instructions {
       extends BlockTypeLabeledInstr("try", 0x06, i)
   case class Catch(i: TagID) extends TagInstr("catch", 0x07, i)
   case object CatchAll extends SimpleInstr("catch_all", 0x19)
-  // case class Delegate(i: LabelName) extends LabelInstr("delegate", 0x18, i)
   case class Rethrow(i: LabelID) extends LabelInstr("rethrow", 0x09, i) with StackPolymorphicInstr
 
   // Parametric instructions
